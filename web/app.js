@@ -21,6 +21,7 @@
     duration: document.querySelector("#note-duration"),
     velocity: document.querySelector("#note-velocity"),
     velocityValue: document.querySelector("#velocity-value"),
+    lyric: document.querySelector("#note-lyric"),
     count: document.querySelector("#note-count"),
     status: document.querySelector("#transport-status"),
     play: document.querySelector("#play"),
@@ -99,7 +100,8 @@
       element.style.top = `${midiToRow(note.midi) * rowHeight + 2}px`;
       element.style.width = `${Math.max(22, note.duration * beatWidth - 4)}px`;
       element.textContent = noteName(note.midi);
-      element.title = `${noteName(note.midi)} · ${note.duration} 拍 · 起始 ${note.start}`;
+      const lyricSuffix = note.lyric ? ` · ${note.lyric}` : "";
+      element.title = `${noteName(note.midi)} · ${note.duration} 拍 · 起始 ${note.start}${lyricSuffix}`;
       element.addEventListener("click", (event) => {
         event.stopPropagation();
         selectNote(note.id);
@@ -137,6 +139,7 @@
     dom.velocity.value = String(note.velocity);
     dom.velocityValue.value = String(note.velocity);
     dom.velocityValue.textContent = String(note.velocity);
+    dom.lyric.value = note.lyric || "";
     renderRoll();
   }
 
@@ -190,7 +193,8 @@
 
   // MusicXML is intentionally parsed without a third-party dependency.  The
   // web prototype accepts the single-part, single-voice subset that it emits,
-  // plus ordinary rests, chords and measure-level tempo changes.
+  // plus ordinary rests, chords, one lyric text per note and measure-level
+  // tempo changes.
   function childByName(element, name) {
     return Array.from(element.children || []).find((child) => child.localName === name || child.tagName === name) || null;
   }
@@ -258,6 +262,9 @@
           measureLastOnset = cursor;
           return;
         }
+        const lyricNode = childByName(noteElement, "lyric");
+        const lyricText = lyricNode ? childByName(lyricNode, "text") : null;
+        const lyric = lyricText ? String(lyricText.textContent || "").trim() : "";
         const pitch = childByName(noteElement, "pitch");
         const step = pitch ? (childByName(pitch, "step") || {}).textContent : "";
         const octave = pitch ? numberChild(pitch, "octave", null) : null;
@@ -273,7 +280,7 @@
             const visibleDuration = Math.min(duration, BEATS - start);
             if (visibleDuration >= 0.25 && midi >= LOWEST_MIDI && midi < LOWEST_MIDI + ROWS) {
               const velocity = clamp(numberChild(noteElement, "velocity", 90), 1, 127);
-              imported.push({ midi, start, duration: Math.max(0.25, Math.round(visibleDuration * 4) / 4), velocity });
+              imported.push({ midi, start, duration: Math.max(0.25, Math.round(visibleDuration * 4) / 4), velocity, lyric });
             } else {
               skipped += 1;
             }
@@ -407,7 +414,8 @@
       group.forEach((note, groupIndex) => {
         const duration = clamp(Number(note.duration), 0.25, BEATS - start);
         const ticks = Math.max(1, Math.round(duration * divisions));
-        lines.push(`      <note>${groupIndex ? "<chord/>" : ""}${pitchXml(note.midi)}<duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type><velocity>${Math.round(note.velocity)}</velocity></note>`);
+        const lyricXml = note.lyric ? `<lyric><text>${xmlEscape(note.lyric)}</text></lyric>` : "";
+        lines.push(`      <note>${groupIndex ? "<chord/>" : ""}${pitchXml(note.midi)}<duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type><velocity>${Math.round(note.velocity)}</velocity>${lyricXml}</note>`);
       });
       cursor = Math.max(cursor, ...group.map((note) => start + Number(note.duration)));
       index += group.length;
@@ -475,6 +483,7 @@ ${lines.join("\n")}
     dom.velocityValue.textContent = dom.velocity.value;
     updateSelected({ velocity: Number(dom.velocity.value) });
   });
+  dom.lyric.addEventListener("input", () => updateSelected({ lyric: dom.lyric.value }));
   dom.roll.addEventListener("keydown", (event) => {
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); }
     if (event.key === " ") { event.preventDefault(); dom.play.click(); }
