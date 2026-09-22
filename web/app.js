@@ -56,6 +56,7 @@
     remove: document.querySelector("#delete-note"),
     exportButton: document.querySelector("#export"),
     exportMidiButton: document.querySelector("#export-midi"),
+    exportWavButton: document.querySelector("#export-wav"),
     recoveryBanner: document.querySelector("#recovery-banner"),
     recoveryMessage: document.querySelector("#recovery-message"),
     restoreRecovery: document.querySelector("#restore-recovery"),
@@ -938,6 +939,70 @@
     setStatus("已导出 MIDI Type 1（960 PPQ）");
   }
 
+  function wavBytesFromNotes() {
+    const sampleRate = 48000;
+    const tempo = clamp(Number(dom.tempo.value) || 96, 30, 240);
+    const secondsPerBeat = 60 / tempo;
+    const tailSeconds = 0.1;
+    const durationBeats = notes.length ? Math.max(...notes.map((note) => note.start + note.duration)) : 0;
+    const frameCount = Math.max(1, Math.ceil(durationBeats * secondsPerBeat * sampleRate + tailSeconds * sampleRate));
+    const samples = new Float32Array(frameCount);
+    const twoPi = Math.PI * 2;
+    notes.forEach((note) => {
+      const startFrame = Math.max(0, Math.round(note.start * secondsPerBeat * sampleRate));
+      const endFrame = Math.min(frameCount, Math.max(startFrame + 1,
+        Math.round((note.start + note.duration) * secondsPerBeat * sampleRate)));
+      const frequency = 440 * Math.pow(2, (note.midi - 69) / 12);
+      const amplitude = 0.18 * (note.velocity / 127);
+      const attackFrames = Math.max(1, Math.round(sampleRate * 0.008));
+      const releaseFrames = Math.max(1, Math.round(sampleRate * 0.035));
+      const noteFrames = endFrame - startFrame;
+      for (let frame = startFrame; frame < endFrame; frame += 1) {
+        const age = frame - startFrame;
+        const remaining = noteFrames - age;
+        const attack = Math.min(1, age / attackFrames);
+        const release = Math.min(1, remaining / releaseFrames);
+        const envelope = Math.max(0, Math.min(attack, release));
+        samples[frame] += amplitude * envelope * Math.sin(twoPi * frequency * age / sampleRate);
+      }
+    });
+    const dataBytes = samples.length * 2;
+    const buffer = new ArrayBuffer(44 + dataBytes);
+    const view = new DataView(buffer);
+    const writeText = (offset, value) => {
+      for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+    };
+    writeText(0, "RIFF");
+    view.setUint32(4, 36 + dataBytes, true);
+    writeText(8, "WAVE");
+    writeText(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeText(36, "data");
+    view.setUint32(40, dataBytes, true);
+    for (let index = 0; index < samples.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, samples[index]));
+      view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
+    }
+    return new Uint8Array(buffer);
+  }
+
+  function downloadWav() {
+    const blob = new Blob([wavBytesFromNotes()], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "classical-daw-sketch.wav";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus("已导出 WAV（48 kHz / PCM16 单声道诊断音色）");
+  }
+
   function xmlEscape(value) {
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   }
@@ -1187,6 +1252,7 @@ ${lines.join("\n")}
     if (file) importMidiFile(file);
   });
   dom.exportMidiButton.addEventListener("click", downloadMidi);
+  dom.exportWavButton.addEventListener("click", downloadWav);
   dom.saveProject.addEventListener("click", downloadProject);
   dom.openProject.addEventListener("click", () => dom.projectFile.click());
   dom.projectFile.addEventListener("change", () => {
