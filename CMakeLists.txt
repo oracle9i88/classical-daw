@@ -51,4 +51,12 @@ if(APPLE)
   target_link_libraries(daw_coreaudio PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreAudio")
   target_compile_features(daw_coreaudio PUBLIC cxx_std_17)
   target_compile_options(daw_coreaudio PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+
+  add_library(daw_coremidi STATIC
+    src/platform/macos/coremidi_host.cpp
+  )
+  target_include_directories(daw_coremidi PUBLIC src/platform/macos)
+  target_link_libraries(daw_coremidi PUBLIC "-framework CoreMIDI" "-framework CoreFoundation")
+  target_compile_features(daw_coremidi PUBLIC cxx_std_17)
+  target_compile_options(daw_coremidi PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
 endif()
