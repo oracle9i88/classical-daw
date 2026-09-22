@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -203,7 +204,7 @@ std::string escape(const std::string& value) {
   return result;
 }
 
-void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord) {
+void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, std::uint16_t voice, std::uint16_t staff) {
   output << "      <note>\n";
   if (chord) output << "        <chord/>\n";
   if (note.rest) {
@@ -214,7 +215,13 @@ void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord) {
     output << "          <octave>" << note.pitch.octave << "</octave></pitch>\n";
   }
   output << "        <duration>" << note.duration << "</duration>\n"
-         << "        <voice>1</voice>\n";
+         << "        <voice>" << voice << "</voice>\n";
+  if (staff > 1) output << "        <staff>" << staff << "</staff>\n";
+  if (note.tuplet_actual != 0 || note.tuplet_normal != 0) {
+    if (note.tuplet_actual == 0 || note.tuplet_normal == 0) throw std::invalid_argument("tuplet actual/normal counts must both be set");
+    output << "        <time-modification><actual-notes>" << note.tuplet_actual
+           << "</actual-notes><normal-notes>" << note.tuplet_normal << "</normal-notes></time-modification>\n";
+  }
   if (note.tie_start) output << "        <tie type=\"start\"/>\n";
   if (note.tie_stop) output << "        <tie type=\"stop\"/>\n";
   if (note.tie_start || note.tie_stop) {
@@ -255,13 +262,25 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
                << static_cast<int>(score.time_signature.denominator) << "</beat-type></time></attributes>\n"
                << "      <direction><sound tempo=\"" << score.bpm << "\"/></direction>\n";
       }
-      std::vector<ScoreNote> notes = measure.notes;
-      std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
-        return left.start < right.start;
-      });
-      Tick cursor = measure.start;
-      Tick last_start = std::numeric_limits<Tick>::min();
-      for (const ScoreNote& note : notes) {
+      using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
+      std::map<VoiceKey, std::vector<ScoreNote>> streams;
+      for (const ScoreNote& note : measure.notes) streams[{note.staff, note.voice}].push_back(note);
+      Tick stream_cursor = measure.start;
+      bool first_stream = true;
+      for (auto& stream : streams) {
+        const VoiceKey key = stream.first;
+        if (key.first == 0 || key.second == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
+        if (!first_stream && stream_cursor > measure.start) {
+          output << "      <backup><duration>" << (stream_cursor - measure.start) << "</duration></backup>\n";
+        }
+        first_stream = false;
+        std::vector<ScoreNote>& notes = stream.second;
+        std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
+          return left.start < right.start;
+        });
+        Tick cursor = measure.start;
+        Tick last_start = std::numeric_limits<Tick>::min();
+        for (const ScoreNote& note : notes) {
         if (note.duration <= 0 || note.start < measure.start) throw std::invalid_argument("invalid score note timing");
         if (note.start > std::numeric_limits<Tick>::max() - note.duration) {
           throw std::invalid_argument("score note timing overflows tick range");
@@ -270,14 +289,16 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
           (void)validStep(std::string(1, note.pitch.step));
           if (note.pitch.octave < 0 || note.pitch.octave > 9) throw std::invalid_argument("score pitch octave is out of range");
         }
-        const bool is_chord = note.start == last_start;
-        if (!is_chord && note.start < cursor) throw std::invalid_argument("overlapping notes need chord=true timing");
-        if (!is_chord && note.start > cursor) {
-          output << "      <forward><duration>" << (note.start - cursor) << "</duration></forward>\n";
+          const bool is_chord = note.start == last_start;
+          if (!is_chord && note.start < cursor) throw std::invalid_argument("overlapping notes need chord=true timing");
+          if (!is_chord && note.start > cursor) {
+            output << "      <forward><duration>" << (note.start - cursor) << "</duration></forward>\n";
+          }
+          writeNote(output, note, is_chord, key.second, key.first);
+          if (!is_chord) cursor = note.start + note.duration;
+          last_start = note.start;
         }
-        writeNote(output, note, is_chord);
-        if (!is_chord) cursor = note.start + note.duration;
-        last_start = note.start;
+        stream_cursor = cursor;
       }
       output << "    </measure>\n";
     }
@@ -401,8 +422,9 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       for (const auto& forward : findBlocks(xml, "forward", measure_block.content_start, measure_block.content_end)) events.push_back({forward.start, "forward", forward});
       std::sort(events.begin(), events.end(), [](const TimedBlock& left, const TimedBlock& right) { return left.position < right.position; });
       Tick cursor = 0;
-      Tick last_note_start = 0;
-      bool have_note = false;
+      using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
+      std::map<VoiceKey, Tick> last_note_starts;
+      std::map<VoiceKey, bool> have_notes;
       for (const TimedBlock& event : events) {
         const Tick duration = integerText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
         if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
@@ -419,14 +441,21 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         ScoreNote note;
         note.duration = duration;
         note.chord = hasElement(xml, "chord", event.block.content_start, event.block.content_end);
-        if (note.chord && !have_note) throw std::runtime_error("MusicXML chord cannot be the first note");
         note.rest = hasElement(xml, "rest", event.block.content_start, event.block.content_end);
         if (note.chord && note.rest) throw std::runtime_error("MusicXML rest cannot be a chord");
         const std::string voice = textIn(xml, "voice", event.block.content_start, event.block.content_end);
-        if (!voice.empty() && voice != "1") throw std::runtime_error("MusicXML multiple voices are unsupported in Alpha");
         const std::string staff = textIn(xml, "staff", event.block.content_start, event.block.content_end);
-        if (!staff.empty() && staff != "1") throw std::runtime_error("MusicXML multiple staves are unsupported in Alpha");
-        const Tick local_start = note.chord ? last_note_start : cursor;
+        const auto voice_number = voice.empty() ? 1 : integerText(voice, "voice");
+        const auto staff_number = staff.empty() ? 1 : integerText(staff, "staff");
+        if (voice_number <= 0 || voice_number > std::numeric_limits<std::uint16_t>::max() ||
+            staff_number <= 0 || staff_number > std::numeric_limits<std::uint16_t>::max()) {
+          throw std::runtime_error("MusicXML voice/staff number is out of range");
+        }
+        note.voice = static_cast<std::uint16_t>(voice_number);
+        note.staff = static_cast<std::uint16_t>(staff_number);
+        const VoiceKey key{note.staff, note.voice};
+        if (note.chord && !have_notes[key]) throw std::runtime_error("MusicXML chord cannot be the first note in a voice");
+        const Tick local_start = note.chord ? last_note_starts[key] : cursor;
         if (local_start < 0 || measure_start > std::numeric_limits<Tick>::max() - local_start) {
           throw std::runtime_error("MusicXML tick overflow");
         }
@@ -440,13 +469,26 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           note.pitch.alter = alter.empty() ? 0 : static_cast<int>(integerText(alter, "alter"));
           note.pitch.octave = static_cast<int>(integerText(textIn(xml, "octave", pitches.front().content_start, pitches.front().content_end, true), "octave"));
         }
+        const auto time_modifications = findBlocks(xml, "time-modification", event.block.content_start, event.block.content_end);
+        if (!time_modifications.empty()) {
+          const auto actual = integerText(textIn(xml, "actual-notes", time_modifications.front().content_start,
+                                                 time_modifications.front().content_end, true), "actual-notes");
+          const auto normal = integerText(textIn(xml, "normal-notes", time_modifications.front().content_start,
+                                                 time_modifications.front().content_end, true), "normal-notes");
+          if (actual <= 0 || actual > std::numeric_limits<std::uint16_t>::max() || normal <= 0 ||
+              normal > std::numeric_limits<std::uint16_t>::max()) {
+            throw std::runtime_error("MusicXML tuplet count is out of range");
+          }
+          note.tuplet_actual = static_cast<std::uint16_t>(actual);
+          note.tuplet_normal = static_cast<std::uint16_t>(normal);
+        }
         note.tie_start = hasSelfClosingAttribute(xml, "tie", "type", "start", event.block.content_start, event.block.content_end) ||
                           hasSelfClosingAttribute(xml, "tied", "type", "start", event.block.content_start, event.block.content_end);
         note.tie_stop = hasSelfClosingAttribute(xml, "tie", "type", "stop", event.block.content_start, event.block.content_end) ||
                          hasSelfClosingAttribute(xml, "tied", "type", "stop", event.block.content_start, event.block.content_end);
         measure.notes.push_back(note);
-        have_note = true;
-        last_note_start = note.chord ? last_note_start : cursor;
+        have_notes[key] = true;
+        if (!note.chord) last_note_starts[key] = cursor;
         if (!note.chord) {
           if (cursor > std::numeric_limits<Tick>::max() - duration) throw std::runtime_error("MusicXML tick overflow");
           cursor += duration;

@@ -45,12 +45,12 @@ ties, tuplets, key/time signatures, tempo, and structured harmony fields. A
 string such as `Cm7(b5)` must not be the only representation of harmony.
 
 The first implementation now deliberately accepts only a fail-closed subset:
-`score-partwise`, one part/voice, plain XML (no `.mxl`), and 960 PPQ. The
+`score-partwise`, one part with multiple voices/staves, plain XML (no `.mxl`), and 960 PPQ. The
 semantics follow the [MusicXML divisions](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/divisions/),
 [duration](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/duration/),
 and [note](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/note/)
-definitions. Unsupported voices, tuplets, and compressed files are explicit
-future work rather than silently discarded data.
+definitions. Multiple parts, key/dynamics metadata, and compressed files are
+explicit future work rather than silently discarded data.
 
 ## License and adoption rule
 

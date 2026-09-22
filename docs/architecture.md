@@ -24,21 +24,23 @@ autosave belong outside the callback.
 
 The UI will submit commands such as `AddTrack`, `MoveClip`, `InsertNote`,
 `SetTempo`, `SetParameter`, `StartTransport`, and `Render`. The engine will
-publish events and immutable state snapshots for the UI. A project package will
-eventually contain a versioned manifest, score/MIDI data, media, peak caches,
-autosave snapshots, and plugin state.
+publish events and immutable state snapshots for the UI. The current project
+serializer provides a versioned score save/reload boundary; a full project
+package will eventually add MIDI data, media, peak caches, autosave snapshots,
+and plugin state.
 
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
 ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords, and
 ties. The MusicXML adapter runs outside the realtime path and only accepts a
-single 960-PPQ part/voice. It can be replaced by a full XML reader later
+single 960-PPQ part, while retaining multiple voices/staves inside each
+measure. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks
-will call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
-`SeekSamples`, and `SetTempo` commands. CoreAudio device enumeration and
-reconnect still require a macOS adapter and are not claimed by this module.
+call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
+`SeekSamples`, and `SetTempo` commands. The macOS adapter owns the default
+output lifecycle; device enumeration and reconnect remain future work.
 
 ## Delivery slices
 

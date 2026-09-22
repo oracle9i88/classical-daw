@@ -164,6 +164,28 @@ int main() {
     return fail("MusicXML score metadata round-trip");
   }
 
+  const auto multi_voice_musicxml_path = temp / "classical_daw_multi_voice.musicxml";
+  Score multi_voice_score = score;
+  ScoreNote tuplet_note{0, 640, ScorePitch{'D', 0, 5}, false, false, false, false, 90};
+  tuplet_note.voice = 2;
+  tuplet_note.tuplet_actual = 3;
+  tuplet_note.tuplet_normal = 2;
+  multi_voice_score.parts[0].measures[0].notes.push_back(tuplet_note);
+  if (!writeMusicXmlFile(multi_voice_score, multi_voice_musicxml_path.string(), &error)) {
+    return fail("multi-voice MusicXML write: " + error);
+  }
+  Score parsed_multi_voice;
+  if (!readMusicXmlFile(multi_voice_musicxml_path.string(), &parsed_multi_voice, &error)) {
+    return fail("multi-voice MusicXML read: " + error);
+  }
+  bool found_tuplet = false;
+  for (const ScoreNote& note : parsed_multi_voice.parts[0].measures[0].notes) {
+    if (note.voice == 2) {
+      found_tuplet = note.start == 0 && note.duration == 640 && note.tuplet_actual == 3 && note.tuplet_normal == 2;
+    }
+  }
+  if (!found_tuplet) return fail("multi-voice and tuplet MusicXML round-trip");
+
   SpscRing<int, 2> ring;
   if (!ring.push(10) || !ring.push(20) || ring.push(30) || ring.approximateSize() != 2) {
     return fail("SPSC queue capacity");
@@ -239,6 +261,7 @@ int main() {
   std::filesystem::remove(invalid_tempo_path);
   std::filesystem::remove(overflow_path);
   std::filesystem::remove(musicxml_path);
+  std::filesystem::remove(multi_voice_musicxml_path);
   std::filesystem::remove(invalid_musicxml_path);
   std::filesystem::remove(trailing_musicxml_path);
   std::filesystem::remove(prefix_musicxml_path);

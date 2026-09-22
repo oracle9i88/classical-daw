@@ -12,23 +12,26 @@ validating score timing and audio rendering before platform integration.
 - MIDI note, track, and file data structures.
 - Standard MIDI File type 0/1 read/write for notes, track names, and tempo
   events (unknown events are skipped on read).
-- A deliberately limited MusicXML `score-partwise` slice: one part/voice,
-  960-PPQ notes and rests, chords, ties, meter, tempo, and deterministic
-  import/export.
+- A deliberately limited MusicXML `score-partwise` slice: one part with
+  multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
+  meter, tempo, and deterministic import/export.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
-  ring, block scheduler, and xrun counter; CoreAudio device integration is
-  still pending.
-- On macOS, an optional `daw_coreaudio` target now owns the default-output
+  ring, block scheduler, and xrun counter.
+- On macOS, an optional `daw_coreaudio` target owns the default-output
   device lifecycle and connects that scheduler to a silence-safe callback with
   a fixed polyphonic sine diagnostic voice.
+- A versioned, line-oriented project file format with strict validation and
+  atomic replacement, preserving the current score model for save/reload.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
-- CTest coverage for tempo conversion, MIDI round-trip, and render smoke tests.
+- CTest coverage for tempo conversion, MIDI/MusicXML round-trips, project
+  persistence, realtime primitives, and render smoke tests.
 
 The renderer is a diagnostic instrument, not an orchestral sampler. The
 MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
-multiple voices/staves, tuplets, key changes, dynamics, or full XML validation.
-There is no real-time audio callback, device selection, score engraving,
-automation, mixer, plugin hosting, undo stack, or project persistence yet.
+multiple parts, key changes, dynamics, or full XML validation.
+There is no production instrument library, score engraving, automation, mixer,
+plugin hosting, undo stack, autosave/recovery workflow, or multi-part project
+package yet.
 
 ## Build and test
 
@@ -40,13 +43,13 @@ ctest --test-dir build --output-on-failure
 
 ## Planned macOS slices
 
-1. Add a CoreAudio output callback with a lock-free transport ring and device
-   lifecycle handling.
-2. Add CoreMIDI input/output and timestamped event scheduling.
-3. Add MusicXML import/export, bar/beat and time-signature maps, and a piano
-   roll/score UI (SwiftUI or Qt front end over the C++ engine).
-4. Replace the smoke-test oscillator with instrument voices, mixer buses,
-   metering, bounce jobs, and project serialization.
+1. Add CoreMIDI input/output and timestamped event scheduling.
+2. Add autosave/recovery and persisted undo history around the versioned project
+   file format.
+3. Add bar/beat and time-signature maps plus a piano roll/score UI (SwiftUI or
+   Qt front end over the C++ engine).
+4. Replace the diagnostic oscillator with instrument voices, mixer buses,
+   metering, bounce jobs, and production project packaging.
 
 The project is released under **AGPL-3.0-or-later**; see `LICENSE`. The Alpha
 contains only original project code and the C++ standard library. Any future

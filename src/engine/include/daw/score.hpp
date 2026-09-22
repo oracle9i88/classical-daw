@@ -23,6 +23,10 @@ struct ScoreNote {
   bool tie_start = false;
   bool tie_stop = false;
   std::uint8_t velocity = 100;
+  std::uint16_t voice = 1;
+  std::uint16_t staff = 1;
+  std::uint16_t tuplet_actual = 0;
+  std::uint16_t tuplet_normal = 0;
 };
 
 struct ScoreMeasure {
@@ -46,10 +50,10 @@ struct Score {
   std::vector<ScorePart> parts;
 };
 
-// This first vertical slice intentionally supports one part and one voice.
-// It preserves pitch, integer duration, rests, chords, ties, meter, and tempo.
+// This first vertical slice supports one part with multiple voices/staves.
+// It preserves pitch, integer duration, rests, chords, ties, tuplets, meter,
+// and tempo. Full engraving metadata remains outside this model.
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr);
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr);
 
 }  // namespace daw
-

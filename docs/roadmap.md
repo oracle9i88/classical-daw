@@ -13,8 +13,9 @@ not count as completion.
 - Reject invalid format-0 files containing multiple tracks.
 - Reject tempo values that cannot be encoded in MIDI's 24-bit microseconds
   field and guard MIDI tick/duration arithmetic against signed overflow.
-- Add a first MusicXML vertical slice: one `score-partwise` part/voice with
-  notes, rests, chords, ties, meter, tempo, and 960-PPQ import/export.
+- Add a first MusicXML vertical slice: one `score-partwise` part with multiple
+  voices/staves, notes, rests, chords, ties, tuplets, meter, tempo, and 960-PPQ
+  import/export.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and
@@ -22,6 +23,8 @@ not count as completion.
 - Route note events through a fixed polyphonic sine diagnostic voice so the
   callback produces real samples while the production instrument layer is
   still pending.
+- Add a versioned score project file with strict validation, atomic replacement,
+  and round-trip tests under normal and sanitizer builds.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
@@ -29,7 +32,7 @@ not count as completion.
 
 ### M0: realtime audio
 
-CoreAudio device enumeration and reconnect, then connect the existing fixed
+CoreAudio device enumeration and reconnect, then extend the existing fixed
 block scheduler, bounded lock-free command/event queue, and xrun counter. The
 test harness must prove
 that the callback performs no allocation, file I/O, JSON parsing, or contended
@@ -39,7 +42,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
-and exact tick accounting. Add a project package with versioned manifest,
+and exact tick accounting. Extend the current versioned score file with
 autosave, recovery, and persisted undo history. The first user-facing vertical
 slice is MusicXML import → timeline edit → deterministic WAV export.
 
