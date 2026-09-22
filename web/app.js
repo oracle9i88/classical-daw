@@ -7,7 +7,8 @@
   const PROJECT_VERSION = 1;
   const RECOVERY_KEY = "classical-daw-web-recovery-v1";
   const RECOVERY_DELAY_MS = 900;
-  const MEASURES = 4;
+  const DEFAULT_MEASURES = 4;
+  const ALLOWED_MEASURES = Object.freeze([4, 8, 16]);
   const DEFAULT_METER = Object.freeze({ numerator: 4, denominator: 4 });
   const ALLOWED_METERS = Object.freeze([
     Object.freeze({ numerator: 2, denominator: 4 }),
@@ -44,6 +45,7 @@
     meterDenominator: document.querySelector("#meter-denominator"),
     meterLabel: document.querySelector("#meter-label"),
     meterHint: document.querySelector("#meter-hint"),
+    measureCount: document.querySelector("#measure-count"),
     add: document.querySelector("#add-note"),
     clear: document.querySelector("#clear"),
     saveProject: document.querySelector("#save-project"),
@@ -73,6 +75,7 @@
   ];
   let nextId = 7;
   let timeSignature = { ...DEFAULT_METER };
+  let measureCount = DEFAULT_MEASURES;
   let selectedId = null;
   let audioContext = null;
   let activeSources = [];
@@ -85,6 +88,8 @@
   let pendingLiveHistory = null;
   let pendingLiveTimer = null;
   let recoveryTimer = null;
+  let clipboardNote = null;
+  let dragState = null;
 
   function localStorageAvailable() {
     try {
@@ -172,12 +177,16 @@
     return ALLOWED_METERS.some((meter) => meter.numerator === numerator && meter.denominator === denominator);
   }
 
+  function isAllowedMeasureCount(value) {
+    return ALLOWED_MEASURES.includes(value);
+  }
+
   function measureBeats(meter = timeSignature) {
     return meter.numerator * 4 / meter.denominator;
   }
 
-  function visibleBeats(meter = timeSignature) {
-    return MEASURES * measureBeats(meter);
+  function visibleBeats(meter = timeSignature, count = measureCount) {
+    return count * measureBeats(meter);
   }
 
   function meterText(meter = timeSignature) {
@@ -193,7 +202,8 @@
         || (timeSignature.numerator !== 6 && option.value !== "4");
     });
     dom.meterLabel.textContent = text;
-    dom.meterHint.textContent = `网格以四分音符为一拍，当前 ${text}，显示 ${MEASURES} 小节。`;
+    dom.measureCount.value = String(measureCount);
+    dom.meterHint.textContent = `网格以四分音符为一拍，当前 ${text}，显示 ${measureCount} 小节。`;
     dom.start.max = String(Math.max(0.25, visibleBeats() - 0.25));
   }
 
@@ -207,7 +217,8 @@
       nextId,
       selectedId,
       tempo: String(dom.tempo.value),
-      timeSignature: { ...timeSignature }
+      timeSignature: { ...timeSignature },
+      measureCount
     };
   }
 
@@ -262,6 +273,7 @@
     timeSignature = isAllowedMeter(state.timeSignature?.numerator, state.timeSignature?.denominator)
       ? { numerator: state.timeSignature.numerator, denominator: state.timeSignature.denominator }
       : { ...DEFAULT_METER };
+    measureCount = isAllowedMeasureCount(state.measureCount) ? state.measureCount : DEFAULT_MEASURES;
     syncMeterControls();
     const selected = notes.find((note) => note.id === selectedId);
     if (selected) {
@@ -366,10 +378,95 @@
         event.stopPropagation();
         selectNote(note.id);
       });
+      element.addEventListener("pointerdown", (event) => beginNoteDrag(event, note.id, element));
       dom.roll.append(element);
     });
     if (playhead) dom.roll.append(playhead);
     dom.count.textContent = `${notes.length} 个音符`;
+  }
+
+  function syncSelectedForm(note) {
+    if (!note || note.id !== selectedId) return;
+    dom.pitch.value = String(note.midi);
+    dom.start.value = String(note.start);
+    dom.duration.value = String(note.duration);
+    dom.velocity.value = String(note.velocity);
+    dom.velocityValue.value = String(note.velocity);
+    dom.velocityValue.textContent = String(note.velocity);
+    dom.lyric.value = note.lyric || "";
+  }
+
+  function beginNoteDrag(event, id, element) {
+    if (event.button !== 0) return;
+    const note = notes.find((item) => item.id === id);
+    if (!note) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishLiveHistory();
+    selectedId = id;
+    dom.noteForm.hidden = false;
+    dom.hint.hidden = true;
+    syncSelectedForm(note);
+    dom.roll.querySelectorAll(".note.selected").forEach((selected) => selected.classList.remove("selected"));
+    element.classList.add("selected");
+    const rollRect = dom.roll.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    dragState = {
+      id,
+      pointerId: event.pointerId,
+      before: snapshot(),
+      element,
+      offsetX: event.clientX - elementRect.left,
+      offsetY: event.clientY - elementRect.top,
+      moved: false,
+      rollRect
+    };
+    element.setPointerCapture(event.pointerId);
+    element.addEventListener("pointermove", handleNoteDrag);
+    element.addEventListener("pointerup", finishNoteDrag, { once: true });
+    element.addEventListener("pointercancel", cancelNoteDrag, { once: true });
+  }
+
+  function handleNoteDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const note = notes.find((item) => item.id === dragState.id);
+    if (!note) return;
+    const rollRect = dom.roll.getBoundingClientRect();
+    const rawStart = (event.clientX - rollRect.left - dragState.offsetX) / beatWidth;
+    const nextStart = clamp(Math.round(rawStart * 4) / 4, 0, visibleBeats() - note.duration);
+    const rawRow = (event.clientY - rollRect.top - dragState.offsetY) / rowHeight;
+    const nextRow = clamp(Math.floor(rawRow + 0.5), 0, ROWS - 1);
+    const nextMidi = LOWEST_MIDI + ROWS - 1 - nextRow;
+    if (nextStart === note.start && nextMidi === note.midi) return;
+    dragState.moved = true;
+    note.start = nextStart;
+    note.midi = nextMidi;
+    dragState.element.style.left = `${note.start * beatWidth + 2}px`;
+    dragState.element.style.top = `${midiToRow(note.midi) * rowHeight + 2}px`;
+    dragState.element.title = `${noteName(note.midi)} · ${note.duration} 拍 · 起始 ${note.start}${note.lyric ? ` · ${note.lyric}` : ""}`;
+    syncSelectedForm(note);
+  }
+
+  function finishNoteDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const current = dragState;
+    dragState = null;
+    current.element.removeEventListener("pointermove", handleNoteDrag);
+    current.element.removeEventListener("pointercancel", cancelNoteDrag);
+    if (current.element.hasPointerCapture(event.pointerId)) current.element.releasePointerCapture(event.pointerId);
+    if (current.moved) {
+      pushHistory(current.before);
+      setStatus("已移动音符");
+    }
+  }
+
+  function cancelNoteDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const current = dragState;
+    dragState = null;
+    current.element.removeEventListener("pointermove", handleNoteDrag);
+    current.element.removeEventListener("pointerup", finishNoteDrag);
+    restoreState(current.before);
   }
 
   function populatePitchOptions() {
@@ -441,7 +538,7 @@
     const exceedsVisibleRange = notes.some((note) => note.start + note.duration > nextTotalBeats + 1e-6);
     if (exceedsVisibleRange) {
       syncMeterControls();
-      setStatus(`拍号变更失败：音符超出 ${meterText(nextMeter)} 的 4 小节范围`);
+      setStatus(`拍号变更失败：音符超出 ${meterText(nextMeter)} 的 ${measureCount} 小节范围`);
       return;
     }
     finishLiveHistory();
@@ -452,6 +549,30 @@
     renderRoll();
     pushHistory(before);
     setStatus(`已设置拍号 ${meterText()}`);
+  }
+
+  function changeMeasureCount() {
+    const nextCount = Number(dom.measureCount.value);
+    if (!Number.isInteger(nextCount) || !isAllowedMeasureCount(nextCount)) {
+      syncMeterControls();
+      setStatus("小节数不受支持：仅支持 4、8、16 小节");
+      return;
+    }
+    const nextTotalBeats = visibleBeats(timeSignature, nextCount);
+    const exceedsVisibleRange = notes.some((note) => note.start + note.duration > nextTotalBeats + 1e-6);
+    if (exceedsVisibleRange) {
+      syncMeterControls();
+      setStatus(`小节数变更失败：音符超出 ${nextCount} 小节范围`);
+      return;
+    }
+    finishLiveHistory();
+    const before = snapshot();
+    measureCount = nextCount;
+    syncMeterControls();
+    renderBeatLabels();
+    renderRoll();
+    pushHistory(before);
+    setStatus(`已设置 ${measureCount} 小节`);
   }
 
   function setStatus(text) { dom.status.textContent = text; }
@@ -466,6 +587,61 @@
       renderRoll();
     });
     setStatus("已删除所选音符");
+  }
+
+  function moveSelectedBy(deltaStart, deltaMidi) {
+    const note = notes.find((item) => item.id === selectedId);
+    if (!note) return false;
+    const nextStart = clamp(
+      Math.round((note.start + deltaStart) * 4) / 4,
+      0,
+      visibleBeats() - note.duration
+    );
+    const nextMidi = clamp(note.midi + deltaMidi, LOWEST_MIDI, LOWEST_MIDI + ROWS - 1);
+    if (nextStart === note.start && nextMidi === note.midi) return false;
+    commitMutation(() => {
+      note.start = nextStart;
+      note.midi = nextMidi;
+      syncSelectedForm(note);
+      renderRoll();
+    });
+    setStatus("已移动音符");
+    return true;
+  }
+
+  function copySelected() {
+    const note = notes.find((item) => item.id === selectedId);
+    if (!note) return false;
+    clipboardNote = { ...note };
+    setStatus("已复制所选音符");
+    return true;
+  }
+
+  function pasteNote() {
+    if (!clipboardNote) {
+      setStatus("剪贴板中没有音符");
+      return false;
+    }
+    const duration = clamp(Number(clipboardNote.duration), 0.25, visibleBeats());
+    const start = clamp(
+      Math.round((Number(clipboardNote.start) + 0.25) * 4) / 4,
+      0,
+      visibleBeats() - duration
+    );
+    const note = {
+      id: nextId++,
+      midi: clamp(Math.round(Number(clipboardNote.midi)), LOWEST_MIDI, LOWEST_MIDI + ROWS - 1),
+      start,
+      duration,
+      velocity: clamp(Math.round(Number(clipboardNote.velocity)), 1, 127)
+    };
+    if (clipboardNote.lyric) note.lyric = clipboardNote.lyric;
+    commitMutation(() => {
+      notes.push(note);
+      selectNote(note.id);
+    });
+    setStatus("已粘贴音符");
+    return true;
   }
 
   function stopPlayback() {
@@ -606,7 +782,7 @@
     const tempoNode = descendantsByName(root, "per-minute")[0];
     const parsedTempo = tempoNode ? Number(tempoNode.textContent.trim()) : Number(dom.tempo.value);
     const tempo = clamp(Number.isFinite(parsedTempo) ? parsedTempo : 96, 30, 240);
-    if (!imported.length) throw new Error("没有找到当前卷帘可显示的音符（范围为 C4–B5、前 4 小节）");
+    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${measureCount} 小节）`);
     return {
       notes: imported,
       tempo,
@@ -848,7 +1024,7 @@
       }
       imported.push({ midi: source.midi, start, duration: clippedDuration, velocity: source.velocity });
     });
-    if (!imported.length) throw new Error("没有找到当前卷帘可显示的音符（范围为 C4–B5、前 4 小节）");
+    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${measureCount} 小节）`);
     const tempo = firstTempo ? clamp(60000000 / firstTempo.micros, 30, 240) : clamp(Number(dom.tempo.value) || 96, 30, 240);
     return { notes: imported, tempo, skipped, timeSignature: meter, format };
   }
@@ -1084,6 +1260,7 @@ ${lines.join("\n")}
       ppq: PPQ,
       tempo: clamp(Number(dom.tempo.value) || 96, 30, 240),
       timeSignature: { ...timeSignature },
+      measures: measureCount,
       notes: cloneNotes(notes),
       selectedId,
       nextId
@@ -1105,6 +1282,14 @@ ${lines.join("\n")}
       throw new Error("timeSignature 只支持 2/4、3/4、4/4、6/8");
     }
     return { numerator, denominator };
+  }
+
+  function parseProjectMeasures(source) {
+    if (source === undefined) return DEFAULT_MEASURES;
+    if (!Number.isInteger(source) || !isAllowedMeasureCount(source)) {
+      throw new Error("measures 只支持 4、8、16");
+    }
+    return source;
   }
 
   function parseProject(text) {
@@ -1134,7 +1319,8 @@ ${lines.join("\n")}
       throw new Error("tempo 必须是 30–240 范围内的数字");
     }
     const importedMeter = parseProjectMeter(documentNode.timeSignature);
-    const importedTotalBeats = visibleBeats(importedMeter);
+    const importedMeasures = parseProjectMeasures(documentNode.measures);
+    const importedTotalBeats = visibleBeats(importedMeter, importedMeasures);
 
     const ids = new Set();
     const importedNotes = documentNode.notes.map((source, index) => {
@@ -1179,7 +1365,8 @@ ${lines.join("\n")}
       nextId: documentNode.nextId,
       selectedId: selected,
       tempo,
-      timeSignature: importedMeter
+      timeSignature: importedMeter,
+      measureCount: importedMeasures
     };
   }
 
@@ -1203,7 +1390,7 @@ ${lines.join("\n")}
         nextId = project.nextId;
         selectedId = project.selectedId;
         dom.tempo.value = String(project.tempo);
-        restoreState({ notes, nextId, selectedId, tempo: String(project.tempo), timeSignature: project.timeSignature });
+        restoreState({ notes, nextId, selectedId, tempo: String(project.tempo), timeSignature: project.timeSignature, measureCount: project.measureCount });
       });
       setStatus(`已打开工程（${notes.length} 个音符）`);
     } catch (error) {
@@ -1240,6 +1427,7 @@ ${lines.join("\n")}
   dom.stop.addEventListener("click", stopPlayback);
   dom.meterNumerator.addEventListener("change", changeTimeSignature);
   dom.meterDenominator.addEventListener("change", changeTimeSignature);
+  dom.measureCount.addEventListener("change", changeMeasureCount);
   dom.importButton.addEventListener("click", () => dom.musicXmlFile.click());
   dom.musicXmlFile.addEventListener("change", () => {
     const [file] = dom.musicXmlFile.files || [];
@@ -1294,13 +1482,28 @@ ${lines.join("\n")}
   });
   document.addEventListener("keydown", (event) => {
     const modifier = event.metaKey || event.ctrlKey;
+    const editingField = event.target.matches("input, select, textarea");
+    if (modifier && !event.altKey && event.key.toLowerCase() === "c" && !editingField) {
+      event.preventDefault();
+      copySelected();
+      return;
+    }
+    if (modifier && !event.altKey && event.key.toLowerCase() === "v" && !editingField) {
+      event.preventDefault();
+      pasteNote();
+      return;
+    }
     if (modifier && !event.altKey && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo();
       else undo();
       return;
     }
-    if (event.target.matches("input, select, textarea")) return;
+    if (editingField) return;
+    if (event.key === "ArrowLeft") { event.preventDefault(); moveSelectedBy(-0.25, 0); return; }
+    if (event.key === "ArrowRight") { event.preventDefault(); moveSelectedBy(0.25, 0); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); moveSelectedBy(0, 1); return; }
+    if (event.key === "ArrowDown") { event.preventDefault(); moveSelectedBy(0, -1); return; }
     if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
     if (event.key === " ") { event.preventDefault(); dom.play.click(); }
   });

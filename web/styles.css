@@ -63,6 +63,7 @@ button { cursor: pointer; }
 .toolbar { gap: 9px; }
 .tempo-control { display: flex; align-items: center; gap: 7px; color: #bbc5da; font-size: 12px; }
 .meter-control { display: flex; align-items: center; gap: 5px; color: #bbc5da; font-size: 12px; }
+.measure-control { display: flex; align-items: center; gap: 5px; color: #bbc5da; font-size: 12px; }
 .tempo-control input {
   width: 58px;
   padding: 8px 6px;
@@ -86,6 +87,17 @@ button { cursor: pointer; }
 }
 .meter-control > span { color: #8896b1; font-size: 11px; }
 .meter-control #meter-label { min-width: 27px; color: #d8deec; font-variant-numeric: tabular-nums; }
+.measure-control select {
+  width: 45px;
+  min-height: 30px;
+  padding: 5px 2px;
+  color: white;
+  border: 1px solid #4b5874;
+  border-radius: 7px;
+  background: #242f47;
+  text-align: center;
+  font-size: 12px;
+}
 .button {
   min-height: 34px;
   padding: 7px 12px;
