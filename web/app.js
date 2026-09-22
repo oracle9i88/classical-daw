@@ -483,7 +483,12 @@ ${lines.join("\n")}
     dom.velocityValue.textContent = dom.velocity.value;
     updateSelected({ velocity: Number(dom.velocity.value) });
   });
-  dom.lyric.addEventListener("input", () => updateSelected({ lyric: dom.lyric.value }));
+  dom.lyric.addEventListener("input", () => {
+    const note = notes.find((item) => item.id === selectedId);
+    if (!note) return;
+    note.lyric = dom.lyric.value;
+    renderRoll();
+  });
   dom.roll.addEventListener("keydown", (event) => {
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); }
     if (event.key === " ") { event.preventDefault(); dom.play.click(); }
