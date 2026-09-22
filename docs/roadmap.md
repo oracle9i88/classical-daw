@@ -41,9 +41,15 @@ not count as completion.
   is explicitly outside the realtime callback; its current state can be written
   to the atomic recovery sidecar and rebuilt as a clean history after loading.
 - Add a macOS CoreMIDI lifecycle adapter with endpoint enumeration, explicit
-  source connections, and a receive callback that only counts packet lists.
+  source connections, and a receive callback that only counts packets.
 - Add a debounced browser-local recovery copy to the web prototype with
   explicit restore/discard controls.
+- Add fixed-capacity sample-timestamped voice-event dispatch at realtime block
+  boundaries, including late/drop counters and sanitizer coverage.
+- Add deterministic Score-to-WAV offline rendering and a browser MIDI/WAV
+  interchange path.
+- Add configurable 4/8/16-bar web editing with quantized drag, keyboard motion,
+  and note copy/paste that remains undoable and recoverable.
 - Publish transport snapshots atomically so UI reads cannot race the audio
   callback's block state.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
@@ -53,9 +59,10 @@ not count as completion.
 
 ### M0: realtime audio
 
-CoreAudio device enumeration and reconnect remain, then extend the existing fixed
-block scheduler, bounded lock-free command/event queue, and xrun counter. The
-CoreMIDI timestamped event scheduling is also required. The test harness must prove
+CoreAudio device-change notifications and reconnect remain, then extend the
+existing fixed block scheduler, bounded lock-free command/event queue, and xrun counter. The
+CoreMIDI adapter still needs a control-thread timestamp bridge into the new
+sample-event queue. The test harness must prove
 that the callback performs no allocation, file I/O, JSON parsing, or contended
 locks, and that a 48 kHz / 256-frame stream survives a device switch.
 

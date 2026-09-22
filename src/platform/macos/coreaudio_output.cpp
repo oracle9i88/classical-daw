@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace daw {
 namespace {
@@ -12,6 +13,50 @@ bool checkStatus(OSStatus status, const char* operation, std::string* error) {
   if (status == noErr) return true;
   if (error != nullptr) *error = std::string(operation) + " failed with OSStatus " + std::to_string(status);
   return false;
+}
+
+bool readDefaultOutputDevice(AudioDeviceID* device, std::string* error) {
+  if (device == nullptr) {
+    if (error != nullptr) *error = "default CoreAudio device output is null";
+    return false;
+  }
+  AudioObjectPropertyAddress address{kAudioHardwarePropertyDefaultOutputDevice,
+                                    kAudioObjectPropertyScopeGlobal,
+                                    kAudioObjectPropertyElementMain};
+  UInt32 size = sizeof(*device);
+  return checkStatus(AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, device),
+                     "default output device", error) && *device != kAudioObjectUnknown;
+}
+
+bool hasOutputChannels(AudioDeviceID device) {
+  AudioObjectPropertyAddress address{kAudioDevicePropertyStreamConfiguration,
+                                    kAudioDevicePropertyScopeOutput,
+                                    kAudioObjectPropertyElementMain};
+  UInt32 size = 0;
+  if (AudioObjectGetPropertyDataSize(device, &address, 0, nullptr, &size) != noErr || size < sizeof(AudioBufferList)) {
+    return false;
+  }
+  std::vector<std::uint8_t> storage(size);
+  auto* list = reinterpret_cast<AudioBufferList*>(storage.data());
+  if (AudioObjectGetPropertyData(device, &address, 0, nullptr, &size, list) != noErr) return false;
+  UInt32 channels = 0;
+  for (UInt32 index = 0; index < list->mNumberBuffers; ++index) channels += list->mBuffers[index].mNumberChannels;
+  return channels != 0;
+}
+
+std::string deviceName(AudioDeviceID device) {
+  AudioObjectPropertyAddress address{kAudioObjectPropertyName,
+                                    kAudioObjectPropertyScopeGlobal,
+                                    kAudioObjectPropertyElementMain};
+  CFStringRef value = nullptr;
+  UInt32 size = sizeof(value);
+  if (AudioObjectGetPropertyData(device, &address, 0, nullptr, &size, &value) != noErr || value == nullptr) {
+    return "Unnamed CoreAudio output";
+  }
+  char buffer[512]{};
+  const bool converted = CFStringGetCString(value, buffer, static_cast<CFIndex>(sizeof(buffer)), kCFStringEncodingUTF8);
+  CFRelease(value);
+  return converted ? std::string(buffer) : std::string("Unnamed CoreAudio output");
 }
 
 }  // namespace
@@ -43,6 +88,24 @@ bool CoreAudioOutput::start(std::string* error) {
     audio_unit_ = nullptr;
     return false;
   }
+
+  AudioDeviceID device = static_cast<AudioDeviceID>(config_.device_id);
+  if (device == kAudioObjectUnknown && !readDefaultOutputDevice(&device, error)) {
+    stop();
+    return false;
+  }
+  if (!hasOutputChannels(device)) {
+    if (error != nullptr) *error = "selected CoreAudio device has no output channels";
+    stop();
+    return false;
+  }
+  if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioOutputUnitProperty_CurrentDevice,
+                                        kAudioUnitScope_Global, 0, &device, sizeof(device)),
+                   "current output device", error)) {
+    stop();
+    return false;
+  }
+  current_device_id_ = static_cast<std::uint32_t>(device);
 
   const UInt32 block_size = config_.block_size;
   if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioUnitProperty_MaximumFramesPerSlice,
@@ -103,6 +166,61 @@ void CoreAudioOutput::stop() noexcept {
     audio_unit_ = nullptr;
   }
   synth_.reset();
+  current_device_id_ = 0;
+}
+
+std::vector<CoreAudioOutputDeviceInfo> CoreAudioOutput::enumerateOutputDevices(std::string* error) const {
+  std::vector<CoreAudioOutputDeviceInfo> devices;
+  AudioDeviceID default_device = kAudioObjectUnknown;
+  if (!readDefaultOutputDevice(&default_device, error)) return devices;
+
+  AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices,
+                                    kAudioObjectPropertyScopeGlobal,
+                                    kAudioObjectPropertyElementMain};
+  UInt32 size = 0;
+  if (!checkStatus(AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &size),
+                   "CoreAudio device list size", error)) {
+    return devices;
+  }
+  if (size == 0 || size % sizeof(AudioDeviceID) != 0) {
+    if (error != nullptr) *error = "CoreAudio device list has an invalid size";
+    return devices;
+  }
+  std::vector<AudioDeviceID> ids(size / sizeof(AudioDeviceID));
+  if (!checkStatus(AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, ids.data()),
+                   "CoreAudio device list", error)) {
+    return devices;
+  }
+  devices.reserve(ids.size());
+  for (const AudioDeviceID id : ids) {
+    if (!hasOutputChannels(id)) continue;
+    devices.push_back(CoreAudioOutputDeviceInfo{static_cast<std::uint32_t>(id), deviceName(id), id == default_device});
+  }
+  return devices;
+}
+
+bool CoreAudioOutput::setOutputDevice(std::uint32_t device_id, std::string* error) {
+  if (running()) {
+    if (error != nullptr) *error = "cannot change CoreAudio device while output is running";
+    return false;
+  }
+  if (device_id != 0) {
+    bool found = false;
+    for (const CoreAudioOutputDeviceInfo& device : enumerateOutputDevices(error)) {
+      if (device.id == device_id) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (error != nullptr && error->empty()) *error = "CoreAudio output device not found";
+      return false;
+    }
+  }
+  config_.device_id = device_id;
+  current_device_id_ = 0;
+  if (error != nullptr) error->clear();
+  return true;
 }
 
 OSStatus CoreAudioOutput::renderCallback(void* reference,

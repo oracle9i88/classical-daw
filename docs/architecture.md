@@ -68,12 +68,16 @@ The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks
 call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
 `SeekSamples`, and `SetTempo` commands. A sequence-published atomic snapshot
-keeps UI reads from racing the audio-owned transport state. The macOS adapter
-owns the default output lifecycle. The CoreMIDI adapter separately owns client
+keeps UI reads from racing the audio-owned transport state. The scheduler also
+accepts a fixed-capacity queue of absolute sample-timestamped `VoiceEvent`
+values, sorts them into a preallocated pending array, dispatches events due in
+the current block to the prepared renderer, and counts late/overflow events.
+The macOS adapter owns the default output lifecycle, enumerates output-capable
+devices, and allows explicit device selection before starting. The CoreMIDI adapter separately owns client
 and port lifecycle, enumerates endpoints, and requires explicit source
 connections; its receive callback only increments an atomic packet counter.
-CoreAudio device enumeration/reconnect and timestamped MIDI event scheduling
-remain future work.
+CoreAudio device-change notifications/reconnect and the CoreMIDI control-thread
+timestamp bridge remain future work.
 
 ## Delivery slices
 

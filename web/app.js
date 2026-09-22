@@ -189,6 +189,11 @@
     return count * measureBeats(meter);
   }
 
+  function measureCountForBeats(beats, meter = timeSignature) {
+    const required = Math.max(1, Math.ceil(beats / measureBeats(meter) - 1e-9));
+    return required <= 4 ? 4 : required <= 8 ? 8 : 16;
+  }
+
   function meterText(meter = timeSignature) {
     return `${meter.numerator}/${meter.denominator}`;
   }
@@ -695,6 +700,7 @@
     if (!part) throw new Error("MusicXML 中没有可导入的声部");
     const measures = childrenByName(part, "measure");
     if (!measures.length) throw new Error("MusicXML 中没有小节");
+    const importedMeasureCount = measures.length <= 4 ? 4 : measures.length <= 8 ? 8 : 16;
 
     let divisions = PPQ;
     let beatsPerMeasure = DEFAULT_METER.numerator;
@@ -702,7 +708,9 @@
     let timeSignatureSeen = false;
     let measureOffset = 0;
     const imported = [];
+    const tiedSegments = new Map();
     let skipped = 0;
+    let pendingVelocity = 90;
 
     measures.forEach((measure) => {
       const attributes = childByName(measure, "attributes");
@@ -722,9 +730,26 @@
         }
       }
       const measureLength = beatsPerMeasure * 4 / beatType;
+      const importedTotalBeats = visibleBeats({ numerator: beatsPerMeasure, denominator: beatType }, importedMeasureCount);
       let cursor = 0;
       let measureLastOnset = 0;
-      childrenByName(measure, "note").forEach((noteElement) => {
+      Array.from(measure.children || []).forEach((noteElement) => {
+        const elementName = noteElement.localName || noteElement.tagName;
+        if (elementName === "direction") {
+          const sound = childByName(noteElement, "sound");
+          const dynamics = sound ? Number(sound.getAttribute("dynamics")) : NaN;
+          if (Number.isFinite(dynamics)) pendingVelocity = clamp(Math.round(dynamics), 1, 127);
+          return;
+        }
+        if (elementName === "forward" || elementName === "backup") {
+          const durationTicks = numberChild(noteElement, "duration", 0);
+          if (durationTicks > 0) {
+            const duration = durationTicks / divisions;
+            cursor = elementName === "forward" ? cursor + duration : Math.max(0, cursor - duration);
+          }
+          return;
+        }
+        if (elementName !== "note") return;
         const durationTicks = numberChild(noteElement, "duration", 0);
         const duration = durationTicks > 0 ? durationTicks / divisions : 0;
         if (!(duration > 0)) return;
@@ -749,13 +774,32 @@
         } else {
           const midi = Math.round((octave + 1) * 12 + stepIndex + alter);
           const absoluteStart = measureOffset + onset;
-          if (absoluteStart < visibleBeats({ numerator: beatsPerMeasure, denominator: beatType }) && absoluteStart + duration > 0) {
-            const totalVisibleBeats = visibleBeats({ numerator: beatsPerMeasure, denominator: beatType });
+          if (absoluteStart < importedTotalBeats && absoluteStart + duration > 0) {
+            const totalVisibleBeats = importedTotalBeats;
             const start = Math.round(clamp(absoluteStart, 0, totalVisibleBeats - 0.25) * 4) / 4;
             const visibleDuration = Math.min(duration, totalVisibleBeats - start);
             if (visibleDuration >= 0.25 && midi >= LOWEST_MIDI && midi < LOWEST_MIDI + ROWS) {
-              const velocity = clamp(numberChild(noteElement, "velocity", 90), 1, 127);
-              imported.push({ midi, start, duration: Math.max(0.25, Math.round(visibleDuration * 4) / 4), velocity, lyric });
+              const velocity = clamp(numberChild(noteElement, "velocity", pendingVelocity), 1, 127);
+              const roundedDuration = Math.max(0.25, Math.round(visibleDuration * 4) / 4);
+              const voiceNode = childByName(noteElement, "voice");
+              const voice = voiceNode ? String(voiceNode.textContent || "1").trim() : "1";
+              const tieTypes = childrenByName(noteElement, "tie").map((tie) => tie.getAttribute("type"));
+              const tieStart = tieTypes.includes("start");
+              const tieStop = tieTypes.includes("stop");
+              const tieKey = `${voice}:${midi}`;
+              let importedIndex = imported.length;
+              const previousIndex = tiedSegments.get(tieKey);
+              const previous = previousIndex === undefined ? null : imported[previousIndex];
+              if (tieStop && previous && Math.abs(previous.start + previous.duration - start) < 0.01) {
+                previous.duration = Math.min(totalVisibleBeats - previous.start,
+                  Math.max(previous.duration, start + roundedDuration - previous.start));
+                if (!previous.lyric && lyric) previous.lyric = lyric;
+                importedIndex = previousIndex;
+              } else {
+                imported.push({ midi, start, duration: roundedDuration, velocity, lyric });
+              }
+              if (tieStart) tiedSegments.set(tieKey, importedIndex);
+              else if (tieStop || !tieStart) tiedSegments.delete(tieKey);
             } else {
               skipped += 1;
             }
@@ -768,26 +812,19 @@
           cursor += duration;
         }
       });
-      childrenByName(measure, "forward").forEach((forward) => {
-        const durationTicks = numberChild(forward, "duration", 0);
-        if (durationTicks > 0) cursor += durationTicks / divisions;
-      });
-      childrenByName(measure, "backup").forEach((backup) => {
-        const durationTicks = numberChild(backup, "duration", 0);
-        if (durationTicks > 0) cursor = Math.max(0, cursor - durationTicks / divisions);
-      });
       measureOffset += Math.max(measureLength, cursor);
     });
 
     const tempoNode = descendantsByName(root, "per-minute")[0];
     const parsedTempo = tempoNode ? Number(tempoNode.textContent.trim()) : Number(dom.tempo.value);
     const tempo = clamp(Number.isFinite(parsedTempo) ? parsedTempo : 96, 30, 240);
-    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${measureCount} 小节）`);
+    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${importedMeasureCount} 小节）`);
     return {
       notes: imported,
       tempo,
       skipped,
-      timeSignature: { numerator: beatsPerMeasure, denominator: beatType }
+      timeSignature: { numerator: beatsPerMeasure, denominator: beatType },
+      measureCount: importedMeasureCount
     };
   }
 
@@ -802,6 +839,7 @@
         dom.hint.hidden = false;
         dom.tempo.value = String(result.tempo);
         timeSignature = { ...result.timeSignature };
+        measureCount = result.measureCount;
         syncMeterControls();
         renderBeatLabels();
         renderRoll();
@@ -1005,7 +1043,9 @@
     if (!allNotes.length) throw new Error("MIDI 中没有音符事件");
 
     const meter = firstMeter ? { numerator: firstMeter.numerator, denominator: firstMeter.denominator } : { ...DEFAULT_METER };
-    const totalBeats = visibleBeats(meter);
+    const maxEndBeats = Math.max(...allNotes.map((note) => note.endTick / division));
+    const importedMeasureCount = measureCountForBeats(maxEndBeats, meter);
+    const totalBeats = visibleBeats(meter, importedMeasureCount);
     const imported = [];
     allNotes.sort((a, b) => a.startTick - b.startTick || a.midi - b.midi);
     allNotes.forEach((source) => {
@@ -1024,9 +1064,9 @@
       }
       imported.push({ midi: source.midi, start, duration: clippedDuration, velocity: source.velocity });
     });
-    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${measureCount} 小节）`);
+    if (!imported.length) throw new Error(`没有找到当前卷帘可显示的音符（范围为 C4–B5、前 ${importedMeasureCount} 小节）`);
     const tempo = firstTempo ? clamp(60000000 / firstTempo.micros, 30, 240) : clamp(Number(dom.tempo.value) || 96, 30, 240);
-    return { notes: imported, tempo, skipped, timeSignature: meter, format };
+    return { notes: imported, tempo, skipped, timeSignature: meter, measureCount: importedMeasureCount, format };
   }
 
   function midiVlq(value) {
@@ -1091,6 +1131,7 @@
         dom.hint.hidden = false;
         dom.tempo.value = String(result.tempo);
         timeSignature = { ...result.timeSignature };
+        measureCount = result.measureCount;
         syncMeterControls();
         renderBeatLabels();
         renderRoll();
@@ -1202,41 +1243,106 @@
   function musicXml() {
     const sorted = [...notes].sort((a, b) => a.start - b.start || a.midi - b.midi);
     const divisions = PPQ;
-    const totalBeats = visibleBeats();
-    const lines = [];
-    let cursor = 0;
-    let index = 0;
-    const emitRest = (duration) => {
-      const ticks = Math.max(1, Math.round(duration * divisions));
-      lines.push(`      <note><rest/><duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type></note>`);
-    };
-    while (index < sorted.length) {
-      const start = clamp(Number(sorted[index].start), 0, totalBeats);
-      if (start > cursor) emitRest(start - cursor);
-      const group = sorted.filter((note) => Math.abs(note.start - start) < 0.001);
-      group.forEach((note, groupIndex) => {
-        const duration = clamp(Number(note.duration), 0.25, totalBeats - start);
-        const ticks = Math.max(1, Math.round(duration * divisions));
-        const lyricXml = note.lyric ? `<lyric><text>${xmlEscape(note.lyric)}</text></lyric>` : "";
-        lines.push(`      <note>${groupIndex ? "<chord/>" : ""}${pitchXml(note.midi)}<duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type><velocity>${Math.round(note.velocity)}</velocity>${lyricXml}</note>`);
-      });
-      cursor = Math.max(cursor, ...group.map((note) => start + Number(note.duration)));
-      index += group.length;
-    }
-    if (cursor < totalBeats) emitRest(totalBeats - cursor);
     const tempo = clamp(Number(dom.tempo.value) || 96, 30, 240);
     const meter = timeSignature;
+    const measureLength = measureBeats(meter);
+    const totalBeats = visibleBeats(meter);
+    const voiceByNoteId = new Map();
+    const globalLanes = [];
+    sorted.forEach((note) => {
+      const start = Number(note.start);
+      const end = start + Number(note.duration);
+      let lane = globalLanes.find((candidate) => candidate.lastStart === start
+        || candidate.lastEnd <= start + 0.001);
+      if (!lane) {
+        lane = { lastStart: -1, lastEnd: 0 };
+        globalLanes.push(lane);
+      }
+      lane.lastStart = start;
+      lane.lastEnd = Math.max(lane.lastEnd, end);
+      voiceByNoteId.set(note.id, globalLanes.indexOf(lane) + 1);
+    });
+    const measures = [];
+    for (let measureIndex = 0; measureIndex < measureCount; measureIndex += 1) {
+      const measureStart = measureIndex * measureLength;
+      const measureEnd = Math.min(totalBeats, measureStart + measureLength);
+      const measureNotes = sorted
+        .filter((note) => Number(note.start) < measureEnd && Number(note.start) + Number(note.duration) > measureStart)
+        .map((note) => ({
+          note,
+          start: Math.max(measureStart, Number(note.start)),
+          end: Math.min(measureEnd, Number(note.start) + Number(note.duration))
+        }));
+      // MusicXML represents independent timelines as voices. Greedy lane
+      // assignment keeps overlapping notes from advancing one shared cursor;
+      // notes with the same onset stay in one lane and become a chord.
+      const laneMap = new Map();
+      measureNotes.forEach((segment) => {
+        const voice = voiceByNoteId.get(segment.note.id) || 1;
+        let lane = laneMap.get(voice);
+        if (!lane) {
+          lane = { voice, segments: [] };
+          laneMap.set(voice, lane);
+        }
+        lane.segments.push(segment);
+      });
+      const lanes = laneMap.size
+        ? Array.from(laneMap.values()).sort((a, b) => a.voice - b.voice)
+        : [{ voice: 1, segments: [] }];
+      const lines = [];
+      lanes.forEach((lane, laneIndex) => {
+        const voice = lane.voice;
+        const segments = lane.segments.sort((a, b) => a.start - b.start || a.note.midi - b.note.midi);
+        let cursor = measureStart;
+        let index = 0;
+        const emitRest = (duration) => {
+          if (duration <= 0) return;
+          const ticks = Math.max(1, Math.round(duration * divisions));
+          lines.push(`      <note><rest/><duration>${ticks}</duration><voice>${voice}</voice><type>${typeForDuration(duration)}</type></note>`);
+        };
+        while (index < segments.length) {
+          const start = segments[index].start;
+          if (start > cursor) emitRest(start - cursor);
+          const group = segments.filter((segment) => Math.abs(segment.start - start) < 0.001);
+          group.forEach((segment, groupIndex) => {
+            const note = segment.note;
+            const duration = Math.max(0.25, segment.end - segment.start);
+            const ticks = Math.max(1, Math.round(duration * divisions));
+            const tieTypes = [];
+            if (Number(note.start) < measureStart) tieTypes.push("stop");
+            if (Number(note.start) + Number(note.duration) > measureEnd) tieTypes.push("start");
+            const tieXml = tieTypes.map((type) => `<tie type="${type}"/>`).join("");
+            const notationXml = tieTypes.length
+              ? `<notations>${tieTypes.map((type) => `<tied type="${type}"/>`).join("")}</notations>` : "";
+            const lyricXml = note.lyric && segment.start === Number(note.start)
+              ? `<lyric><text>${xmlEscape(note.lyric)}</text></lyric>` : "";
+            const dynamics = clamp(Math.round(note.velocity), 1, 127);
+            const dynamicMark = dynamics < 32 ? "pp" : dynamics < 48 ? "p" : dynamics < 64 ? "mp"
+              : dynamics < 80 ? "mf" : dynamics < 96 ? "f" : dynamics < 112 ? "ff" : "fff";
+            const velocityDirection = `<direction placement="below"><direction-type><dynamics><${dynamicMark}/></dynamics></direction-type><sound dynamics="${dynamics}"/></direction>`;
+            lines.push(`      ${velocityDirection}\n      <note>${groupIndex ? "<chord/>" : ""}${pitchXml(note.midi)}<duration>${ticks}</duration>${tieXml}<voice>${voice}</voice><type>${typeForDuration(duration)}</type>${notationXml}${lyricXml}</note>`);
+          });
+          cursor = Math.max(cursor, ...group.map((segment) => segment.end));
+          index += group.length;
+        }
+        if (cursor < measureEnd) emitRest(measureEnd - cursor);
+        if (laneIndex < lanes.length - 1) {
+          const ticks = Math.max(1, Math.round((measureEnd - measureStart) * divisions));
+          lines.push(`      <backup><duration>${ticks}</duration></backup>`);
+        }
+      });
+      const attributes = measureIndex === 0
+        ? `      <attributes><divisions>${divisions}</divisions><key><fifths>0</fifths><mode>major</mode></key><time><beats>${meter.numerator}</beats><beat-type>${meter.denominator}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>\n      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${tempo}</per-minute></metronome></direction-type><sound tempo="${tempo}"/></direction>\n`
+        : "";
+      measures.push(`    <measure number="${measureIndex + 1}">\n${attributes}${lines.join("\n")}\n    </measure>`);
+    }
     return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <score-partwise version="4.0">
   <work><work-title>Classical DAW Web Sketch</work-title></work>
   <identification><creator type="composer">Classical DAW Web Prototype</creator><encoding><software>Classical DAW Web Prototype</software></encoding></identification>
   <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
   <part id="P1">
-    <measure number="1">
-      <attributes><divisions>${divisions}</divisions><key><fifths>0</fifths><mode>major</mode></key><time><beats>${meter.numerator}</beats><beat-type>${meter.denominator}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
-      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${tempo}</per-minute></metronome></direction-type><sound tempo="${tempo}"/></direction>
-${lines.join("\n")}
-    </measure>
+${measures.join("\n")}
   </part>
 </score-partwise>
 `;

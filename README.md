@@ -31,8 +31,9 @@ validating score timing and audio rendering before platform integration.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
   ring, block scheduler, and xrun counter.
 - On macOS, an optional `daw_coreaudio` target owns the default-output
-  device lifecycle and connects that scheduler to a silence-safe callback with
-  a fixed polyphonic sine diagnostic voice.
+  device lifecycle, enumerates output devices, supports explicit device
+  selection before start, and connects that scheduler to a silence-safe
+  callback with a fixed polyphonic sine diagnostic voice.
 - A versioned, line-oriented project file format with strict validation and
   atomic replacement, preserving the current score model for save/reload.
 - A crash-recovery sidecar writer and loader that tries the primary project,
@@ -45,8 +46,13 @@ validating score timing and audio rendering before platform integration.
   callback.
 - On macOS, an optional `daw_coremidi` target owns CoreMIDI client and port
   lifecycle, enumerates sources/destinations, and connects sources explicitly.
-  Its receive callback only counts packet lists and does not call the audio
+  Its receive callback only counts packets and does not call the audio
   renderer.
+- The realtime scheduler accepts fixed-capacity sample-timestamped voice
+  events, dispatches them at block boundaries, and reports late or dropped
+  events without allocating in the callback.
+- `renderScore` converts the strict score model to a deterministic offline
+  mono WAV diagnostic mix, preserving all score parts before the final clamp.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI↔Score/MusicXML round-trips,
   Score-to-MIDI export, project persistence/recovery, bounded edit history,
@@ -75,8 +81,8 @@ ctest --test-dir build --output-on-failure
 
 ## Planned macOS slices
 
-1. Add timestamped CoreMIDI event scheduling and CoreAudio device enumeration/
-   reconnect.
+1. Add timestamped CoreMIDI event scheduling and CoreAudio device-change
+   notifications with automatic reconnect.
 2. Add engine-level scheduled autosave and persistence for the full undo history
    around the versioned project file and recovery sidecar.
 3. Add bar/beat and time-signature maps plus a piano roll/score UI (SwiftUI or
@@ -94,5 +100,8 @@ The current study notes and acceptance gates are in
 and [`docs/roadmap.md`](docs/roadmap.md).
 
 The no-build web prototype lives in [`web/`](web/) with its own deployment
-instructions. Run `python3 -m http.server 8080 --directory web` from the
-repository root for a local preview.
+instructions. It supports 4/8/16-bar piano-roll editing, MIDI Type 0/1 import
+and Type 1 export, multi-voice/tied MusicXML interchange, JSON recovery, and
+PCM16 WAV export. Run
+`python3 -m http.server 8080 --directory web` from the repository root for a
+local preview.
