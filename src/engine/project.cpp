@@ -156,6 +156,7 @@ bool validateScore(const Score& score, std::string* error) {
             ((note.tuplet_actual == 0) != (note.tuplet_normal == 0))) {
           return fail(error, "project note attribute out of range");
         }
+        if (note.lyric.size() > kMaxStringBytes) return fail(error, "project note lyric out of range");
       }
     }
   }
@@ -226,7 +227,9 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
 
     std::ostringstream output;
     output.precision(17);
-    output << "CLASSICAL_DAW_PROJECT 1\n";
+    // Version 2 adds one hex-encoded lyric field per note.  The reader keeps
+    // accepting version 1 and supplies an empty lyric for legacy files.
+    output << "CLASSICAL_DAW_PROJECT 2\n";
     output << "divisions " << score.divisions << "\n";
     output << "bpm " << score.bpm << "\n";
     output << "meter " << static_cast<unsigned int>(score.time_signature.numerator) << ' '
@@ -261,6 +264,7 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
           output << "staff " << note.staff << "\n";
           output << "tuplet_actual " << note.tuplet_actual << "\n";
           output << "tuplet_normal " << note.tuplet_normal << "\n";
+          output << "lyric " << hexEncode(note.lyric) << "\n";
           output << "end_note\n";
         }
         output << "end_measure\n";
@@ -309,7 +313,10 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
-    if (arguments[0] != "1") return fail(error, "unsupported project version: " + arguments[0]);
+    std::uint64_t project_version = 0;
+    if (!parseU64(arguments[0], &project_version) || (project_version != 1 && project_version != 2)) {
+      return fail(error, "unsupported project version: " + arguments[0]);
+    }
 
     Score parsed;
     if (!expectLine(&reader, "divisions", 1, &arguments, error) || !parseSigned(arguments[0], &parsed.divisions)) {
@@ -419,6 +426,11 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
               !parseUnsigned(arguments[0], &note.tuplet_actual) || !expectLine(&reader, "tuplet_normal", 1, &arguments, error) ||
               !parseUnsigned(arguments[0], &note.tuplet_normal)) {
             return fail(error, "invalid project note attributes");
+          }
+          if (project_version >= 2) {
+            if (!expectLine(&reader, "lyric", 1, &arguments, error) || !hexDecode(arguments[0], &note.lyric, error)) {
+              return fail(error, "invalid project note lyric");
+            }
           }
           if (!expectLine(&reader, "end_note", 0, &arguments, error)) return false;
         }

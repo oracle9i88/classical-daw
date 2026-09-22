@@ -230,6 +230,9 @@ void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, st
     if (note.tie_stop) output << "          <tied type=\"stop\"/>\n";
     output << "        </notations>\n";
   }
+  if (!note.lyric.empty()) {
+    output << "        <lyric><text>" << escape(note.lyric) << "</text></lyric>\n";
+  }
   output << "      </note>\n";
 }
 
@@ -486,6 +489,13 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
                           hasSelfClosingAttribute(xml, "tied", "type", "start", event.block.content_start, event.block.content_end);
         note.tie_stop = hasSelfClosingAttribute(xml, "tie", "type", "stop", event.block.content_start, event.block.content_end) ||
                          hasSelfClosingAttribute(xml, "tied", "type", "stop", event.block.content_start, event.block.content_end);
+        const auto lyrics = findBlocks(xml, "lyric", event.block.content_start, event.block.content_end);
+        if (lyrics.size() > 1) throw std::runtime_error("MusicXML notes may contain only one lyric in Alpha");
+        if (!lyrics.empty()) {
+          const auto text_blocks = findBlocks(xml, "text", lyrics.front().content_start, lyrics.front().content_end);
+          if (text_blocks.size() != 1) throw std::runtime_error("MusicXML lyric must contain one text element");
+          note.lyric = textIn(xml, "text", lyrics.front().content_start, lyrics.front().content_end, true);
+        }
         measure.notes.push_back(note);
         have_notes[key] = true;
         if (!note.chord) last_note_starts[key] = cursor;

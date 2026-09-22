@@ -27,6 +27,10 @@ struct ScoreNote {
   std::uint16_t staff = 1;
   std::uint16_t tuplet_actual = 0;
   std::uint16_t tuplet_normal = 0;
+  // Optional single lyric syllable attached to this note.  The current
+  // interchange slice keeps one <lyric><text> value per note; richer
+  // syllabic/verse metadata can be added without changing note timing.
+  std::string lyric;
 };
 
 struct ScoreMeasure {

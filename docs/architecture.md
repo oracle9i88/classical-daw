@@ -30,10 +30,10 @@ package will eventually add MIDI data, media, peak caches, autosave snapshots,
 and plugin state.
 
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
-ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords, and
-ties. The MusicXML adapter runs outside the realtime path and only accepts a
-single 960-PPQ part, while retaining multiple voices/staves inside each
-measure. It can be replaced by a full XML reader later
+ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords,
+ties, and one optional lyric syllable. The MusicXML adapter runs outside the
+realtime path and only accepts a single 960-PPQ part, while retaining multiple
+voices/staves inside each measure. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a

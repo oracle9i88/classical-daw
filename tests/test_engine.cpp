@@ -13,6 +13,8 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -38,6 +40,14 @@ bool writeText(const std::filesystem::path& path, const std::string& text) {
   if (!output) return false;
   output << text;
   return static_cast<bool>(output);
+}
+
+bool readText(const std::filesystem::path& path, std::string* text) {
+  if (text == nullptr) return false;
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return false;
+  *text = std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+  return static_cast<bool>(input) || input.eof();
 }
 
 }  // namespace
@@ -148,7 +158,12 @@ int main() {
           ScoreNote{1920, 1920, ScorePitch{'C', 0, 5}, false, true, false, false, 100},
       }},
   }}};
+  score.parts[0].measures[0].notes[0].lyric = "C & D";
   if (!writeMusicXmlFile(score, musicxml_path.string(), &error)) return fail("MusicXML write: " + error);
+  std::string musicxml_text;
+  if (!readText(musicxml_path, &musicxml_text) || musicxml_text.find("<lyric><text>C &amp; D</text></lyric>") == std::string::npos) {
+    return fail("MusicXML lyric escaping");
+  }
   Score parsed_score;
   if (!readMusicXmlFile(musicxml_path.string(), &parsed_score, &error)) return fail("MusicXML read: " + error);
   if (parsed_score.parts.size() != 1 || parsed_score.parts[0].name != "Piano" ||
@@ -156,7 +171,8 @@ int main() {
       parsed_score.parts[0].measures[0].notes[0].start != 0 ||
       parsed_score.parts[0].measures[0].notes[1].start != 960 ||
       parsed_score.parts[0].measures[0].notes[2].tie_stop != true ||
-      parsed_score.parts[0].measures[0].notes[3].chord != true) {
+      parsed_score.parts[0].measures[0].notes[3].chord != true ||
+      parsed_score.parts[0].measures[0].notes[0].lyric != "C & D") {
     return fail("MusicXML score round-trip");
   }
   if (parsed_score.time_signature.numerator != 4 || parsed_score.time_signature.denominator != 4 ||
@@ -211,14 +227,35 @@ int main() {
   scheduler.processBlock(256);
   if (scheduler.snapshot().running || scheduler.snapshot().sample_position != 356) return fail("transport stop");
 
+  static_assert(std::is_nothrow_destructible_v<InstrumentRenderer>);
+  static_assert(noexcept(std::declval<InstrumentRenderer&>().prepare(std::declval<const InstrumentRenderConfig&>())));
+  static_assert(noexcept(std::declval<InstrumentRenderer&>().reset()));
+  static_assert(noexcept(std::declval<InstrumentRenderer&>().enqueue(std::declval<const VoiceEvent&>())));
+  static_assert(noexcept(std::declval<InstrumentRenderer&>().render(nullptr, 0, 0, 0.0)));
+
   SineVoiceBank synth;
-  if (!synth.enqueue({VoiceEventType::NoteOn, 69, 100})) return fail("sine voice enqueue");
+  InstrumentRenderer& renderer = synth;
+  const InstrumentRenderConfig render_config{48000.0, 64, 2};
+  if (!renderer.prepare(render_config) || !synth.prepared()) return fail("instrument prepare");
+  if (synth.preparedConfig().max_frames_per_block != 64 || synth.preparedConfig().channels != 2) {
+    return fail("instrument prepare config");
+  }
+  if (!renderer.enqueue({VoiceEventType::NoteOn, 69, 100})) return fail("sine voice enqueue");
   std::array<float, 128> audio{};
-  synth.render(audio.data(), 64, 2, 48000.0);
+  // The renderer owns all voice/event storage. This callback-shaped call is
+  // noexcept and performs no allocation, locking, or I/O by contract.
+  renderer.render(audio.data(), 64, 2, 48000.0);
   float peak = 0.0F;
   for (const float sample : audio) peak = std::max(peak, std::abs(sample));
   if (peak <= 0.0F) return fail("sine voice render");
-  if (!synth.enqueue({VoiceEventType::NoteOff, 69, 0})) return fail("sine voice off enqueue");
+  if (!renderer.enqueue({VoiceEventType::NoteOff, 69, 0})) return fail("sine voice off enqueue");
+  renderer.reset();
+  if (synth.prepared()) return fail("instrument reset lifecycle");
+  audio.fill(1.0F);
+  renderer.render(audio.data(), 64, 2, 48000.0);
+  for (const float sample : audio) {
+    if (sample != 0.0F) return fail("instrument reset did not clear voices");
+  }
 
   const auto invalid_musicxml_path = temp / "classical_daw_invalid.musicxml";
   const std::string invalid_musicxml =

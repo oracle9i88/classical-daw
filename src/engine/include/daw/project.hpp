@@ -7,7 +7,9 @@
 namespace daw {
 
 // Persist the editable score state in the versioned line-oriented
-// CLASSICAL_DAW_PROJECT format.  The format deliberately has no third-party
+// CLASSICAL_DAW_PROJECT format. Version 2 stores one hex-encoded lyric per
+// note; the reader remains compatible with version 1 files. The format
+// deliberately has no third-party
 // parser dependency: every field and section is ordered and validated.
 //
 // Both functions leave the caller's Score unchanged on failure.  Writing is

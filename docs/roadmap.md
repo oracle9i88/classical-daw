@@ -15,7 +15,7 @@ not count as completion.
   field and guard MIDI tick/duration arithmetic against signed overflow.
 - Add a first MusicXML vertical slice: one `score-partwise` part with multiple
   voices/staves, notes, rests, chords, ties, tuplets, meter, tempo, and 960-PPQ
-  import/export.
+  import/export, including one lyric text per note.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and
