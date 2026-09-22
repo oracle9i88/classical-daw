@@ -74,17 +74,72 @@ struct VoiceEvent {
   std::uint8_t velocity = 0;
 };
 
+// Configuration supplied once, on the control thread, before an instrument
+// is handed to the audio callback.  A renderer must retain all state it needs
+// in its own fixed-size storage; prepare/reset are therefore also noexcept and
+// may not allocate or take locks.
+struct InstrumentRenderConfig {
+  double sample_rate = 48000.0;
+  std::uint32_t max_frames_per_block = 0;
+  std::uint32_t channels = 0;
+};
+
+// The real-time instrument contract.  The owner creates and prepares an
+// implementation outside the callback, queues events from the producer side,
+// then calls render() from exactly one audio thread.  Implementations must not
+// allocate, block, perform I/O, or throw from any of these methods.  reset() is
+// called only after the callback has stopped and makes the instance reusable.
+class InstrumentRenderer {
+ public:
+  virtual ~InstrumentRenderer() = default;
+
+  InstrumentRenderer() = default;
+  InstrumentRenderer(const InstrumentRenderer&) = delete;
+  InstrumentRenderer& operator=(const InstrumentRenderer&) = delete;
+
+  virtual bool prepare(const InstrumentRenderConfig& config) noexcept = 0;
+  virtual void reset() noexcept = 0;
+  virtual bool enqueue(const VoiceEvent& event) noexcept = 0;
+  virtual void render(float* interleaved_output, std::uint32_t frame_count,
+                     std::uint32_t channels, double sample_rate) noexcept = 0;
+};
+
 // Fixed-size diagnostic voice used to prove the callback path with real
 // samples. It is deliberately a sine bank, not a claim of orchestral quality.
-class SineVoiceBank {
+class SineVoiceBank : public InstrumentRenderer {
  public:
   static constexpr std::size_t kEventCapacity = 128;
   static constexpr std::size_t kVoiceCapacity = 32;
 
-  bool enqueue(const VoiceEvent& event) noexcept { return events_.push(event); }
+  bool prepare(const InstrumentRenderConfig& config) noexcept override {
+    if (config.sample_rate <= 0.0 || !std::isfinite(config.sample_rate) ||
+        config.max_frames_per_block == 0 || config.channels == 0) {
+      return false;
+    }
+    reset();
+    sample_rate_ = config.sample_rate;
+    prepared_config_ = config;
+    prepared_ = true;
+    return true;
+  }
+
+  void reset() noexcept override {
+    VoiceEvent pending;
+    while (events_.pop(&pending)) {
+    }
+    for (Voice& voice : voices_) voice = Voice{};
+    prepared_ = false;
+    prepared_config_ = InstrumentRenderConfig{};
+    sample_rate_ = 48000.0;
+  }
+
+  bool enqueue(const VoiceEvent& event) noexcept override { return events_.push(event); }
+
+  [[nodiscard]] bool prepared() const noexcept { return prepared_; }
+  [[nodiscard]] InstrumentRenderConfig preparedConfig() const noexcept { return prepared_config_; }
 
   void render(float* interleaved_output, std::uint32_t frame_count, std::uint32_t channels,
-              double sample_rate) noexcept {
+              double sample_rate) noexcept override {
     if (interleaved_output == nullptr || channels == 0 || sample_rate <= 0.0) return;
     sample_rate_ = sample_rate;
     VoiceEvent event;
@@ -140,6 +195,8 @@ class SineVoiceBank {
   SpscRing<VoiceEvent, kEventCapacity> events_;
   std::array<Voice, kVoiceCapacity> voices_{};
   double sample_rate_ = 48000.0;
+  InstrumentRenderConfig prepared_config_{};
+  bool prepared_ = false;
 };
 
 // Platform-neutral M0 transport. CoreAudio will call processBlock() from its
