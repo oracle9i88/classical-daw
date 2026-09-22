@@ -20,6 +20,8 @@ namespace {
 constexpr std::uint64_t kMaxParts = 1024;
 constexpr std::uint64_t kMaxMeasures = 1'000'000;
 constexpr std::uint64_t kMaxNotes = 1'000'000;
+constexpr std::uint64_t kMaxTotalMeasures = 1'000'000;
+constexpr std::uint64_t kMaxTotalNotes = 1'000'000;
 constexpr std::size_t kMaxLineBytes = 4U * 1024U * 1024U;
 constexpr std::size_t kMaxStringBytes = 1U * 1024U * 1024U;
 
@@ -126,15 +128,21 @@ bool validateScore(const Score& score, std::string* error) {
   }
   if (!validMeter(score.time_signature)) return fail(error, "project time signature out of range");
   if (score.parts.size() > kMaxParts) return fail(error, "project has too many parts");
+  std::uint64_t total_measures = 0;
+  std::uint64_t total_notes = 0;
   for (const ScorePart& part : score.parts) {
     if (part.id.empty() || part.id.size() > kMaxStringBytes || part.name.size() > kMaxStringBytes) {
       return fail(error, "project part string out of range");
     }
     if (part.measures.size() > kMaxMeasures) return fail(error, "project has too many measures");
+    if (part.measures.size() > kMaxTotalMeasures - total_measures) return fail(error, "project has too many measures");
+    total_measures += static_cast<std::uint64_t>(part.measures.size());
     for (const ScoreMeasure& measure : part.measures) {
-      if (measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes) {
+      if (measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes ||
+          measure.notes.size() > kMaxTotalNotes - total_notes) {
         return fail(error, "project measure out of range");
       }
+      total_notes += static_cast<std::uint64_t>(measure.notes.size());
       for (const ScoreNote& note : measure.notes) {
         if (note.start < 0 || note.duration <= 0 || note.duration > std::numeric_limits<Tick>::max() - note.start) {
           return fail(error, "project note timing out of range");
@@ -318,6 +326,8 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::size_t part_count = 0;
     if (!parseCount(arguments[0], kMaxParts, &part_count, error, "part")) return false;
     parsed.parts.resize(part_count);
+    std::uint64_t total_measures = 0;
+    std::uint64_t total_notes = 0;
 
     for (std::size_t part_index = 0; part_index < part_count; ++part_index) {
       if (!expectLine(&reader, "part", 1, &arguments, error)) return false;
@@ -336,6 +346,8 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
       if (!expectLine(&reader, "measures", 1, &arguments, error)) return false;
       std::size_t measure_count = 0;
       if (!parseCount(arguments[0], kMaxMeasures, &measure_count, error, "measure")) return false;
+      if (measure_count > kMaxTotalMeasures - total_measures) return fail(error, "project has too many measures");
+      total_measures += static_cast<std::uint64_t>(measure_count);
       part.measures.resize(measure_count);
 
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
@@ -355,6 +367,8 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
         if (!expectLine(&reader, "notes", 1, &arguments, error)) return false;
         std::size_t note_count = 0;
         if (!parseCount(arguments[0], kMaxNotes, &note_count, error, "note")) return false;
+        if (note_count > kMaxTotalNotes - total_notes) return fail(error, "project has too many notes");
+        total_notes += static_cast<std::uint64_t>(note_count);
         measure.notes.resize(note_count);
 
         for (std::size_t note_index = 0; note_index < note_count; ++note_index) {
