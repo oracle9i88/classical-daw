@@ -98,9 +98,7 @@ bool hasSelfClosingAttribute(const std::string& xml, const std::string& tag, con
     }
     const std::size_t close = xml.find('>', boundary);
     if (close == std::string::npos || close >= end) return false;
-    if (close > start && xml[close - 1] == '/') {
-      if (attribute(xml.substr(start, close - start + 1), name) == value) return true;
-    }
+    if (attribute(xml.substr(start, close - start + 1), name) == value) return true;
     search = close + 1;
   }
   return false;
@@ -343,17 +341,19 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
 
     Score parsed;
     const auto part_list = findBlocks(xml, "part-list", 0, xml.size());
-    std::string part_name;
-    if (!part_list.empty()) {
-      const auto score_parts = findBlocks(xml, "score-part", part_list.front().content_start, part_list.front().content_end);
-      if (!score_parts.empty()) part_name = textIn(xml, "part-name", score_parts.front().content_start, score_parts.front().content_end);
-    }
+    if (part_list.empty()) throw std::runtime_error("MusicXML is missing part-list");
+    const auto score_parts = findBlocks(xml, "score-part", part_list.front().content_start, part_list.front().content_end);
+    if (score_parts.size() != 1) throw std::runtime_error("Alpha MusicXML requires one score-part entry");
+    const std::string part_list_id = attribute(score_parts.front().opening, "id");
+    const std::string part_name = textIn(xml, "part-name", score_parts.front().content_start, score_parts.front().content_end, true);
     const auto parts = findBlocks(xml, "part", 0, xml.size());
     if (parts.size() != 1) throw std::runtime_error("Alpha MusicXML reader requires exactly one part");
     ScorePart parsed_part;
     parsed_part.id = attribute(parts.front().opening, "id");
     parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
-    if (parsed_part.id.empty()) throw std::runtime_error("MusicXML part is missing id");
+    if (parsed_part.id.empty() || part_list_id.empty() || parsed_part.id != part_list_id) {
+      throw std::runtime_error("MusicXML part id does not match part-list");
+    }
 
     Tick measure_start = 0;
     const auto measures = findBlocks(xml, "measure", parts.front().content_start, parts.front().content_end);
