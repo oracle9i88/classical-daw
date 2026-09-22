@@ -28,6 +28,8 @@
     tempo: document.querySelector("#tempo"),
     add: document.querySelector("#add-note"),
     clear: document.querySelector("#clear"),
+    importButton: document.querySelector("#import"),
+    musicXmlFile: document.querySelector("#musicxml-file"),
     remove: document.querySelector("#delete-note"),
     exportButton: document.querySelector("#export")
   };
@@ -186,6 +188,141 @@
     setStatus("已停止");
   }
 
+  // MusicXML is intentionally parsed without a third-party dependency.  The
+  // web prototype accepts the single-part, single-voice subset that it emits,
+  // plus ordinary rests, chords and measure-level tempo changes.
+  function childByName(element, name) {
+    return Array.from(element.children || []).find((child) => child.localName === name || child.tagName === name) || null;
+  }
+
+  function childrenByName(element, name) {
+    return Array.from(element.children || []).filter((child) => child.localName === name || child.tagName === name);
+  }
+
+  function descendantsByName(element, name) {
+    return Array.from(element.getElementsByTagName("*"))
+      .filter((child) => child.localName === name || child.tagName === name);
+  }
+
+  function numberChild(element, name, fallback = null) {
+    const child = childByName(element, name);
+    if (!child) return fallback;
+    const value = Number(child.textContent.trim());
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function parseMusicXml(text) {
+    if (typeof DOMParser === "undefined") throw new Error("当前浏览器不支持 XML 解析");
+    const documentNode = new DOMParser().parseFromString(text, "application/xml");
+    const parserError = descendantsByName(documentNode, "parsererror")[0];
+    if (parserError) throw new Error("MusicXML 格式无效");
+    const root = documentNode.documentElement;
+    if (!root || root.localName !== "score-partwise") throw new Error("只支持 score-partwise MusicXML");
+    const part = descendantsByName(root, "part")[0];
+    if (!part) throw new Error("MusicXML 中没有可导入的声部");
+    const measures = childrenByName(part, "measure");
+    if (!measures.length) throw new Error("MusicXML 中没有小节");
+
+    let divisions = PPQ;
+    let beatsPerMeasure = 4;
+    let beatType = 4;
+    let measureOffset = 0;
+    const imported = [];
+    let skipped = 0;
+
+    measures.forEach((measure) => {
+      const attributes = childByName(measure, "attributes");
+      if (attributes) {
+        const nextDivisions = numberChild(attributes, "divisions", null);
+        if (nextDivisions && nextDivisions > 0) divisions = nextDivisions;
+        const time = childByName(attributes, "time");
+        if (time) {
+          const nextBeats = numberChild(time, "beats", null);
+          const nextBeatType = numberChild(time, "beat-type", null);
+          if (nextBeats && nextBeats > 0) beatsPerMeasure = nextBeats;
+          if (nextBeatType && nextBeatType > 0) beatType = nextBeatType;
+        }
+      }
+      const measureLength = beatsPerMeasure * 4 / beatType;
+      let cursor = 0;
+      let measureLastOnset = 0;
+      childrenByName(measure, "note").forEach((noteElement) => {
+        const durationTicks = numberChild(noteElement, "duration", 0);
+        const duration = durationTicks > 0 ? durationTicks / divisions : 0;
+        if (!(duration > 0)) return;
+        const chord = Boolean(childByName(noteElement, "chord"));
+        const rest = Boolean(childByName(noteElement, "rest"));
+        const onset = chord ? measureLastOnset : cursor;
+        if (rest) {
+          cursor += duration;
+          measureLastOnset = cursor;
+          return;
+        }
+        const pitch = childByName(noteElement, "pitch");
+        const step = pitch ? (childByName(pitch, "step") || {}).textContent : "";
+        const octave = pitch ? numberChild(pitch, "octave", null) : null;
+        const alter = pitch ? numberChild(pitch, "alter", 0) : 0;
+        const stepIndex = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[String(step || "").trim().toUpperCase()];
+        if (stepIndex === undefined || octave === null) {
+          skipped += 1;
+        } else {
+          const midi = Math.round((octave + 1) * 12 + stepIndex + alter);
+          const absoluteStart = measureOffset + onset;
+          if (absoluteStart < BEATS && absoluteStart + duration > 0) {
+            const start = Math.round(clamp(absoluteStart, 0, BEATS - 0.25) * 4) / 4;
+            const visibleDuration = Math.min(duration, BEATS - start);
+            if (visibleDuration >= 0.25 && midi >= LOWEST_MIDI && midi < LOWEST_MIDI + ROWS) {
+              const velocity = clamp(numberChild(noteElement, "velocity", 90), 1, 127);
+              imported.push({ midi, start, duration: Math.max(0.25, Math.round(visibleDuration * 4) / 4), velocity });
+            } else {
+              skipped += 1;
+            }
+          } else {
+            skipped += 1;
+          }
+        }
+        if (!chord) {
+          measureLastOnset = onset;
+          cursor += duration;
+        }
+      });
+      childrenByName(measure, "forward").forEach((forward) => {
+        const durationTicks = numberChild(forward, "duration", 0);
+        if (durationTicks > 0) cursor += durationTicks / divisions;
+      });
+      childrenByName(measure, "backup").forEach((backup) => {
+        const durationTicks = numberChild(backup, "duration", 0);
+        if (durationTicks > 0) cursor = Math.max(0, cursor - durationTicks / divisions);
+      });
+      measureOffset += Math.max(measureLength, cursor);
+    });
+
+    const tempoNode = descendantsByName(root, "per-minute")[0];
+    const parsedTempo = tempoNode ? Number(tempoNode.textContent.trim()) : Number(dom.tempo.value);
+    const tempo = clamp(Number.isFinite(parsedTempo) ? parsedTempo : 96, 30, 240);
+    if (!imported.length) throw new Error("没有找到当前卷帘可显示的音符（范围为 C4–B5、前 4 小节）");
+    return { notes: imported, tempo, skipped };
+  }
+
+  async function importMusicXmlFile(file) {
+    stopPlayback();
+    try {
+      const result = parseMusicXml(await file.text());
+      notes = result.notes.map((note) => ({ ...note, id: nextId++ }));
+      selectedId = null;
+      dom.noteForm.hidden = true;
+      dom.hint.hidden = false;
+      dom.tempo.value = String(result.tempo);
+      renderRoll();
+      const suffix = result.skipped ? `，忽略 ${result.skipped} 个超出当前范围的事件` : "";
+      setStatus(`已导入 ${notes.length} 个音符${suffix}`);
+    } catch (error) {
+      setStatus(`导入失败：${error.message}`);
+    } finally {
+      dom.musicXmlFile.value = "";
+    }
+  }
+
   function playNote(context, note, startAt, secondsPerBeat) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
@@ -324,6 +461,11 @@ ${lines.join("\n")}
   });
   dom.play.addEventListener("click", () => { startPlayback().catch(() => setStatus("浏览器音频未能启动，请再次点击播放")); });
   dom.stop.addEventListener("click", stopPlayback);
+  dom.importButton.addEventListener("click", () => dom.musicXmlFile.click());
+  dom.musicXmlFile.addEventListener("change", () => {
+    const [file] = dom.musicXmlFile.files || [];
+    if (file) importMusicXmlFile(file);
+  });
   dom.exportButton.addEventListener("click", downloadMusicXml);
   dom.pitch.addEventListener("change", () => updateSelected({ midi: Number(dom.pitch.value) }));
   dom.start.addEventListener("change", () => updateSelected({ start: Number(dom.start.value) }));
