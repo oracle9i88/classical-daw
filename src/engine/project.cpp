@@ -448,4 +448,50 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
   }
 }
 
+bool writeProjectRecoveryFile(const Score& score, const std::string& path, std::string* error) {
+  if (path.empty()) return fail(error, "project path is empty");
+  std::string sidecar = path;
+  sidecar += ".recovery";
+  if (!writeProjectFile(score, sidecar, error)) {
+    if (error != nullptr && !error->empty()) *error = "recovery write failed: " + *error;
+    return false;
+  }
+  return true;
+}
+
+bool readProjectFileWithRecovery(const std::string& path, Score* score, ProjectLoadSource* source,
+                                 std::string* error) {
+  if (score == nullptr) return fail(error, "project score output is null");
+  if (path.empty()) return fail(error, "project path is empty");
+  if (source != nullptr) *source = ProjectLoadSource::None;
+  if (error != nullptr) error->clear();
+
+  Score parsed;
+  std::string primary_error;
+  if (readProjectFile(path, &parsed, &primary_error)) {
+    *score = std::move(parsed);
+    if (source != nullptr) *source = ProjectLoadSource::Primary;
+    return true;
+  }
+
+  std::string recovery_path = path + ".recovery";
+  std::string recovery_error;
+  if (readProjectFile(recovery_path, &parsed, &recovery_error)) {
+    *score = std::move(parsed);
+    if (source != nullptr) *source = ProjectLoadSource::Recovery;
+    return true;
+  }
+
+  std::string temporary_path = path + ".tmp";
+  std::string temporary_error;
+  if (readProjectFile(temporary_path, &parsed, &temporary_error)) {
+    *score = std::move(parsed);
+    if (source != nullptr) *source = ProjectLoadSource::Temporary;
+    return true;
+  }
+
+  return fail(error, "no valid project candidate; primary: " + primary_error +
+                       "; recovery: " + recovery_error + "; temporary: " + temporary_error);
+}
+
 }  // namespace daw

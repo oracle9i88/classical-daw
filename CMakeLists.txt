@@ -31,6 +31,10 @@ add_executable(daw_project_tests tests/project_tests.cpp)
 target_link_libraries(daw_project_tests PRIVATE daw_engine)
 add_test(NAME daw_project_tests COMMAND daw_project_tests)
 
+add_executable(daw_project_recovery_tests tests/project_recovery_tests.cpp)
+target_link_libraries(daw_project_recovery_tests PRIVATE daw_engine)
+add_test(NAME daw_project_recovery_tests COMMAND daw_project_recovery_tests)
+
 add_executable(daw_history_tests tests/history_tests.cpp)
 target_link_libraries(daw_history_tests PRIVATE daw_engine)
 add_test(NAME daw_history_tests COMMAND daw_history_tests)
