@@ -23,3 +23,13 @@ endif()
 add_executable(daw_tests tests/test_engine.cpp)
 target_link_libraries(daw_tests PRIVATE daw_engine)
 add_test(NAME daw_tests COMMAND daw_tests)
+
+if(APPLE)
+  add_library(daw_coreaudio STATIC
+    src/platform/macos/coreaudio_output.cpp
+  )
+  target_include_directories(daw_coreaudio PUBLIC src/platform/macos)
+  target_link_libraries(daw_coreaudio PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreAudio")
+  target_compile_features(daw_coreaudio PUBLIC cxx_std_17)
+  target_compile_options(daw_coreaudio PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+endif()

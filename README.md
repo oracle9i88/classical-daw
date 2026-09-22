@@ -18,6 +18,8 @@ validating score timing and audio rendering before platform integration.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
   ring, block scheduler, and xrun counter; CoreAudio device integration is
   still pending.
+- On macOS, an optional `daw_coreaudio` target now owns the default-output
+  device lifecycle and connects that scheduler to a silence-safe callback.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI round-trip, and render smoke tests.
 

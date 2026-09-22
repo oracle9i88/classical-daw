@@ -17,6 +17,8 @@ not count as completion.
   notes, rests, chords, ties, meter, tempo, and 960-PPQ import/export.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
+- Add the macOS CoreAudio default-output adapter with explicit start/stop and
+  silence-safe callback behavior; instrument rendering is still separate.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
