@@ -2,6 +2,7 @@
 #include "daw/render.hpp"
 #include "daw/realtime.hpp"
 #include "daw/score.hpp"
+#include "daw/score_midi.hpp"
 #include "daw/timeline.hpp"
 #include "daw/wav.hpp"
 
@@ -202,6 +203,37 @@ int main() {
   }
   if (!found_tuplet) return fail("multi-voice and tuplet MusicXML round-trip");
 
+  const auto score_midi_path = temp / "classical_daw_score_export.mid";
+  MidiFile score_midi;
+  if (!scoreToMidiFile(multi_voice_score, &score_midi, &error)) {
+    return fail("score to MIDI conversion: " + error);
+  }
+  if (score_midi.tracks.size() != 1 || score_midi.tracks[0].notes.size() != 5 ||
+      score_midi.tracks[0].notes[0].pitch != 60 || score_midi.tracks[0].notes[0].channel != 0 ||
+      score_midi.tracks[0].notes[0].duration != 960 ||
+      score_midi.tempo.changes().size() != 1 || !closeEnough(score_midi.tempo.changes()[0].bpm, 96.0)) {
+    return fail("score to MIDI note/tempo mapping");
+  }
+  if (!writeScoreMidiFile(multi_voice_score, score_midi_path.string(), &error)) {
+    return fail("score MIDI file write: " + error);
+  }
+  MidiFile exported_score_midi;
+  if (!readMidiFile(score_midi_path.string(), &exported_score_midi, &error) ||
+      exported_score_midi.tracks.size() != 1 || exported_score_midi.tracks[0].notes.size() != 5) {
+    return fail("score MIDI file round-trip: " + error);
+  }
+  const auto protected_midi_path = temp / "classical_daw_score_export_protected.mid";
+  if (!writeText(protected_midi_path, "keep-existing-file")) return fail("protected MIDI fixture write");
+  Score invalid_score = multi_voice_score;
+  invalid_score.parts.push_back(ScorePart{"P2", "Extra", {}});
+  if (writeScoreMidiFile(invalid_score, protected_midi_path.string(), &error)) {
+    return fail("multi-part score MIDI export was accepted");
+  }
+  std::string protected_contents;
+  if (!readText(protected_midi_path, &protected_contents) || protected_contents != "keep-existing-file") {
+    return fail("failed score MIDI conversion damaged destination");
+  }
+
   SpscRing<int, 2> ring;
   if (!ring.push(10) || !ring.push(20) || ring.push(30) || ring.approximateSize() != 2) {
     return fail("SPSC queue capacity");
@@ -299,6 +331,8 @@ int main() {
   std::filesystem::remove(overflow_path);
   std::filesystem::remove(musicxml_path);
   std::filesystem::remove(multi_voice_musicxml_path);
+  std::filesystem::remove(score_midi_path);
+  std::filesystem::remove(protected_midi_path);
   std::filesystem::remove(invalid_musicxml_path);
   std::filesystem::remove(trailing_musicxml_path);
   std::filesystem::remove(prefix_musicxml_path);
