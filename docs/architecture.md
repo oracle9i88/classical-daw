@@ -32,11 +32,12 @@ and plugin state.
 `ScoreHistory` is the UI/control-thread edit-history boundary around this score
 state. It owns bounded copies, retains the initial state, clears the redo
 branch after a successful commit, and leaves the history unchanged on a failed
-operation. It must never be called from the realtime callback; persisted
-undo/autosave snapshots remain a later project-package concern. The project
-loader now checks the primary file, a `.recovery` sidecar, and an interrupted
-`.tmp` candidate in that order, while recovery writes use the same atomic
-replacement boundary and never run from realtime code.
+operation. Its current state can be copied into an atomic `.recovery` sidecar
+and loaded into a new clean history; the full undo/redo stack is still an
+in-memory concern. It must never be called from the realtime callback. The
+project loader checks the primary file, a `.recovery` sidecar, and an
+interrupted `.tmp` candidate in that order, while recovery writes use the same
+atomic replacement boundary and never run from realtime code.
 
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
 ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords,
@@ -68,8 +69,11 @@ block scheduler. It is deliberately separate from CoreAudio: device callbacks
 call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
 `SeekSamples`, and `SetTempo` commands. A sequence-published atomic snapshot
 keeps UI reads from racing the audio-owned transport state. The macOS adapter
-owns the default output lifecycle; device enumeration and reconnect remain
-future work.
+owns the default output lifecycle. The CoreMIDI adapter separately owns client
+and port lifecycle, enumerates endpoints, and requires explicit source
+connections; its receive callback only increments an atomic packet counter.
+CoreAudio device enumeration/reconnect and timestamped MIDI event scheduling
+remain future work.
 
 ## Delivery slices
 

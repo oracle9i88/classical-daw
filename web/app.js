@@ -5,6 +5,8 @@
   const PPQ = 960;
   const PROJECT_FORMAT = "classical-daw-web-project";
   const PROJECT_VERSION = 1;
+  const RECOVERY_KEY = "classical-daw-web-recovery-v1";
+  const RECOVERY_DELAY_MS = 900;
   const MEASURES = 4;
   const DEFAULT_METER = Object.freeze({ numerator: 4, denominator: 4 });
   const ALLOWED_METERS = Object.freeze([
@@ -50,7 +52,11 @@
     importButton: document.querySelector("#import"),
     musicXmlFile: document.querySelector("#musicxml-file"),
     remove: document.querySelector("#delete-note"),
-    exportButton: document.querySelector("#export")
+    exportButton: document.querySelector("#export"),
+    recoveryBanner: document.querySelector("#recovery-banner"),
+    recoveryMessage: document.querySelector("#recovery-message"),
+    restoreRecovery: document.querySelector("#restore-recovery"),
+    discardRecovery: document.querySelector("#discard-recovery")
   };
 
   let notes = [
@@ -74,6 +80,80 @@
   const history = { past: [], future: [] };
   let pendingLiveHistory = null;
   let pendingLiveTimer = null;
+  let recoveryTimer = null;
+
+  function localStorageAvailable() {
+    try {
+      return typeof window.localStorage !== "undefined";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function scheduleRecoverySave() {
+    if (!localStorageAvailable()) return;
+    if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
+    recoveryTimer = window.setTimeout(() => {
+      recoveryTimer = null;
+      try {
+        window.localStorage.setItem(RECOVERY_KEY, projectJson());
+      } catch (_) {
+        // Quota and privacy-mode failures must not interrupt editing.
+      }
+    }, RECOVERY_DELAY_MS);
+  }
+
+  function hideRecoveryBanner() {
+    if (dom.recoveryBanner) dom.recoveryBanner.hidden = true;
+  }
+
+  function discardRecovery() {
+    try {
+      if (localStorageAvailable()) window.localStorage.removeItem(RECOVERY_KEY);
+    } catch (_) {
+      // A storage failure is harmless; the current document remains usable.
+    }
+    hideRecoveryBanner();
+  }
+
+  function showRecoveryIfPresent() {
+    if (!localStorageAvailable()) return;
+    let raw = null;
+    try {
+      raw = window.localStorage.getItem(RECOVERY_KEY);
+    } catch (_) {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const recovered = parseProject(raw);
+      if (dom.recoveryMessage) {
+        dom.recoveryMessage.textContent = `检测到浏览器本地恢复副本（${recovered.notes.length} 个音符）。`;
+      }
+      if (dom.recoveryBanner) dom.recoveryBanner.hidden = false;
+      if (dom.restoreRecovery) {
+        dom.restoreRecovery.onclick = () => {
+          stopPlayback();
+          history.past = [];
+          history.future = [];
+          restoreState(recovered);
+          updateHistoryButtons();
+          hideRecoveryBanner();
+          setStatus(`已恢复本地副本（${notes.length} 个音符）`);
+          scheduleRecoverySave();
+        };
+      }
+      if (dom.discardRecovery) {
+        dom.discardRecovery.onclick = () => {
+          discardRecovery();
+          setStatus("已丢弃本地恢复副本");
+        };
+      }
+    } catch (_) {
+      // A stale or malformed sidecar should never block a fresh document.
+      discardRecovery();
+    }
+  }
 
   function noteName(midi) {
     const octave = Math.floor(midi / 12) - 1;
@@ -142,6 +222,7 @@
     if (history.past.length > historyLimit) history.past.shift();
     history.future = [];
     updateHistoryButtons();
+    scheduleRecoverySave();
     return true;
   }
 
@@ -209,6 +290,7 @@
     history.future.push(current);
     restoreState(previous);
     updateHistoryButtons();
+    scheduleRecoverySave();
     setStatus("已撤销");
   }
 
@@ -224,6 +306,7 @@
     if (history.past.length > historyLimit) history.past.shift();
     restoreState(next);
     updateHistoryButtons();
+    scheduleRecoverySave();
     setStatus("已重做");
   }
 
@@ -851,18 +934,29 @@ ${lines.join("\n")}
   dom.pitch.addEventListener("change", () => commitMutation(() => updateSelected({ midi: Number(dom.pitch.value) })));
   dom.start.addEventListener("change", () => commitMutation(() => updateSelected({ start: Number(dom.start.value) })));
   dom.duration.addEventListener("change", () => commitMutation(() => updateSelected({ duration: Number(dom.duration.value) })));
+  dom.tempo.addEventListener("focus", beginLiveHistory);
+  dom.tempo.addEventListener("input", () => {
+    dom.tempo.value = String(clamp(Number(dom.tempo.value) || 96, 30, 240));
+    scheduleRecoverySave();
+  });
+  dom.tempo.addEventListener("change", () => {
+    dom.tempo.value = String(clamp(Number(dom.tempo.value) || 96, 30, 240));
+    finishLiveHistory();
+  });
+  dom.velocity.addEventListener("focus", beginLiveHistory);
   dom.velocity.addEventListener("input", () => {
-    beginLiveHistory();
     dom.velocityValue.value = dom.velocity.value;
     dom.velocityValue.textContent = dom.velocity.value;
     updateSelected({ velocity: Number(dom.velocity.value) });
+    scheduleRecoverySave();
   });
+  dom.lyric.addEventListener("focus", beginLiveHistory);
   dom.lyric.addEventListener("input", () => {
     const note = notes.find((item) => item.id === selectedId);
     if (!note) return;
-    beginLiveHistory();
     note.lyric = dom.lyric.value;
     renderRoll();
+    scheduleRecoverySave();
   });
   dom.velocity.addEventListener("change", finishLiveHistory);
   dom.lyric.addEventListener("change", finishLiveHistory);
@@ -889,4 +983,5 @@ ${lines.join("\n")}
   populatePitchOptions();
   renderRoll();
   updateHistoryButtons();
+  showRecoveryIfPresent();
 })();

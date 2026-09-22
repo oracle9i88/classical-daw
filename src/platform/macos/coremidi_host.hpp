@@ -51,8 +51,8 @@ class CoreMidiHost {
   bool connectSource(std::int32_t endpoint_id, std::string* error = nullptr);
   bool disconnectSource(std::int32_t endpoint_id, std::string* error = nullptr);
 
-  // Number of CoreMIDI packet lists observed by the input port. Packet data is
-  // not retained or sent to the realtime audio renderer by this adapter.
+  // Number of CoreMIDI packets observed by the input port. Packet data is not
+  // retained or sent to the realtime audio renderer by this adapter.
   [[nodiscard]] std::uint64_t receivedPacketCount() const noexcept;
 
  private:

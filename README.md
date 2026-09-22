@@ -39,8 +39,14 @@ validating score timing and audio rendering before platform integration.
   `.recovery`, then interrupted `.tmp` data without overwriting the primary
   file or mutating the output on total failure.
 - A bounded UI/control-thread `ScoreHistory` with undo/redo, redo-branch
-  invalidation, and failure-preserving operations. It is an in-memory edit
-  history; it is not used by the realtime callback and is not persisted yet.
+  invalidation, capacity enforcement, and failure-preserving operations. Its
+  current state can be snapshotted into the project recovery sidecar; the
+  full undo/redo stack remains in memory and is never used by the realtime
+  callback.
+- On macOS, an optional `daw_coremidi` target owns CoreMIDI client and port
+  lifecycle, enumerates sources/destinations, and connects sources explicitly.
+  Its receive callback only counts packet lists and does not call the audio
+  renderer.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI↔Score/MusicXML round-trips,
   Score-to-MIDI export, project persistence/recovery, bounded edit history,
@@ -69,9 +75,10 @@ ctest --test-dir build --output-on-failure
 
 ## Planned macOS slices
 
-1. Add CoreMIDI input/output and timestamped event scheduling.
-2. Add scheduled autosave and persistence for the in-memory undo history around
-   the versioned project file and recovery sidecar.
+1. Add timestamped CoreMIDI event scheduling and CoreAudio device enumeration/
+   reconnect.
+2. Add engine-level scheduled autosave and persistence for the full undo history
+   around the versioned project file and recovery sidecar.
 3. Add bar/beat and time-signature maps plus a piano roll/score UI (SwiftUI or
    Qt front end over the C++ engine).
 4. Replace the diagnostic oscillator with instrument voices, mixer buses,

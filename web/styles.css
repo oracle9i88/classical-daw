@@ -104,6 +104,19 @@ button { cursor: pointer; }
 .button-export { color: #fff; border-color: #2caa9e; background: #239486; }
 .button-danger { width: 100%; color: #b43e52; border-color: #f1c6cf; background: #fff7f8; }
 
+.recovery-banner {
+  align-items: center;
+  background: #fff5dc;
+  border-bottom: 1px solid #e8cf95;
+  color: #5e471d;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding: 10px 18px;
+}
+
+.recovery-banner span { font-size: 0.9rem; }
+
 .workspace { display: grid; grid-template-columns: 245px minmax(700px, 1fr); gap: 16px; padding: 19px 22px 14px; }
 .panel { border: 1px solid rgba(211, 219, 231, .9); border-radius: 14px; background: var(--panel); box-shadow: 0 10px 25px rgba(38, 51, 75, .055); }
 .inspector { display: flex; flex-direction: column; min-height: 680px; padding: 19px 17px; }

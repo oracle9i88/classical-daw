@@ -38,7 +38,12 @@ not count as completion.
   with failure-preserving tests.
 - Add a bounded control-thread ScoreHistory with undo/redo, redo-branch
   invalidation, capacity enforcement, and failure-preserving tests. The history
-  is currently in memory and explicitly outside the realtime callback.
+  is explicitly outside the realtime callback; its current state can be written
+  to the atomic recovery sidecar and rebuilt as a clean history after loading.
+- Add a macOS CoreMIDI lifecycle adapter with endpoint enumeration, explicit
+  source connections, and a receive callback that only counts packet lists.
+- Add a debounced browser-local recovery copy to the web prototype with
+  explicit restore/discard controls.
 - Publish transport snapshots atomically so UI reads cannot race the audio
   callback's block state.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
@@ -48,9 +53,9 @@ not count as completion.
 
 ### M0: realtime audio
 
-CoreAudio device enumeration and reconnect, then extend the existing fixed
+CoreAudio device enumeration and reconnect remain, then extend the existing fixed
 block scheduler, bounded lock-free command/event queue, and xrun counter. The
-test harness must prove
+CoreMIDI timestamped event scheduling is also required. The test harness must prove
 that the callback performs no allocation, file I/O, JSON parsing, or contended
 locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
@@ -59,13 +64,13 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
 and exact tick accounting. Extend the current versioned score file with
-scheduled autosave and persisted snapshots for the existing undo history around
-the recovery sidecar. The first user-facing vertical slice is MusicXML import →
+engine-level scheduled autosave and persisted full undo history around the
+recovery sidecar. The first user-facing vertical slice is MusicXML import →
 timeline edit → deterministic WAV export.
 
 ### M2: production workflow
 
-Add recording/takes, CoreMIDI, buses, automation, plugin scanning in a worker,
+Add recording/takes, MIDI event scheduling, buses, automation, plugin scanning in a worker,
 latency compensation, stems, and offline bounce. Add a real instrument adapter
 before calling the renderer an orchestral solution.
 
