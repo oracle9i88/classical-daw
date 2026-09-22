@@ -6,7 +6,21 @@ not count as completion.
 
 ## Completed in this iteration
 
-- Preserve initial and later step tempos through MIDI ↔ Score ↔ project v4,
+- Preserve all four initial and later meter fields through MIDI ↔ Score ↔
+  project v5, history and recovery. Allow up to one million strictly increasing
+  positive-tick changes, with a separate 1,000,001-message raw SMF import cap.
+  Read v1–4 meters with the original numerator/denominator, default click/notation
+  metadata 24/8, and no later meter map; retain v4 tempo changes.
+- Build variable measure grids from numerator, denominator and notation ratio:
+  structural changes start a new bar at their exact tick and truncate a partial
+  old bar; repeated and click-only changes do not restart it. Score import
+  requires exact integer 960-PPQ measure lengths, including the notation ratio.
+- Fail MusicXML export for later meter changes or an initial notation ratio
+  other than 8. Allow nondefault initial clocks per click, reporting the omitted
+  value in `omitted_meter_playback_metadata`. Extend mido comparisons to check
+  all four meter fields and their positions. See the
+  [meter persistence record](research/2026-09-23-score-meter-persistence.md).
+- Preserve initial and later step tempos through MIDI ↔ Score ↔ project v5,
   history and recovery; use them for offline rendering. Read v1–3 projects as
   constant-tempo scores and report later-tempo omissions on MusicXML export.
 - Add one offline, tempo-aware MIDI event timeline with shared channel state,
@@ -45,9 +59,8 @@ not count as completion.
   failure.
 - Add the inverse MIDI-to-Score bridge: non-empty 960-PPQ tracks become ordered
   score parts with track names, note timing, pitch, velocity, and channel-backed
-  voices. The importer carries the first MIDI meter event (defaulting to 4/4)
-  and the complete step-tempo map, and its multi-track round-trip is covered by
-  normal and sanitizer tests.
+  voices. The importer carries the initial meter (defaulting to 4/4 until an
+  explicit event) and later changes alongside the complete step-tempo map.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and
@@ -91,7 +104,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize meter maps through Score/project persistence and MusicXML tempo directions, then
+Prioritize MusicXML meter changes, notation-ratio handling and tempo directions, then
 extend the offline controller support to realtime playback and add an instrument/port routing layer
 (including GM percussion and orchestras spanning multiple MIDI ports).
 Channel-event data now survives native interchange and the offline sine

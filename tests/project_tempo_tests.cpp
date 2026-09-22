@@ -63,11 +63,22 @@ bool equal(const Score& left, const Score& right) {
   if (left.divisions != right.divisions || left.bpm != right.bpm ||
       left.time_signature.numerator != right.time_signature.numerator ||
       left.time_signature.denominator != right.time_signature.denominator ||
+      left.time_signature.clocks_per_click != right.time_signature.clocks_per_click ||
+      left.time_signature.notated_32nds_per_quarter != right.time_signature.notated_32nds_per_quarter ||
       !left.parts.empty() || !right.parts.empty() ||
-      left.tempo_changes.size() != right.tempo_changes.size()) return false;
+      left.tempo_changes.size() != right.tempo_changes.size() ||
+      left.meter_changes.size() != right.meter_changes.size()) return false;
   for (std::size_t index = 0; index < left.tempo_changes.size(); ++index) {
     if (left.tempo_changes[index].tick != right.tempo_changes[index].tick ||
         left.tempo_changes[index].bpm != right.tempo_changes[index].bpm) return false;
+  }
+  for (std::size_t index = 0; index < left.meter_changes.size(); ++index) {
+    const auto& a = left.meter_changes[index];
+    const auto& b = right.meter_changes[index];
+    if (a.tick != b.tick || a.signature.numerator != b.signature.numerator ||
+        a.signature.denominator != b.signature.denominator ||
+        a.signature.clocks_per_click != b.signature.clocks_per_click ||
+        a.signature.notated_32nds_per_quarter != b.signature.notated_32nds_per_quarter) return false;
   }
   return true;
 }
@@ -80,34 +91,36 @@ void run() {
   original.bpm = 120.0;
   original.tempo_changes = {{240, 90.25}, {960, 60.125}, {7680, 89.12345678901234}};
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v4: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v5: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 4\ndivisions 960\nbpm 120\ntempo_changes 3\n", 0) == 0,
-          "v4 tempo section follows initial BPM");
-  require(serialized.find("tempo 960 60.125\n") < serialized.find("meter 4 4\n"),
-          "v4 tempo section precedes meter");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 5\ndivisions 960\nbpm 120\ntempo_changes 3\n", 0) == 0,
+          "v5 tempo section follows initial BPM");
+  require(serialized.find("tempo 960 60.125\n") < serialized.find("meter 4 4 24 8\n"),
+          "v5 tempo section precedes meter");
   Score loaded;
   require(readProjectFile(path.string(), &loaded, &error) && equal(loaded, original),
           "tempo ticks and full-precision BPM round trip: " + error);
   require(!std::filesystem::exists(path.string() + ".tmp"), "successful save left temporary file");
 
-  // Actual older layouts have no tempo section and must clear the destination
-  // score's existing changes rather than retaining data from a previous load.
-  for (const int version : {1, 2, 3}) {
+  // Version 4 preserves the tempo section. Earlier layouts must clear the
+  // destination's changes rather than retaining data from a previous load.
+  for (const int version : {1, 2, 3, 4}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
     while (std::getline(input, line)) {
-      if (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0) continue;
+      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+          (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0))) continue;
+      if (line.rfind("meter ", 0) == 0) line = "meter 4 4";
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }
     writeText(invalid_path, legacy.str());
     loaded = original;
     Score expected = original;
-    expected.tempo_changes.clear();
+    if (version < 4) expected.tempo_changes.clear();
     require(readProjectFile(invalid_path.string(), &loaded, &error) && equal(loaded, expected),
-            "constant-tempo legacy version " + std::to_string(version));
+            "legacy tempo preservation, version " + std::to_string(version));
   }
 
   // Count errors must be diagnosed immediately, before allocating the

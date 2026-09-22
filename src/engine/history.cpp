@@ -24,6 +24,7 @@ void replaceScore(Score* destination, Score&& source) noexcept {
   destination->bpm = source.bpm;
   destination->parts.swap(source.parts);
   destination->tempo_changes.swap(source.tempo_changes);
+  destination->meter_changes.swap(source.meter_changes);
 }
 
 bool reportException(std::string* error, const char* operation) {

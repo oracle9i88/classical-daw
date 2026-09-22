@@ -6,13 +6,13 @@ This document records the boundaries that keep the audio engine safe to extend.
 
 - `Tick` is the musical edit domain. Alpha fixes the project resolution at 960
   ticks per quarter note. The SMF reader accepts source PPQ 1–32767 and converts
-  absolute start/end/tempo ticks once, using nearest-tick rounding (half up).
+  absolute note/tempo/channel/meter ticks once, using nearest-tick rounding (half up).
   `MidiImportReport` reports non-integral conversions and skipped event classes;
   it and the destination remain unchanged if import fails. Deltas are never
   individually rounded, avoiding accumulated timing drift.
 - `SampleIndex` is the audio domain. `Timeline` converts between ticks and
   samples through a piecewise-constant `TempoMap`.
-- The future tempo map must keep conversions deterministic and must never let a
+- Tempo-map edits must keep conversions deterministic and must never let a
   UI floating-point value become the source of truth for audio scheduling.
 
 ## Realtime boundary
@@ -70,14 +70,14 @@ one sustained MIDI note using the initial velocity. An invalid chain fails
 without changing the caller's output. The fallback channel policy still assigns
 channel 9 to the tenth part, which is inappropriate for a GM melodic part and
 remains an explicit routing limitation.
-the score's single meter is emitted as the first MIDI time-signature event,
-while meter changes and MIDI lyric text remain future fields.
+The score's initial meter and every later change are emitted with all four
+SMF fields. MIDI lyric text remains outside this adapter.
 
 The inverse MIDI-to-Score adapter follows the ordered SMF tracks and creates one
 score part per track containing notes or channel events; metadata-only tracks are skipped. It retains track
 names, note timing, pitch, velocity, and channel (as `voice = channel + 1`),
-then assigns notes to a measure grid using the first MIDI meter event, defaulting
-to 4/4. It accepts only the engine's 960-PPQ domain and carries tick-zero
+then assigns notes to a variable measure grid using the complete meter map,
+defaulting to 4/4 until an explicit meter applies. It accepts only the engine's 960-PPQ domain and carries tick-zero
 tempo into `Score::bpm`, with later entries in `Score::tempo_changes`; canonical sharp spellings are used until a key-aware
 notation layer is available. The SMF file reader normalizes source PPQ before
 invoking this adapter. Notes crossing barlines are split into notation segments
@@ -106,16 +106,52 @@ Undo/redo/snapshot swap this vector along with the rest of the score, and
 project/recovery snapshots persist it. The in-memory undo stack is not itself
 serialized. Tempo changes during a tied note change elapsed time without
 splitting the sounding voice or changing its tick duration.
+
+Project v5 extends `meter` to four values: numerator (`n`), denominator (`d`),
+MIDI clocks per metronome click (`cc`), and notated 32nds per MIDI quarter (`bb`).
+It then writes `meter_changes N` and `meter_change tick n d cc bb` rows before
+`parts`. `Score::time_signature` is the tick-zero authority and
+`Score::meter_changes` holds at most one million later entries at strictly
+increasing positive ticks. `validateMeterMap` rejects zero numerator, non-power-
+of-two denominator, zero `bb`, or invalid ordering; any `cc` byte is retained.
+The project reader checks the count before allocation. Versions 1–4 retain
+their two-field initial meter with `cc = 24`, `bb = 8` and an empty later map;
+v4 keeps its existing tempo changes. History snapshots and recovery carry the
+four initial fields and the complete later-meter vector.
+
+The SMF reader accepts at most 1,000,001 raw time-signature messages, allowing
+one initial event plus the maximum later map. It normalizes absolute positions
+and coalesces messages at a shared normalized tick, reporting both rounding
+and coalescing. The canonical model still allows only one million positive-tick
+changes. A first event at a positive normalized tick leaves the default initial
+4/4 in place until that event applies.
+
+`makeMeasureGrid` uses `960 * 32 * n / (d * bb)` ticks per measure. Changes to
+`n`, `d`, or `bb` begin a new bar at the exact change tick and close a partial
+old bar when necessary. A change to `cc` alone, or a repeated signature, stays
+in the map without restarting the bar. MIDI-to-Score import rejects a meter
+whose measure length is not an exact integer in the 960-PPQ domain; raw SMF and
+native persistence can retain those metadata bytes without rounding them.
+Notes crossing the resulting boundaries are split into tied notation segments.
+The mido comparison tools check all four meter fields and their normalized
+positions through the SMF and native-project boundaries. See the
+[meter persistence record](research/2026-09-23-score-meter-persistence.md).
+
 Editors must clear source ordinals on moved/repitched notes or edited endpoints.
 The SMF writer rejects stale explicit ordinals that would put a same-pitch
 retrigger before the preceding release, preserving an existing destination.
 
-This is not yet an orchestral interchange model. SysEx and later meter events
-are not retained. The SMF tempo map survives file import, Score conversion and
+This is not yet an orchestral interchange model. SysEx is not retained.
+The SMF tempo and meter maps survive file import, Score conversion and
 native persistence. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
-MusicXML currently omits raw performance metadata and later tempo changes, exposing the omissions in
-`MusicXmlExportReport`; only native project/SMF paths retain it.
+MusicXML currently omits raw performance metadata and later tempo changes,
+exposing the omissions in `MusicXmlExportReport`. It rejects export of later
+meter changes or an initial `bb != 8` before writing, so unsupported measure
+semantics cannot silently shift the notation. Initial `cc != 24` may be
+exported because it does not move barlines, but the lost click setting increments
+`omitted_meter_playback_metadata`. Native project/SMF paths retain these fields;
+the independent web model and realtime CoreAudio path do not inherit this support.
 
 The offline `renderMidiFile` merges note edges and channel events across tracks,
 with tick → track index → source/fallback order, then schedules each boundary

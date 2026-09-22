@@ -6,6 +6,7 @@ enable_testing()
 
 add_library(daw_engine STATIC
   src/engine/midi.cpp
+  src/engine/meter_map.cpp
   src/engine/history.cpp
   src/engine/project.cpp
   src/engine/render.cpp
@@ -91,6 +92,18 @@ add_test(NAME daw_score_tempo_tests COMMAND daw_score_tempo_tests)
 add_executable(daw_project_tempo_tests tests/project_tempo_tests.cpp)
 target_link_libraries(daw_project_tempo_tests PRIVATE daw_engine)
 add_test(NAME daw_project_tempo_tests COMMAND daw_project_tempo_tests)
+
+add_executable(daw_midi_meter_tests tests/midi_meter_tests.cpp)
+target_link_libraries(daw_midi_meter_tests PRIVATE daw_engine)
+add_test(NAME daw_midi_meter_tests COMMAND daw_midi_meter_tests)
+
+add_executable(daw_score_meter_tests tests/score_meter_tests.cpp)
+target_link_libraries(daw_score_meter_tests PRIVATE daw_engine)
+add_test(NAME daw_score_meter_tests COMMAND daw_score_meter_tests)
+
+add_executable(daw_project_meter_tests tests/project_meter_tests.cpp)
+target_link_libraries(daw_project_meter_tests PRIVATE daw_engine)
+add_test(NAME daw_project_meter_tests COMMAND daw_project_meter_tests)
 
 # Local import diagnostics; requires no audio device, UI, or network access.
 add_executable(daw_midi_inspect tools/midi_inspect.cpp)

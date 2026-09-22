@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Compare channel messages and tempo maps through SMF/native-project round-trips.
+"""Compare channel messages, tempo and meter maps through SMF/native-project round-trips.
 
 Requires optional developer dependency mido. Original sources are read-only.
-Meter, SysEx and non-tempo meta messages are excluded from this comparison;
+SysEx and other meta messages are excluded from this comparison;
 the Score model does not yet preserve their complete semantics.
 """
 import argparse
@@ -56,6 +56,20 @@ def tempo_map(path):
     return sorted(changes.items())
 
 
+def meter_map(path):
+    midi = mido.MidiFile(path)
+    changes = {0: (4, 4, 24, 8)}
+    for track in midi.tracks:
+        tick = 0
+        for msg in track:
+            tick += msg.time
+            if msg.type == "time_signature":
+                normalized = (2 * tick * 960 + midi.ticks_per_beat) // (2 * midi.ticks_per_beat)
+                changes[normalized] = (msg.numerator, msg.denominator,
+                                       msg.clocks_per_click, msg.notated_32nd_notes_per_beat)
+    return sorted(changes.items())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tool", type=Path, default=Path("build/daw_midi_roundtrip"))
@@ -64,6 +78,7 @@ def main():
     for source in args.files:
         before = channel_tracks(source)
         before_tempos = tempo_map(source)
+        before_meters = meter_map(source)
         with tempfile.TemporaryDirectory(prefix="daw-midi-performance-") as temp:
             output = Path(temp) / "output"
             run = subprocess.run([str(args.tool.resolve()), str(source), str(output)],
@@ -78,11 +93,16 @@ def main():
                 if before_tempos != after_tempos:
                     raise AssertionError(f"{source}: {kind} round-trip changed tempo map: "
                                          f"{before_tempos} != {after_tempos}")
+                after_meters = meter_map(output / f"{kind}.mid")
+                if before_meters != after_meters:
+                    raise AssertionError(f"{source}: {kind} round-trip changed meter map: "
+                                         f"{before_meters} != {after_meters}")
         print(json.dumps({"source": str(source), "tracks_checked": len(before),
                           "channel_messages_checked": sum(map(len, before)),
                           "tempo_entries_checked": len(before_tempos),
+                          "meter_entries_checked": len(before_meters),
                           "direct_and_project_passed": True,
-                          "excluded": "meter/non-tempo meta/SysEx"}, ensure_ascii=False))
+                          "excluded": "other meta/SysEx"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

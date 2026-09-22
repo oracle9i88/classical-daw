@@ -3,7 +3,7 @@
 
 Optional developer dependency: mido. Source music is never copied into the
 repository or modified. Compare normalized absolute timing, pitch, velocity,
-channel, every track, tempo positions, and the rounding diagnostics.
+channel, every track, tempo/meter maps, and the rounding diagnostics.
 """
 import argparse
 import json
@@ -30,6 +30,9 @@ def compare(inspector, source):
     assert actual["engine_ppq"] == 960 and actual["source_ppq"] == ppq
     assert len(actual["tracks"]) == len(original.tracks)
     tempo = {0: 120.0}
+    meters = {0: [4, 4, 24, 8]}
+    explicit_meters = set()
+    meter_events = rounded_meters = coalesced_meters = 0
     rounded_boundaries = rounded_tempos = channel_events = rounded_events = 0
     max_error = Fraction(0)
     note_count = 0
@@ -43,6 +46,14 @@ def compare(inspector, source):
             if msg.type == "set_tempo":
                 rounded_tempos += (absolute * 960) % ppq != 0
                 tempo[normalize(absolute)] = 60000000.0 / msg.tempo
+            elif msg.type == "time_signature":
+                position = normalize(absolute)
+                meter_events += 1
+                rounded_meters += (absolute * 960) % ppq != 0
+                coalesced_meters += position in explicit_meters
+                explicit_meters.add(position)
+                meters[position] = [msg.numerator, msg.denominator,
+                                    msg.clocks_per_click, msg.notated_32nd_notes_per_beat]
             elif msg.type == "note_on" and msg.velocity:
                 key = (msg.channel, msg.note)
                 # Do not validate an ambiguous same-pitch overlap by copying
@@ -68,6 +79,11 @@ def compare(inspector, source):
     assert actual["note_count"] == note_count
     assert actual["rounded_note_boundaries"] == rounded_boundaries
     assert actual["rounded_tempo_events"] == rounded_tempos
+    assert actual["meter_changes"] == [[tick, *fields] for tick, fields in sorted(meters.items())]
+    assert actual["preserved_time_signature_events"] == meter_events
+    assert actual["rounded_time_signature_events"] == rounded_meters
+    assert actual["coalesced_time_signature_events"] == coalesced_meters
+    assert actual["ignored_time_signature_events"] == 0
     assert actual["ignored_channel_events"] == 0
     assert actual["preserved_channel_events"] == channel_events
     assert actual["rounded_channel_events"] == rounded_events
@@ -77,6 +93,7 @@ def compare(inspector, source):
     assert max_error <= Fraction(1, 2)
     return {"source": str(source), "source_ppq": ppq, "tracks": len(original.tracks),
             "notes_checked": note_count, "tempo_positions_checked": len(tempo),
+            "meter_positions_checked": len(meters), "preserved_time_signature_events": meter_events,
             "rounded_note_boundaries": rounded_boundaries, "max_error_engine_ticks": float(max_error),
             "preserved_channel_events": channel_events,
             "ignored_time_signature_events": actual["ignored_time_signature_events"], "passed": True}

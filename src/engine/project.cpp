@@ -1,6 +1,7 @@
 #include "daw/project.hpp"
 
 #include "daw/history.hpp"
+#include "daw/meter_map.hpp"
 
 #include <charconv>
 #include <cerrno>
@@ -116,11 +117,6 @@ bool parseUnsigned(const std::string& token, T* value) {
   return true;
 }
 
-bool validMeter(const TimeSignature& meter) {
-  if (meter.numerator == 0 || meter.denominator == 0) return false;
-  return (meter.denominator & static_cast<std::uint8_t>(meter.denominator - 1U)) == 0U;
-}
-
 bool validStep(char step) {
   return step >= 'A' && step <= 'G';
 }
@@ -128,7 +124,7 @@ bool validStep(char step) {
 bool validateScore(const Score& score, std::string* error) {
   if (score.divisions <= 0 || score.divisions > 1'000'000) return fail(error, "project divisions out of range");
   (void)scoreTempoMap(score);
-  if (!validMeter(score.time_signature)) return fail(error, "project time signature out of range");
+  validateMeterMap(score.time_signature, score.meter_changes);
   if (score.parts.size() > kMaxParts) return fail(error, "project has too many parts");
   std::uint64_t total_measures = 0;
   std::uint64_t total_notes = 0;
@@ -242,9 +238,9 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
 
     std::ostringstream output;
     output.precision(17);
-    // Version 4 retains later tempo changes; earlier versions remain constant
-    // tempo. Version 3 added MIDI metadata, and version 2 added lyrics.
-    output << "CLASSICAL_DAW_PROJECT 4\n";
+    // Version 5 retains all four MIDI meter fields and later meter changes.
+    // Earlier versions keep their default meter metadata and empty meter map.
+    output << "CLASSICAL_DAW_PROJECT 5\n";
     output << "divisions " << score.divisions << "\n";
     output << "bpm " << score.bpm << "\n";
     output << "tempo_changes " << score.tempo_changes.size() << "\n";
@@ -252,7 +248,17 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
       output << "tempo " << change.tick << ' ' << change.bpm << "\n";
     }
     output << "meter " << static_cast<unsigned int>(score.time_signature.numerator) << ' '
-           << static_cast<unsigned int>(score.time_signature.denominator) << "\n";
+           << static_cast<unsigned int>(score.time_signature.denominator) << ' '
+           << static_cast<unsigned int>(score.time_signature.clocks_per_click) << ' '
+           << static_cast<unsigned int>(score.time_signature.notated_32nds_per_quarter) << "\n";
+    output << "meter_changes " << score.meter_changes.size() << "\n";
+    for (const TimeSignatureChange& change : score.meter_changes) {
+      output << "meter_change " << change.tick << ' '
+             << static_cast<unsigned int>(change.signature.numerator) << ' '
+             << static_cast<unsigned int>(change.signature.denominator) << ' '
+             << static_cast<unsigned int>(change.signature.clocks_per_click) << ' '
+             << static_cast<unsigned int>(change.signature.notated_32nds_per_quarter) << "\n";
+    }
     output << "parts " << score.parts.size() << "\n";
     for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
       const ScorePart& part = score.parts[part_index];
@@ -343,7 +349,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
     std::uint64_t project_version = 0;
-    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 4) {
+    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 5) {
       return fail(error, "unsupported project version: " + arguments[0]);
     }
 
@@ -368,9 +374,31 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
         parsed.tempo_changes.push_back(change);
       }
     }
-    if (!expectLine(&reader, "meter", 2, &arguments, error) || !parseUnsigned(arguments[0], &parsed.time_signature.numerator) ||
-        !parseUnsigned(arguments[1], &parsed.time_signature.denominator) || !validMeter(parsed.time_signature)) {
+    if (!expectLine(&reader, "meter", project_version >= 5 ? 4U : 2U, &arguments, error) ||
+        !parseUnsigned(arguments[0], &parsed.time_signature.numerator) ||
+        !parseUnsigned(arguments[1], &parsed.time_signature.denominator) ||
+        (project_version >= 5 &&
+         (!parseUnsigned(arguments[2], &parsed.time_signature.clocks_per_click) ||
+          !parseUnsigned(arguments[3], &parsed.time_signature.notated_32nds_per_quarter)))) {
       return fail(error, "invalid project meter");
+    }
+    if (project_version >= 5) {
+      if (!expectLine(&reader, "meter_changes", 1, &arguments, error)) return false;
+      std::size_t meter_count = 0;
+      if (!parseCount(arguments[0], kMaxMeterChanges, &meter_count, error, "meter change")) return false;
+      parsed.meter_changes.reserve(meter_count);
+      for (std::size_t index = 0; index < meter_count; ++index) {
+        TimeSignatureChange change;
+        if (!expectLine(&reader, "meter_change", 5, &arguments, error) ||
+            !parseSigned(arguments[0], &change.tick) ||
+            !parseUnsigned(arguments[1], &change.signature.numerator) ||
+            !parseUnsigned(arguments[2], &change.signature.denominator) ||
+            !parseUnsigned(arguments[3], &change.signature.clocks_per_click) ||
+            !parseUnsigned(arguments[4], &change.signature.notated_32nds_per_quarter)) {
+          return fail(error, "invalid project meter change");
+        }
+        parsed.meter_changes.push_back(change);
+      }
     }
     if (!expectLine(&reader, "parts", 1, &arguments, error)) return false;
     std::size_t part_count = 0;

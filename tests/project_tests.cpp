@@ -17,12 +17,23 @@ int fail(const std::string& message) {
 bool equalScore(const daw::Score& left, const daw::Score& right) {
   if (left.divisions != right.divisions || left.time_signature.numerator != right.time_signature.numerator ||
       left.time_signature.denominator != right.time_signature.denominator || left.bpm != right.bpm ||
-      left.parts.size() != right.parts.size() || left.tempo_changes.size() != right.tempo_changes.size()) {
+      left.time_signature.clocks_per_click != right.time_signature.clocks_per_click ||
+      left.time_signature.notated_32nds_per_quarter != right.time_signature.notated_32nds_per_quarter ||
+      left.parts.size() != right.parts.size() || left.tempo_changes.size() != right.tempo_changes.size() ||
+      left.meter_changes.size() != right.meter_changes.size()) {
     return false;
   }
   for (std::size_t index = 0; index < left.tempo_changes.size(); ++index) {
     if (left.tempo_changes[index].tick != right.tempo_changes[index].tick ||
         left.tempo_changes[index].bpm != right.tempo_changes[index].bpm) return false;
+  }
+  for (std::size_t index = 0; index < left.meter_changes.size(); ++index) {
+    const auto& a = left.meter_changes[index];
+    const auto& b = right.meter_changes[index];
+    if (a.tick != b.tick || a.signature.numerator != b.signature.numerator ||
+        a.signature.denominator != b.signature.denominator ||
+        a.signature.clocks_per_click != b.signature.clocks_per_click ||
+        a.signature.notated_32nds_per_quarter != b.signature.notated_32nds_per_quarter) return false;
   }
   for (std::size_t part_index = 0; part_index < left.parts.size(); ++part_index) {
     const daw::ScorePart& a = left.parts[part_index];
@@ -104,23 +115,28 @@ int main() {
 
   std::string serialized;
   if (!readText(path, &serialized)) return fail("project fixture read");
-  if (serialized.rfind("CLASSICAL_DAW_PROJECT 4\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
+  if (serialized.rfind("CLASSICAL_DAW_PROJECT 5\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
       serialized.find("lyric ") == std::string::npos) {
     return fail("project format header/footer");
   }
 
-  // Legacy files lack later tempos; versions 1/2 lack MIDI fields, and
-  // version 1 also predates lyrics.
-  for (const int version : {1, 2, 3}) {
+  // Legacy files lack later meters; pre-v4 lacks later tempos, versions 1/2
+  // lack MIDI fields, and version 1 also predates lyrics.
+  for (const int version : {1, 2, 3, 4}) {
     Score legacy_expected = source;
     if (version == 1) legacy_expected.parts[0].measures[0].notes[0].lyric.clear();
     std::istringstream current(serialized);
     std::ostringstream legacy;
     std::string line;
     while (std::getline(current, line)) {
-      if (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0 ||
+      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+          (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0)) ||
           (version < 3 && line.rfind("midi_", 0) == 0) ||
           (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
+      if (line.rfind("meter ", 0) == 0) {
+        line = "meter " + std::to_string(source.time_signature.numerator) + " " +
+               std::to_string(source.time_signature.denominator);
+      }
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }
@@ -134,7 +150,7 @@ int main() {
   loaded = source;
   const Score sentinel = loaded;
   std::string unknown_version = serialized;
-  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 4").size(), "CLASSICAL_DAW_PROJECT 99");
+  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 5").size(), "CLASSICAL_DAW_PROJECT 99");
   if (!writeText(path, unknown_version)) return fail("unknown-version fixture write");
   if (readProjectFile(path.string(), &loaded, &error)) return fail("unknown project version accepted");
   if (!equalScore(loaded, sentinel)) return fail("unknown-version read mutated score");

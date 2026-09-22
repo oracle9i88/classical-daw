@@ -1,6 +1,7 @@
 #include "daw/render.hpp"
 
 #include "daw/score_midi.hpp"
+#include "daw/meter_map.hpp"
 #include "midi_order.hpp"
 
 #include <algorithm>
@@ -66,6 +67,7 @@ void releaseVoice(Voice& voice, std::size_t frame, double attack_frames) {
 
 std::vector<ScheduledEvent> schedule(const MidiFile& midi, Tick& end_tick,
                                      MidiRenderReport& report) {
+  validateMeterMap(midi.time_signature, midi.meter_changes);
   if (midi.ticks_per_quarter != kTicksPerQuarter) {
     throw std::invalid_argument("render input must use normalized 960 PPQ");
   }

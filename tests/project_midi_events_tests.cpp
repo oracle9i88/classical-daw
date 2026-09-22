@@ -58,10 +58,20 @@ bool equal(const Score& a, const Score& b) {
   if (a.divisions != b.divisions || a.bpm != b.bpm ||
       a.time_signature.numerator != b.time_signature.numerator ||
       a.time_signature.denominator != b.time_signature.denominator || a.parts.size() != b.parts.size() ||
-      a.tempo_changes.size() != b.tempo_changes.size()) return false;
+      a.time_signature.clocks_per_click != b.time_signature.clocks_per_click ||
+      a.time_signature.notated_32nds_per_quarter != b.time_signature.notated_32nds_per_quarter ||
+      a.tempo_changes.size() != b.tempo_changes.size() || a.meter_changes.size() != b.meter_changes.size()) return false;
   for (std::size_t index = 0; index < a.tempo_changes.size(); ++index) {
     if (a.tempo_changes[index].tick != b.tempo_changes[index].tick ||
         a.tempo_changes[index].bpm != b.tempo_changes[index].bpm) return false;
+  }
+  for (std::size_t index = 0; index < a.meter_changes.size(); ++index) {
+    const auto& x = a.meter_changes[index];
+    const auto& y = b.meter_changes[index];
+    if (x.tick != y.tick || x.signature.numerator != y.signature.numerator ||
+        x.signature.denominator != y.signature.denominator ||
+        x.signature.clocks_per_click != y.signature.clocks_per_click ||
+        x.signature.notated_32nds_per_quarter != y.signature.notated_32nds_per_quarter) return false;
   }
   for (std::size_t p = 0; p < a.parts.size(); ++p) {
     const auto& x = a.parts[p];
@@ -125,23 +135,28 @@ void run() {
   const auto invalid_path = files.directory / "invalid.cdaw";
   const Score original = fixture();
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v4: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v5: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 4\n", 0) == 0, "v4 header");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 5\n", 0) == 0, "v5 header");
   Score loaded;
   require(readProjectFile(path.string(), &loaded, &error) && equal(loaded, original),
           "all MIDI event types, full uint64 orders and event-only part round trip: " + error);
 
-  // Real legacy layouts omit later tempo changes and any fields not yet
+  // Real legacy layouts omit later meter changes and any fields not yet
   // introduced in that version. Note data and supported metadata stay intact.
-  for (const int version : {1, 2, 3}) {
+  for (const int version : {1, 2, 3, 4}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
     while (std::getline(input, line)) {
-      if (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0 ||
+      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+          (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0)) ||
           (version < 3 && line.rfind("midi_", 0) == 0) ||
           (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
+      if (line.rfind("meter ", 0) == 0) {
+        line = "meter " + std::to_string(original.time_signature.numerator) + " " +
+               std::to_string(original.time_signature.denominator);
+      }
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }

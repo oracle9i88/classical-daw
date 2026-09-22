@@ -131,11 +131,14 @@ int main() {
     save(path, file(960, {diagnosed}));
     require(daw::readMidiFile(path.string(), &midi, &error, &report), error);
     require(report.ignored_meta_events == 1 && report.ignored_sysex_events == 1 &&
-            report.ignored_time_signature_events == 1 && report.overlapping_same_pitch_notes == 1 &&
+            report.ignored_time_signature_events == 0 && report.preserved_time_signature_events == 2 &&
+            report.coalesced_time_signature_events == 0 && report.overlapping_same_pitch_notes == 1 &&
             report.ignored_channel_events == 0 && report.rounded_note_boundaries == 0,
             "lost event classes or ambiguity missing from report");
     require(midi.tracks[0].notes[0].duration == 300 && midi.tracks[0].notes[1].duration == 100 &&
-            midi.time_signature.numerator == 4, "documented LIFO pairing or first meter changed");
+            midi.time_signature.numerator == 4 && midi.meter_changes.size() == 1 &&
+            midi.meter_changes[0].tick == 400 && midi.meter_changes[0].signature.numerator == 3,
+            "documented LIFO pairing or meter map changed");
     // Velocity-zero note-on means note-off in MIDI. Reject before touching an
     // existing destination, rather than writing a file our own reader rejects.
     const Bytes destination_bytes{'k','e','e','p'};

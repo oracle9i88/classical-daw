@@ -48,6 +48,9 @@ std::string reportJson(const daw::AudioBuffer& audio, const daw::MidiImportRepor
       << ",\n    \"ignored_meta_events\": " << imported.ignored_meta_events
       << ",\n    \"ignored_sysex_events\": " << imported.ignored_sysex_events
       << ",\n    \"ignored_time_signature_events\": " << imported.ignored_time_signature_events
+      << ",\n    \"preserved_time_signature_events\": " << imported.preserved_time_signature_events
+      << ",\n    \"rounded_time_signature_events\": " << imported.rounded_time_signature_events
+      << ",\n    \"coalesced_time_signature_events\": " << imported.coalesced_time_signature_events
       << ",\n    \"overlapping_same_pitch_notes\": " << imported.overlapping_same_pitch_notes
       << "\n  },\n  \"render_diagnostics\": {"
       << "\n    \"interpreted_channel_events\": " << rendered.interpreted_channel_events

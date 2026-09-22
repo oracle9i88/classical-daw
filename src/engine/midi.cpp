@@ -1,4 +1,5 @@
 #include "daw/midi.hpp"
+#include "daw/meter_map.hpp"
 
 #include "midi_order.hpp"
 
@@ -94,11 +95,6 @@ struct TimedEvent {
   std::uint64_t order = 0;
 };
 
-bool validTimeSignature(const TimeSignature& signature) {
-  if (signature.numerator == 0 || signature.denominator == 0) return false;
-  return (signature.denominator & static_cast<std::uint8_t>(signature.denominator - 1U)) == 0U;
-}
-
 std::uint8_t denominatorExponent(std::uint8_t denominator) {
   std::uint8_t exponent = 0;
   while (denominator > 1U) {
@@ -132,9 +128,7 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
     if (file.ticks_per_quarter != kTicksPerQuarter) {
       throw std::invalid_argument("Alpha MIDI support requires 960 ticks per quarter note");
     }
-    if (!validTimeSignature(file.time_signature)) {
-      throw std::invalid_argument("MIDI time signature must have a positive numerator and power-of-two denominator");
-    }
+    validateMeterMap(file.time_signature, file.meter_changes);
     const std::size_t track_count = std::max<std::size_t>(1, file.tracks.size());
     if (track_count > 0xffff) throw std::invalid_argument("too many MIDI tracks");
 
@@ -172,15 +166,14 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
           payload.push_back(static_cast<std::uint8_t>(micros & 0xff));
           timed_events.push_back({change.tick, -1, std::move(payload)});
         }
-        timed_events.push_back({0,
-                                -1,
-                                Bytes{0xff,
-                                      0x58,
-                                      0x04,
-                                      file.time_signature.numerator,
-                                      denominatorExponent(file.time_signature.denominator),
-                                      24,
-                                      8}});
+        const auto add_meter = [&](Tick tick, const TimeSignature& signature) {
+          timed_events.push_back({tick, -1,
+              Bytes{0xff, 0x58, 0x04, signature.numerator,
+                    denominatorExponent(signature.denominator), signature.clocks_per_click,
+                    signature.notated_32nds_per_quarter}});
+        };
+        add_meter(0, file.time_signature);
+        for (const auto& change : file.meter_changes) add_meter(change.tick, change.signature);
       }
       if (track != nullptr) {
         std::vector<MidiEvent> note_events;
@@ -294,7 +287,13 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
     parsed.format = static_cast<std::int16_t>(format);
     parsed.ticks_per_quarter = kTicksPerQuarter;
     parsed.tracks.reserve(track_count);
-    bool time_signature_seen = false;
+    // Only explicit messages enter this map. The implicit 4/4 at tick zero
+    // must neither count as a coalesced event nor backdate a later signature.
+    std::map<Tick, TimeSignature> explicit_meters;
+    // The writer emits one initial signature in addition to the bounded
+    // later map, so its largest valid output must remain readable.
+    constexpr std::uint64_t kMaxRawTimeSignatureEvents =
+        static_cast<std::uint64_t>(kMaxMeterChanges) + 1;
     for (std::uint16_t track_index = 0; track_index < track_count; ++track_index) {
       if (pos + 8 > data.size() || std::string(reinterpret_cast<const char*>(data.data() + pos), 4) != "MTrk") {
         throw std::runtime_error("missing MIDI track chunk");
@@ -352,17 +351,24 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
             if (length != 4) throw std::runtime_error("invalid MIDI time signature length");
             const std::uint8_t numerator = data[pos];
             const std::uint8_t exponent = data[pos + 1];
-            if (numerator == 0 || exponent > 7) {
+            if (numerator == 0 || exponent > 7 || data[pos + 3] == 0) {
               throw std::runtime_error("invalid MIDI time signature");
             }
-            if (time_signature_seen) {
-              ++diagnostics.ignored_time_signature_events;
-              pos += length;
-              continue;
+            // Bound input work before growing the canonical map, including
+            // duplicate messages that would otherwise bypass a map-size cap.
+            if (diagnostics.preserved_time_signature_events >= kMaxRawTimeSignatureEvents) {
+              throw std::runtime_error("MIDI file has too many time signature events");
             }
-            parsed.time_signature = {
-                numerator, static_cast<std::uint8_t>(static_cast<std::uint16_t>(1U) << exponent)};
-            time_signature_seen = true;
+            const Tick normalized = canonicalTick(tick, division, &diagnostics.rounded_time_signature_events);
+            const TimeSignature signature{
+                numerator, static_cast<std::uint8_t>(static_cast<std::uint16_t>(1U) << exponent),
+                data[pos + 2], data[pos + 3]};
+            const auto inserted = explicit_meters.emplace(normalized, signature);
+            if (!inserted.second) {
+              inserted.first->second = signature;
+              ++diagnostics.coalesced_time_signature_events;
+            }
+            ++diagnostics.preserved_time_signature_events;
           } else {
             ++diagnostics.ignored_meta_events;
           }
@@ -434,6 +440,12 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
       pos = track_end;
     }
     if (pos != data.size()) throw std::runtime_error("trailing data after MIDI tracks");
+    parsed.meter_changes.reserve(explicit_meters.size());
+    for (const auto& entry : explicit_meters) {
+      if (entry.first == 0) parsed.time_signature = entry.second;
+      else parsed.meter_changes.push_back({entry.first, entry.second});
+    }
+    validateMeterMap(parsed.time_signature, parsed.meter_changes);
     *file = std::move(parsed);
     if (report != nullptr) *report = diagnostics;
     if (error != nullptr) error->clear();

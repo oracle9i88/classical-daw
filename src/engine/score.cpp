@@ -1,4 +1,5 @@
 #include "daw/score.hpp"
+#include "daw/meter_map.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -314,11 +315,16 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
     if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
     (void)scoreTempoMap(score);
+    validateMeterMap(score.time_signature, score.meter_changes);
+    if (!score.meter_changes.empty() || score.time_signature.notated_32nds_per_quarter != 8) {
+      throw std::invalid_argument("MusicXML export does not yet support meter changes or nonstandard notation ratios; use MIDI or native project export");
+    }
     (void)measureLength(score.time_signature);
 
     std::map<std::string, bool> part_ids;
     MusicXmlExportReport omissions;
     omissions.omitted_tempo_changes = score.tempo_changes.size();
+    omissions.omitted_meter_playback_metadata = score.time_signature.clocks_per_click != 24 ? 1 : 0;
     for (const ScorePart& part : score.parts) {
       if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
       if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");

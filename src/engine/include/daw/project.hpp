@@ -19,9 +19,12 @@ enum class ProjectLoadSource {
 };
 
 // Persist the editable score state in the versioned line-oriented
-// CLASSICAL_DAW_PROJECT format. Version 4 stores up to one million later
-// tempo changes after the authoritative tick-zero BPM. Versions 1/2/3 remain
-// readable with no later changes. Version 3 added note MIDI channel, source
+// CLASSICAL_DAW_PROJECT format. Version 5 stores all four MIDI meter fields
+// and up to one million later meter changes. Versions 1..4 default the extra
+// meter fields to 24 clocks per click and 8 notated 32nds per quarter, with
+// no later meter changes. Version 4 added up to one million later tempo
+// changes after the authoritative tick-zero BPM. Versions 1/2/3 remain
+// readable with no later tempos. Version 3 added note MIDI channel, source
 // on/off order, release velocity, and per-part channel events; version 2 added
 // hex-encoded lyrics. Earlier versions supply defaults for missing metadata.
 // Every field and section is ordered and validated, without

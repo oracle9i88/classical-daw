@@ -1,4 +1,5 @@
 #include "daw/score_midi.hpp"
+#include "daw/meter_map.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,11 +25,6 @@ int pitchClass(char step) {
     case 'B': return 11;
     default: throw std::invalid_argument("score pitch step is out of range");
   }
-}
-
-bool validTimeSignature(const TimeSignature& signature) {
-  if (signature.numerator == 0 || signature.denominator == 0) return false;
-  return (signature.denominator & static_cast<std::uint8_t>(signature.denominator - 1U)) == 0U;
 }
 
 std::uint8_t toMidiPitch(const ScorePitch& pitch) {
@@ -99,14 +95,13 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     if (!std::isfinite(score.bpm) || score.bpm <= 0.0) {
       throw std::invalid_argument("score tempo must be finite and positive");
     }
-    if (!validTimeSignature(score.time_signature)) {
-      throw std::invalid_argument("score time signature must have a positive numerator and power-of-two denominator");
-    }
+    validateMeterMap(score.time_signature, score.meter_changes);
 
     MidiFile converted;
     converted.format = 1;
     converted.ticks_per_quarter = kTicksPerQuarter;
     converted.time_signature = score.time_signature;
+    converted.meter_changes = score.meter_changes;
     converted.tempo = scoreTempoMap(score);
     converted.tracks.reserve(score.parts.size());
     bool has_playback_content = false;
@@ -250,19 +245,14 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
     if (midi.ticks_per_quarter != kTicksPerQuarter) {
       throw std::invalid_argument("MIDI import requires 960 ticks per quarter note");
     }
-    if (!validTimeSignature(midi.time_signature)) {
-      throw std::invalid_argument("MIDI time signature must have a positive numerator and power-of-two denominator");
-    }
+    validateMeterMap(midi.time_signature, midi.meter_changes);
     if (midi.tracks.empty()) {
       throw std::invalid_argument("MIDI import requires at least one non-empty track");
     }
-    const Tick measure_ticks = static_cast<Tick>(midi.time_signature.numerator) *
-                               kTicksPerQuarter * 4 / midi.time_signature.denominator;
-    if (measure_ticks <= 0) throw std::invalid_argument("MIDI time signature produces an empty measure");
-
     Score converted;
     converted.divisions = kTicksPerQuarter;
     converted.time_signature = midi.time_signature;
+    converted.meter_changes = midi.meter_changes;
     const auto& tempos = midi.tempo.changes();
     if (tempos.empty() || tempos.front().tick != 0 || tempos.size() - 1 > kMaxScoreTempoChanges) {
       throw std::invalid_argument("MIDI import requires an initial tempo and a bounded tempo map");
@@ -333,16 +323,11 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         }
         previous_ends[key] = note.start + note.duration;
       }
-      const Tick measure_count_tick = max_end / measure_ticks;
-      const Tick measure_count_remainder = max_end % measure_ticks;
       // Channel events do not require notated bars. An event-only track gets
       // one editable measure even if its final controller is very late.
-      const Tick measure_count_with_remainder =
-          std::max<Tick>(1, measure_count_tick + (measure_count_remainder == 0 ? 0 : 1));
-      if (static_cast<std::uint64_t>(measure_count_with_remainder) > kMaximumImportedMeasures) {
-        throw std::invalid_argument("MIDI import requires a bounded measure count");
-      }
-      const std::size_t measure_count = static_cast<std::size_t>(measure_count_with_remainder);
+      const auto grid = makeMeasureGrid(midi.time_signature, midi.meter_changes,
+                                        max_end, kMaximumImportedMeasures);
+      const std::size_t measure_count = grid.size();
 
       ScorePart part;
       const std::size_t part_index = converted.parts.size();
@@ -352,23 +337,23 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       part.measures.resize(measure_count);
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
         part.measures[measure_index].number = static_cast<int>(measure_index + 1);
-        part.measures[measure_index].start =
-            static_cast<Tick>(measure_index) * measure_ticks;
+        part.measures[measure_index].start = grid[measure_index].start;
       }
       std::size_t segment_count = 0;
       for (const ScoreNote& note : notes) {
         const Tick note_end = note.start + note.duration;
         Tick segment_start = note.start;
+        const auto containing = std::upper_bound(grid.begin(), grid.end(), segment_start,
+            [](Tick tick, const MeasureSpan& span) { return tick < span.start; });
+        std::size_t measure_index = static_cast<std::size_t>(containing - grid.begin() - 1);
         while (segment_start < note_end) {
-          const Tick measure_index_tick = segment_start / measure_ticks;
-          if (measure_index_tick < 0 ||
-              static_cast<std::uint64_t>(measure_index_tick) >= measure_count) {
+          if (measure_index >= measure_count) {
             throw std::invalid_argument("MIDI note cannot be assigned to a score measure");
           }
           if (segment_count >= kMaximumImportedNoteSegments) {
             throw std::invalid_argument("MIDI import requires a bounded note segment count");
           }
-          const Tick until_barline = measure_ticks - segment_start % measure_ticks;
+          const Tick until_barline = grid[measure_index].end - segment_start;
           const Tick segment_duration = std::min(note_end - segment_start, until_barline);
           ScoreNote segment = note;
           segment.start = segment_start;
@@ -380,8 +365,9 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
             segment.midi_off_order = 0;
             segment.midi_release_velocity = 0;
           }
-          part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(segment));
+          part.measures[measure_index].notes.push_back(std::move(segment));
           segment_start += segment_duration;
+          ++measure_index;
           ++segment_count;
         }
       }

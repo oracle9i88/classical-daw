@@ -31,10 +31,25 @@ int main(int argc, char** argv) {
             << ",\n  \"ignored_meta_events\": " << report.ignored_meta_events
             << ",\n  \"ignored_sysex_events\": " << report.ignored_sysex_events
             << ",\n  \"ignored_time_signature_events\": " << report.ignored_time_signature_events
+            << ",\n  \"preserved_time_signature_events\": " << report.preserved_time_signature_events
+            << ",\n  \"rounded_time_signature_events\": " << report.rounded_time_signature_events
+            << ",\n  \"coalesced_time_signature_events\": " << report.coalesced_time_signature_events
             << ",\n  \"overlapping_same_pitch_notes\": " << report.overlapping_same_pitch_notes
             << ",\n  \"meter\": [" << static_cast<int>(midi.time_signature.numerator)
             << ", " << static_cast<int>(midi.time_signature.denominator) << "]"
-            << ",\n  \"tempo_changes\": [";
+            << ",\n  \"meter_changes\": [";
+  const auto printMeter = [](daw::Tick tick, const daw::TimeSignature& meter) {
+    std::cout << '[' << tick << ", " << static_cast<int>(meter.numerator)
+              << ", " << static_cast<int>(meter.denominator)
+              << ", " << static_cast<int>(meter.clocks_per_click)
+              << ", " << static_cast<int>(meter.notated_32nds_per_quarter) << ']';
+  };
+  printMeter(0, midi.time_signature);
+  for (const auto& change : midi.meter_changes) {
+    std::cout << ", ";
+    printMeter(change.tick, change.signature);
+  }
+  std::cout << "],\n  \"tempo_changes\": [";
   bool first = true;
   for (const auto& change : midi.tempo.changes()) {
     if (!first) std::cout << ", ";

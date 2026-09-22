@@ -36,6 +36,9 @@ struct MidiFile {
   TimeSignature time_signature{};
   TempoMap tempo;
   std::vector<MidiTrack> tracks;
+  // time_signature applies at tick zero; later entries use positive,
+  // strictly increasing absolute 960-PPQ ticks. Default is 4/4, 24, 8.
+  std::vector<TimeSignatureChange> meter_changes{};
 };
 
 // Boundary diagnostics are separate from project state. On a successful read,
@@ -54,15 +57,21 @@ struct MidiImportReport {
   // Same channel/pitch overlaps have no note identity in SMF. The reader uses
   // its existing last-on/first-off pairing; report every ambiguous note-on.
   std::uint64_t overlapping_same_pitch_notes = 0;
+  // Explicit source FF 58 messages, including ones coalesced at the same
+  // normalized tick. The initial default does not count as an explicit event.
+  std::uint64_t preserved_time_signature_events = 0;
+  std::uint64_t rounded_time_signature_events = 0;
+  std::uint64_t coalesced_time_signature_events = 0;
 };
 
 // A deliberately small Standard MIDI File (SMF) Type 0/1 reader and writer.
 // It covers note/release events, all channel voice messages, track names,
-// tempo events, and the first time signature event. Unknown meta and SysEx events are skipped; unsupported
-// system-common events are rejected so malformed timing data is not hidden.
+// tempo events, and all four bytes of time signature events. Unknown meta and
+// SysEx events are skipped; unsupported system-common events are rejected so
+// malformed timing data is not hidden.
 // Input accepts positive PPQ divisions (1..32767), normalizing absolute note
-// starts/ends and tempo/channel positions to 960 PPQ with nearest-tick rounding (half
-// up). No delta rounding is accumulated. Notes that collapse to zero duration
+// starts/ends and tempo/channel/meter positions to 960 PPQ with nearest-tick
+// rounding (half up). No delta rounding is accumulated. Notes that collapse to zero duration
 // after normalization fail explicitly. SMPTE and Type 2 remain unsupported.
 // The writer and in-memory engine model continue to require 960 PPQ.
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error = nullptr);

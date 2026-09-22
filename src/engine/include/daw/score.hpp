@@ -68,6 +68,9 @@ struct Score {
   // Empty preserves the legacy constant-tempo behavior. Values are steps,
   // not continuous ramps; changing bpm does not scale the later tempos.
   std::vector<TempoChange> tempo_changes{};
+  // Initial time_signature is authoritative at zero. Later changes retain
+  // all four SMF meter values at strictly increasing positive tick positions.
+  std::vector<TimeSignatureChange> meter_changes{};
 };
 
 inline constexpr std::size_t kMaxScoreTempoChanges = 1'000'000;
@@ -88,8 +91,12 @@ struct MusicXmlExportReport {
   std::uint64_t omitted_midi_events = 0;
   std::uint64_t omitted_note_midi_metadata = 0;
   // The current MusicXML slice writes only the initial tempo. Native project
-  // v4 and SMF retain all tempo changes; this counter makes XML loss visible.
+  // v4+ and SMF retain all tempo changes; this counter makes XML loss visible.
   std::uint64_t omitted_tempo_changes = 0;
+  // Nondefault initial MIDI metronome-click metadata has no representation
+  // in this XML slice. Later meter maps/nonstandard notation ratios fail
+  // export instead of producing a differently aligned score.
+  std::uint64_t omitted_meter_playback_metadata = 0;
 };
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr,
                        MusicXmlExportReport* report = nullptr);
