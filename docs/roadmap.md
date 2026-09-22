@@ -34,9 +34,13 @@ not count as completion.
   still pending.
 - Add a versioned score project file with strict validation, atomic replacement,
   and round-trip tests under normal and sanitizer builds.
+- Add crash-recovery sidecar writing and primary → recovery → temporary loading
+  with failure-preserving tests.
 - Add a bounded control-thread ScoreHistory with undo/redo, redo-branch
   invalidation, capacity enforcement, and failure-preserving tests. The history
   is currently in memory and explicitly outside the realtime callback.
+- Publish transport snapshots atomically so UI reads cannot race the audio
+  callback's block state.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
@@ -55,9 +59,9 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
 and exact tick accounting. Extend the current versioned score file with
-autosave, recovery, and persisted snapshots for the existing undo history. The
-first user-facing vertical slice is MusicXML import → timeline edit →
-deterministic WAV export.
+scheduled autosave and persisted snapshots for the existing undo history around
+the recovery sidecar. The first user-facing vertical slice is MusicXML import →
+timeline edit → deterministic WAV export.
 
 ### M2: production workflow
 

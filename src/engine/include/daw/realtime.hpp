@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 namespace daw {
@@ -205,6 +206,8 @@ class BlockScheduler {
  public:
   static constexpr std::size_t kCommandCapacity = 256;
 
+  BlockScheduler() noexcept { publishSnapshot(); }
+
   bool enqueue(const TransportCommand& command) noexcept { return commands_.push(command); }
   void recordXrun() noexcept { xrun_count_.fetch_add(1, std::memory_order_relaxed); }
 
@@ -217,12 +220,48 @@ class BlockScheduler {
       state_.sample_position += static_cast<SampleIndex>(frame_count);
     }
     state_.xrun_count = xrun_count_.load(std::memory_order_relaxed);
+    publishSnapshot();
   }
 
-  [[nodiscard]] TransportSnapshot snapshot() const noexcept { return state_; }
+  // The audio thread owns state_. Readers use a sequence-published copy so
+  // snapshot() never races with processBlock() and never touches a mutex.
+  [[nodiscard]] TransportSnapshot snapshot() const noexcept {
+    for (;;) {
+      const std::uint64_t before = snapshot_sequence_.load(std::memory_order_acquire);
+      if ((before & 1U) != 0U) continue;
+      TransportSnapshot result;
+      result.sample_position = snapshot_sample_position_.load(std::memory_order_relaxed);
+      result.bpm = bitsToDouble(snapshot_bpm_bits_.load(std::memory_order_relaxed));
+      result.running = snapshot_running_.load(std::memory_order_relaxed);
+      result.xrun_count = snapshot_xrun_count_.load(std::memory_order_relaxed);
+      const std::uint64_t after = snapshot_sequence_.load(std::memory_order_acquire);
+      if (before == after) return result;
+    }
+  }
   [[nodiscard]] std::size_t queuedCommandCount() const noexcept { return commands_.approximateSize(); }
 
  private:
+  static std::uint64_t doubleToBits(double value) noexcept {
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+  }
+
+  static double bitsToDouble(std::uint64_t bits) noexcept {
+    double value = 0.0;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+  }
+
+  void publishSnapshot() noexcept {
+    snapshot_sequence_.fetch_add(1U, std::memory_order_release);
+    snapshot_sample_position_.store(state_.sample_position, std::memory_order_relaxed);
+    snapshot_bpm_bits_.store(doubleToBits(state_.bpm), std::memory_order_relaxed);
+    snapshot_running_.store(state_.running, std::memory_order_relaxed);
+    snapshot_xrun_count_.store(state_.xrun_count, std::memory_order_relaxed);
+    snapshot_sequence_.fetch_add(1U, std::memory_order_release);
+  }
+
   void apply(const TransportCommand& command) noexcept {
     switch (command.type) {
       case TransportCommandType::Start:
@@ -243,6 +282,11 @@ class BlockScheduler {
   SpscRing<TransportCommand, kCommandCapacity> commands_;
   TransportSnapshot state_;
   std::atomic<std::uint64_t> xrun_count_{0};
+  std::atomic<std::uint64_t> snapshot_sequence_{0};
+  std::atomic<SampleIndex> snapshot_sample_position_{0};
+  std::atomic<std::uint64_t> snapshot_bpm_bits_{0};
+  std::atomic<bool> snapshot_running_{false};
+  std::atomic<std::uint64_t> snapshot_xrun_count_{0};
 };
 
 }  // namespace daw

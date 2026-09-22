@@ -16,9 +16,9 @@ struct CoreAudioOutputConfig {
   std::uint32_t channels = 2;
 };
 
-// Minimal macOS host for the platform-neutral BlockScheduler. The current
-// callback emits silence by design; instrument/mixer rendering will be plugged
-// in after the device lifecycle is stable.
+// Minimal macOS host for the platform-neutral BlockScheduler. The callback
+// uses a prepared diagnostic renderer and clears/counts malformed output
+// buffers; device enumeration and reconnect remain future work.
 class CoreAudioOutput {
  public:
   explicit CoreAudioOutput(CoreAudioOutputConfig config = {});

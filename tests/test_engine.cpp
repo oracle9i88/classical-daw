@@ -429,6 +429,11 @@ int main() {
   }
 
   BlockScheduler scheduler;
+  const TransportSnapshot initial_transport = scheduler.snapshot();
+  if (initial_transport.running || initial_transport.sample_position != 0 ||
+      !closeEnough(initial_transport.bpm, 120.0) || initial_transport.xrun_count != 0) {
+    return fail("initial transport snapshot");
+  }
   if (!scheduler.enqueue({TransportCommandType::SeekSamples, 100, 120.0}) ||
       !scheduler.enqueue({TransportCommandType::SetTempo, 0, 90.0}) ||
       !scheduler.enqueue({TransportCommandType::Start, 0, 0.0})) {

@@ -33,7 +33,10 @@ and plugin state.
 state. It owns bounded copies, retains the initial state, clears the redo
 branch after a successful commit, and leaves the history unchanged on a failed
 operation. It must never be called from the realtime callback; persisted
-undo/autosave snapshots remain a later project-package concern.
+undo/autosave snapshots remain a later project-package concern. The project
+loader now checks the primary file, a `.recovery` sidecar, and an interrupted
+`.tmp` candidate in that order, while recovery writes use the same atomic
+replacement boundary and never run from realtime code.
 
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
 ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords,
@@ -63,8 +66,10 @@ and never run in the realtime callback.
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks
 call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
-`SeekSamples`, and `SetTempo` commands. The macOS adapter owns the default
-output lifecycle; device enumeration and reconnect remain future work.
+`SeekSamples`, and `SetTempo` commands. A sequence-published atomic snapshot
+keeps UI reads from racing the audio-owned transport state. The macOS adapter
+owns the default output lifecycle; device enumeration and reconnect remain
+future work.
 
 ## Delivery slices
 

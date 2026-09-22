@@ -35,13 +35,16 @@ validating score timing and audio rendering before platform integration.
   a fixed polyphonic sine diagnostic voice.
 - A versioned, line-oriented project file format with strict validation and
   atomic replacement, preserving the current score model for save/reload.
+- A crash-recovery sidecar writer and loader that tries the primary project,
+  `.recovery`, then interrupted `.tmp` data without overwriting the primary
+  file or mutating the output on total failure.
 - A bounded UI/control-thread `ScoreHistory` with undo/redo, redo-branch
   invalidation, and failure-preserving operations. It is an in-memory edit
   history; it is not used by the realtime callback and is not persisted yet.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI↔Score/MusicXML round-trips,
-  Score-to-MIDI export, project persistence, bounded edit history, realtime
-  primitives, and render smoke tests.
+  Score-to-MIDI export, project persistence/recovery, bounded edit history,
+  realtime primitives, and render smoke tests.
 
 The renderer is a diagnostic instrument, not an orchestral sampler. The
 MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
@@ -53,8 +56,8 @@ not yet carry meter maps, lyrics, or instrument programs. MIDI import uses
 canonical sharp pitch spellings and preserves one meter event; key-aware
 enharmonic spelling, meter changes, and program metadata remain future fields.
 There is no production instrument library, score engraving, automation, mixer,
-plugin hosting, autosave/recovery workflow, persisted undo history, or multi-part
-project package yet.
+plugin hosting, scheduled autosave, persisted undo history, or multi-part project
+package yet.
 
 ## Build and test
 
@@ -67,8 +70,8 @@ ctest --test-dir build --output-on-failure
 ## Planned macOS slices
 
 1. Add CoreMIDI input/output and timestamped event scheduling.
-2. Add autosave/recovery and persistence for the in-memory undo history around
-   the versioned project file format.
+2. Add scheduled autosave and persistence for the in-memory undo history around
+   the versioned project file and recovery sidecar.
 3. Add bar/beat and time-signature maps plus a piano roll/score UI (SwiftUI or
    Qt front end over the C++ engine).
 4. Replace the diagnostic oscillator with instrument voices, mixer buses,
