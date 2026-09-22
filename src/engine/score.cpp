@@ -240,72 +240,81 @@ void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, st
 
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error) {
   try {
-    if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain one part");
-    if (score.parts.size() != 1) throw std::invalid_argument("Alpha MusicXML supports one part");
+    if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
     if (!std::isfinite(score.bpm) || score.bpm <= 0.0) throw std::invalid_argument("score tempo must be finite and positive");
     (void)measureLength(score.time_signature);
 
-    const ScorePart& part = score.parts.front();
-    if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
-    if (part.measures.empty()) throw std::invalid_argument("MusicXML part must contain a measure");
+    std::map<std::string, bool> part_ids;
+    for (const ScorePart& part : score.parts) {
+      if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
+      if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");
+      if (part.measures.empty()) throw std::invalid_argument("MusicXML part must contain a measure");
+    }
     std::ostringstream output;
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
            << "<score-partwise version=\"4.0\">\n"
-           << "  <part-list><score-part id=\"" << escape(part.id) << "\"><part-name>" << escape(part.name)
-           << "</part-name></score-part></part-list>\n"
-           << "  <part id=\"" << escape(part.id) << "\">\n";
-    for (std::size_t measure_index = 0; measure_index < part.measures.size(); ++measure_index) {
-      const ScoreMeasure& measure = part.measures[measure_index];
-      if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
-      output << "    <measure number=\"" << measure.number << "\">\n";
-      if (measure_index == 0) {
-        output << "      <attributes><divisions>" << score.divisions << "</divisions><time><beats>"
-               << static_cast<int>(score.time_signature.numerator) << "</beats><beat-type>"
-               << static_cast<int>(score.time_signature.denominator) << "</beat-type></time></attributes>\n"
-               << "      <direction><sound tempo=\"" << score.bpm << "\"/></direction>\n";
-      }
-      using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
-      std::map<VoiceKey, std::vector<ScoreNote>> streams;
-      for (const ScoreNote& note : measure.notes) streams[{note.staff, note.voice}].push_back(note);
-      Tick stream_cursor = measure.start;
-      bool first_stream = true;
-      for (auto& stream : streams) {
-        const VoiceKey key = stream.first;
-        if (key.first == 0 || key.second == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
-        if (!first_stream && stream_cursor > measure.start) {
-          output << "      <backup><duration>" << (stream_cursor - measure.start) << "</duration></backup>\n";
-        }
-        first_stream = false;
-        std::vector<ScoreNote>& notes = stream.second;
-        std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
-          return left.start < right.start;
-        });
-        Tick cursor = measure.start;
-        Tick last_start = std::numeric_limits<Tick>::min();
-        for (const ScoreNote& note : notes) {
-        if (note.duration <= 0 || note.start < measure.start) throw std::invalid_argument("invalid score note timing");
-        if (note.start > std::numeric_limits<Tick>::max() - note.duration) {
-          throw std::invalid_argument("score note timing overflows tick range");
-        }
-        if (!note.rest) {
-          (void)validStep(std::string(1, note.pitch.step));
-          if (note.pitch.octave < 0 || note.pitch.octave > 9) throw std::invalid_argument("score pitch octave is out of range");
-        }
-          const bool is_chord = note.start == last_start;
-          if (!is_chord && note.start < cursor) throw std::invalid_argument("overlapping notes need chord=true timing");
-          if (!is_chord && note.start > cursor) {
-            output << "      <forward><duration>" << (note.start - cursor) << "</duration></forward>\n";
-          }
-          writeNote(output, note, is_chord, key.second, key.first);
-          if (!is_chord) cursor = note.start + note.duration;
-          last_start = note.start;
-        }
-        stream_cursor = cursor;
-      }
-      output << "    </measure>\n";
+           << "  <part-list>\n";
+    for (const ScorePart& part : score.parts) {
+      output << "    <score-part id=\"" << escape(part.id) << "\"><part-name>" << escape(part.name)
+             << "</part-name></score-part>\n";
     }
-    output << "  </part>\n</score-partwise>\n";
+    output << "  </part-list>\n";
+    for (const ScorePart& part : score.parts) {
+      output << "  <part id=\"" << escape(part.id) << "\">\n";
+      for (std::size_t measure_index = 0; measure_index < part.measures.size(); ++measure_index) {
+        const ScoreMeasure& measure = part.measures[measure_index];
+        if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
+        output << "    <measure number=\"" << measure.number << "\">\n";
+        if (measure_index == 0) {
+          output << "      <attributes><divisions>" << score.divisions << "</divisions><time><beats>"
+                 << static_cast<int>(score.time_signature.numerator) << "</beats><beat-type>"
+                 << static_cast<int>(score.time_signature.denominator) << "</beat-type></time></attributes>\n"
+                 << "      <direction><sound tempo=\"" << score.bpm << "\"/></direction>\n";
+        }
+        using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
+        std::map<VoiceKey, std::vector<ScoreNote>> streams;
+        for (const ScoreNote& note : measure.notes) streams[{note.staff, note.voice}].push_back(note);
+        Tick stream_cursor = measure.start;
+        bool first_stream = true;
+        for (auto& stream : streams) {
+          const VoiceKey key = stream.first;
+          if (key.first == 0 || key.second == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
+          if (!first_stream && stream_cursor > measure.start) {
+            output << "      <backup><duration>" << (stream_cursor - measure.start) << "</duration></backup>\n";
+          }
+          first_stream = false;
+          std::vector<ScoreNote>& notes = stream.second;
+          std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
+            return left.start < right.start;
+          });
+          Tick cursor = measure.start;
+          Tick last_start = std::numeric_limits<Tick>::min();
+          for (const ScoreNote& note : notes) {
+            if (note.duration <= 0 || note.start < measure.start) throw std::invalid_argument("invalid score note timing");
+            if (note.start > std::numeric_limits<Tick>::max() - note.duration) {
+              throw std::invalid_argument("score note timing overflows tick range");
+            }
+            if (!note.rest) {
+              (void)validStep(std::string(1, note.pitch.step));
+              if (note.pitch.octave < 0 || note.pitch.octave > 9) throw std::invalid_argument("score pitch octave is out of range");
+            }
+            const bool is_chord = note.start == last_start;
+            if (!is_chord && note.start < cursor) throw std::invalid_argument("overlapping notes need chord=true timing");
+            if (!is_chord && note.start > cursor) {
+              output << "      <forward><duration>" << (note.start - cursor) << "</duration></forward>\n";
+            }
+            writeNote(output, note, is_chord, key.second, key.first);
+            if (!is_chord) cursor = note.start + note.duration;
+            last_start = note.start;
+          }
+          stream_cursor = cursor;
+        }
+        output << "    </measure>\n";
+      }
+      output << "  </part>\n";
+    }
+    output << "</score-partwise>\n";
 
     std::ofstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("cannot open MusicXML output file");
@@ -365,52 +374,81 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
 
     Score parsed;
     const auto part_list = findBlocks(xml, "part-list", 0, xml.size());
-    if (part_list.empty()) throw std::runtime_error("MusicXML is missing part-list");
+    if (part_list.size() != 1) throw std::runtime_error("MusicXML requires exactly one part-list");
     const auto score_parts = findBlocks(xml, "score-part", part_list.front().content_start, part_list.front().content_end);
-    if (score_parts.size() != 1) throw std::runtime_error("Alpha MusicXML requires one score-part entry");
-    const std::string part_list_id = attribute(score_parts.front().opening, "id");
-    const std::string part_name = textIn(xml, "part-name", score_parts.front().content_start, score_parts.front().content_end, true);
-    const auto parts = findBlocks(xml, "part", 0, xml.size());
-    if (parts.size() != 1) throw std::runtime_error("Alpha MusicXML reader requires exactly one part");
-    ScorePart parsed_part;
-    parsed_part.id = attribute(parts.front().opening, "id");
-    parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
-    if (parsed_part.id.empty() || part_list_id.empty() || parsed_part.id != part_list_id) {
-      throw std::runtime_error("MusicXML part id does not match part-list");
+    if (score_parts.empty()) throw std::runtime_error("MusicXML part-list has no score-part entries");
+    std::map<std::string, std::string> part_names;
+    for (const XmlBlock& score_part : score_parts) {
+      const std::string id = attribute(score_part.opening, "id");
+      if (id.empty()) throw std::runtime_error("MusicXML score-part id cannot be empty");
+      if (!part_names.emplace(id, textIn(xml, "part-name", score_part.content_start, score_part.content_end, true)).second) {
+        throw std::runtime_error("MusicXML score-part ids must be unique");
+      }
     }
+    const auto parts = findBlocks(xml, "part", 0, xml.size());
+    if (parts.empty()) throw std::runtime_error("MusicXML has no part elements");
+    if (parts.size() != part_names.size()) throw std::runtime_error("MusicXML part and part-list counts differ");
+    bool have_divisions = false;
+    bool have_meter = false;
+    bool have_tempo = false;
 
-    Tick measure_start = 0;
-    const auto measures = findBlocks(xml, "measure", parts.front().content_start, parts.front().content_end);
-    if (measures.empty()) throw std::runtime_error("MusicXML part has no measures");
-    for (const XmlBlock& measure_block : measures) {
+    auto parse_part = [&](const XmlBlock& part_block, const std::string& part_name) -> ScorePart {
+      ScorePart parsed_part;
+      parsed_part.id = attribute(part_block.opening, "id");
+      parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
+      Tick measure_start = 0;
+      const auto measures = findBlocks(xml, "measure", part_block.content_start, part_block.content_end);
+      if (measures.empty()) throw std::runtime_error("MusicXML part has no measures");
+      for (const XmlBlock& measure_block : measures) {
       ScoreMeasure measure;
       const std::string number = attribute(measure_block.opening, "number");
       measure.number = number.empty() ? static_cast<int>(parsed_part.measures.size() + 1) : static_cast<int>(integerText(number, "measure number"));
       measure.start = measure_start;
       const auto attributes = findBlocks(xml, "attributes", measure_block.content_start, measure_block.content_end);
-      if (!attributes.empty()) {
-        const std::string divisions = textIn(xml, "divisions", attributes.front().content_start, attributes.front().content_end);
-        if (!divisions.empty() && integerText(divisions, "divisions") != kTicksPerQuarter) {
-          throw std::runtime_error("MusicXML divisions must be 960 in Alpha");
+      for (const XmlBlock& attribute_block : attributes) {
+        const std::string divisions = textIn(xml, "divisions", attribute_block.content_start, attribute_block.content_end);
+        if (!divisions.empty()) {
+          if (integerText(divisions, "divisions") != kTicksPerQuarter) throw std::runtime_error("MusicXML divisions must be 960 in Alpha");
+          if (have_divisions && parsed.divisions != kTicksPerQuarter) throw std::runtime_error("conflicting MusicXML divisions");
+          have_divisions = true;
+          parsed.divisions = kTicksPerQuarter;
         }
-        const auto times = findBlocks(xml, "time", attributes.front().content_start, attributes.front().content_end);
-        if (!times.empty()) {
-          const auto beats = integerText(textIn(xml, "beats", times.front().content_start, times.front().content_end, true), "beats");
-          const auto beat_type = integerText(textIn(xml, "beat-type", times.front().content_start, times.front().content_end, true), "beat-type");
+        const auto times = findBlocks(xml, "time", attribute_block.content_start, attribute_block.content_end);
+        for (const XmlBlock& time : times) {
+          const auto beats = integerText(textIn(xml, "beats", time.content_start, time.content_end, true), "beats");
+          const auto beat_type = integerText(textIn(xml, "beat-type", time.content_start, time.content_end, true), "beat-type");
           if (beats < 1 || beats > 255 || beat_type < 1 || beat_type > 255) throw std::runtime_error("invalid MusicXML time signature");
-          parsed.time_signature = {static_cast<std::uint8_t>(beats), static_cast<std::uint8_t>(beat_type)};
+          const TimeSignature meter{static_cast<std::uint8_t>(beats), static_cast<std::uint8_t>(beat_type)};
+          if (have_meter && (parsed.time_signature.numerator != meter.numerator || parsed.time_signature.denominator != meter.denominator)) {
+            throw std::runtime_error("conflicting MusicXML time signatures");
+          }
+          have_meter = true;
+          parsed.time_signature = meter;
         }
       }
       const auto directions = findBlocks(xml, "direction", measure_block.content_start, measure_block.content_end);
       for (const XmlBlock& direction : directions) {
-        const std::size_t sound_start = xml.find("<sound", direction.content_start);
-        if (sound_start != std::string::npos && sound_start < direction.content_end) {
+        std::size_t sound_search = direction.content_start;
+        while (true) {
+          const std::size_t sound_start = xml.find("<sound", sound_search);
+          if (sound_start == std::string::npos || sound_start >= direction.content_end) break;
+          if (sound_start + 6 >= direction.content_end || !tagBoundary(xml[sound_start + 6])) {
+            sound_search = sound_start + 6;
+            continue;
+          }
           const std::size_t sound_end = xml.find('>', sound_start);
           if (sound_end == std::string::npos || sound_end >= direction.content_end) {
             throw std::runtime_error("truncated MusicXML sound element");
           }
           const std::string tempo = attribute(xml.substr(sound_start, sound_end - sound_start + 1), "tempo");
-          if (!tempo.empty()) parsed.bpm = realText(tempo, "tempo");
+          if (!tempo.empty()) {
+            const double bpm = realText(tempo, "tempo");
+            if (bpm <= 0.0) throw std::runtime_error("MusicXML tempo must be positive");
+            if (have_tempo && std::abs(parsed.bpm - bpm) > 1e-9) throw std::runtime_error("conflicting MusicXML tempos");
+            have_tempo = true;
+            parsed.bpm = bpm;
+          }
+          sound_search = sound_end + 1;
         }
       }
 
@@ -511,8 +549,20 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         throw std::runtime_error("MusicXML measure timing overflow");
       }
       measure_start += measure_span;
+      }
+      return parsed_part;
+    };
+
+    std::map<std::string, bool> seen_parts;
+    for (const XmlBlock& part_block : parts) {
+      const std::string id = attribute(part_block.opening, "id");
+      if (id.empty()) throw std::runtime_error("MusicXML part id cannot be empty");
+      const auto name = part_names.find(id);
+      if (name == part_names.end()) throw std::runtime_error("MusicXML part id is missing from part-list");
+      if (!seen_parts.emplace(id, true).second) throw std::runtime_error("MusicXML part ids must be unique");
+      parsed.parts.push_back(parse_part(part_block, name->second));
     }
-    parsed.parts.push_back(std::move(parsed_part));
+    if (seen_parts.size() != part_names.size()) throw std::runtime_error("MusicXML part-list contains an unreferenced score-part");
     *score = std::move(parsed);
     return true;
   } catch (const std::exception& exception) {

@@ -203,6 +203,30 @@ int main() {
   }
   if (!found_tuplet) return fail("multi-voice and tuplet MusicXML round-trip");
 
+  const auto multi_part_musicxml_path = temp / "classical_daw_multi_part.musicxml";
+  Score multi_part_score = multi_voice_score;
+  multi_part_score.parts.push_back(ScorePart{"P2", "Cello", {
+      ScoreMeasure{1, 0, {
+          ScoreNote{0, 1920, ScorePitch{'C', 0, 3}, false, false, false, false, 82},
+      }},
+  }});
+  multi_part_score.parts[1].measures[0].notes[0].lyric = "bass";
+  if (!writeMusicXmlFile(multi_part_score, multi_part_musicxml_path.string(), &error)) {
+    return fail("multi-part MusicXML write: " + error);
+  }
+  if (!readMusicXmlFile(multi_part_musicxml_path.string(), &parsed_multi_voice, &error)) {
+    return fail("multi-part MusicXML read: " + error);
+  }
+  if (parsed_multi_voice.parts.size() != 2 || parsed_multi_voice.parts[0].id != "P1" ||
+      parsed_multi_voice.parts[0].name != "Piano" || parsed_multi_voice.parts[1].id != "P2" ||
+      parsed_multi_voice.parts[1].name != "Cello" || parsed_multi_voice.parts[1].measures.size() != 1 ||
+      parsed_multi_voice.parts[1].measures[0].start != 0 ||
+      parsed_multi_voice.parts[1].measures[0].notes.size() != 1 ||
+      parsed_multi_voice.parts[1].measures[0].notes[0].pitch.octave != 3 ||
+      parsed_multi_voice.parts[1].measures[0].notes[0].lyric != "bass") {
+    return fail("multi-part MusicXML score round-trip");
+  }
+
   const auto score_midi_path = temp / "classical_daw_score_export.mid";
   MidiFile score_midi;
   if (!scoreToMidiFile(multi_voice_score, &score_midi, &error)) {
@@ -336,6 +360,7 @@ int main() {
   std::filesystem::remove(overflow_path);
   std::filesystem::remove(musicxml_path);
   std::filesystem::remove(multi_voice_musicxml_path);
+  std::filesystem::remove(multi_part_musicxml_path);
   std::filesystem::remove(score_midi_path);
   std::filesystem::remove(protected_midi_path);
   std::filesystem::remove(invalid_musicxml_path);

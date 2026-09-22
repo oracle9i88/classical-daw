@@ -12,8 +12,8 @@ validating score timing and audio rendering before platform integration.
 - MIDI note, track, and file data structures.
 - Standard MIDI File type 0/1 read/write for notes, track names, and tempo
   events (unknown events are skipped on read).
-- A deliberately limited MusicXML `score-partwise` slice: one part with
-  multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
+- A deliberately limited MusicXML `score-partwise` slice: multiple ordered
+  parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
   meter, tempo, and one escaped lyric text per note with deterministic
   import/export.
 - A deterministic Score-to-SMF bridge for exporting the current one-part score
@@ -32,8 +32,8 @@ validating score timing and audio rendering before platform integration.
 
 The renderer is a diagnostic instrument, not an orchestral sampler. The
 MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
-multiple parts, key changes, dynamics, multiple lyric verses/syllabic
-metadata, or full XML validation.
+key changes, dynamics, multiple lyric verses/syllabic metadata, or full XML
+validation.
 The MIDI bridge currently exports one score part to channel 0; the existing MIDI
 model does not yet carry meter, lyrics, or instrument programs.
 There is no production instrument library, score engraving, automation, mixer,

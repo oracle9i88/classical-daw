@@ -13,9 +13,9 @@ not count as completion.
 - Reject invalid format-0 files containing multiple tracks.
 - Reject tempo values that cannot be encoded in MIDI's 24-bit microseconds
   field and guard MIDI tick/duration arithmetic against signed overflow.
-- Add a first MusicXML vertical slice: one `score-partwise` part with multiple
-  voices/staves, notes, rests, chords, ties, tuplets, meter, tempo, and 960-PPQ
-  import/export, including one lyric text per note.
+- Add a first MusicXML vertical slice: multiple ordered `score-partwise` parts
+  with multiple voices/staves, notes, rests, chords, ties, tuplets, meter,
+  tempo, and 960-PPQ import/export, including one lyric text per note.
 - Add a validated Score-to-SMF bridge that exports one part to a deterministic
   MIDI track without damaging an existing destination on conversion failure.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
