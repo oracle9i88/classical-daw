@@ -32,6 +32,7 @@ class CoreAudioOutput {
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
   [[nodiscard]] std::uint64_t xrunCount() const noexcept { return scheduler_.snapshot().xrun_count; }
   [[nodiscard]] BlockScheduler& scheduler() noexcept { return scheduler_; }
+  [[nodiscard]] SineVoiceBank& synth() noexcept { return synth_; }
 
  private:
   static OSStatus renderCallback(void* reference,
@@ -44,6 +45,7 @@ class CoreAudioOutput {
   CoreAudioOutputConfig config_;
   AudioUnit audio_unit_ = nullptr;
   BlockScheduler scheduler_;
+  SineVoiceBank synth_;
   std::atomic<bool> running_{false};
 };
 

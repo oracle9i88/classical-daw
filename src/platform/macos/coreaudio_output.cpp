@@ -103,9 +103,16 @@ OSStatus CoreAudioOutput::renderCallback(void* reference,
   auto* output = static_cast<CoreAudioOutput*>(reference);
   if (output == nullptr || buffers == nullptr) return noErr;
   output->scheduler_.processBlock(frame_count);
-  for (UInt32 index = 0; index < buffers->mNumberBuffers; ++index) {
-    AudioBuffer& buffer = buffers->mBuffers[index];
-    if (buffer.mData != nullptr && buffer.mDataByteSize > 0) std::memset(buffer.mData, 0, buffer.mDataByteSize);
+  const std::size_t required_bytes = static_cast<std::size_t>(frame_count) * output->config_.channels * sizeof(float);
+  if (buffers->mNumberBuffers == 1 && buffers->mBuffers[0].mData != nullptr &&
+      buffers->mBuffers[0].mDataByteSize >= required_bytes) {
+    auto& buffer = buffers->mBuffers[0];
+    output->synth_.render(static_cast<float*>(buffer.mData), frame_count, output->config_.channels, output->config_.sample_rate);
+  } else {
+    for (UInt32 index = 0; index < buffers->mNumberBuffers; ++index) {
+      AudioBuffer& buffer = buffers->mBuffers[index];
+      if (buffer.mData != nullptr && buffer.mDataByteSize > 0) std::memset(buffer.mData, 0, buffer.mDataByteSize);
+    }
   }
   return noErr;
 }

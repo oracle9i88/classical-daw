@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <limits>
 
 namespace daw {
@@ -65,6 +66,82 @@ struct TransportSnapshot {
   std::uint64_t xrun_count = 0;
 };
 
+enum class VoiceEventType : std::uint8_t { NoteOn, NoteOff };
+
+struct VoiceEvent {
+  VoiceEventType type = VoiceEventType::NoteOff;
+  std::uint8_t pitch = 60;
+  std::uint8_t velocity = 0;
+};
+
+// Fixed-size diagnostic voice used to prove the callback path with real
+// samples. It is deliberately a sine bank, not a claim of orchestral quality.
+class SineVoiceBank {
+ public:
+  static constexpr std::size_t kEventCapacity = 128;
+  static constexpr std::size_t kVoiceCapacity = 32;
+
+  bool enqueue(const VoiceEvent& event) noexcept { return events_.push(event); }
+
+  void render(float* interleaved_output, std::uint32_t frame_count, std::uint32_t channels,
+              double sample_rate) noexcept {
+    if (interleaved_output == nullptr || channels == 0 || sample_rate <= 0.0) return;
+    sample_rate_ = sample_rate;
+    VoiceEvent event;
+    while (events_.pop(&event)) apply(event);
+    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+      float sample = 0.0F;
+      for (Voice& voice : voices_) {
+        if (!voice.active) continue;
+        sample += voice.amplitude * static_cast<float>(std::sin(voice.phase));
+        voice.phase += voice.phase_increment;
+        if (voice.phase >= kTwoPi) voice.phase -= kTwoPi;
+      }
+      for (std::uint32_t channel = 0; channel < channels; ++channel) {
+        interleaved_output[static_cast<std::size_t>(frame) * channels + channel] = sample;
+      }
+    }
+  }
+
+ private:
+  struct Voice {
+    bool active = false;
+    std::uint8_t pitch = 0;
+    float amplitude = 0.0F;
+    double phase = 0.0;
+    double phase_increment = 0.0;
+  };
+
+  static constexpr double kTwoPi = 6.28318530717958647692;
+
+  void apply(const VoiceEvent& event) noexcept {
+    if (event.type == VoiceEventType::NoteOff || event.velocity == 0) {
+      for (Voice& voice : voices_) {
+        if (voice.active && voice.pitch == event.pitch) voice.active = false;
+      }
+      return;
+    }
+    Voice* target = nullptr;
+    for (Voice& voice : voices_) {
+      if (voice.active && voice.pitch == event.pitch) {
+        target = &voice;
+        break;
+      }
+      if (target == nullptr && !voice.active) target = &voice;
+    }
+    if (target == nullptr) target = &voices_.front();
+    target->active = true;
+    target->pitch = event.pitch;
+    target->amplitude = static_cast<float>(event.velocity) / 127.0F * 0.15F;
+    target->phase = 0.0;
+    target->phase_increment = kTwoPi * 440.0 * std::pow(2.0, (static_cast<double>(event.pitch) - 69.0) / 12.0) / sample_rate_;
+  }
+
+  SpscRing<VoiceEvent, kEventCapacity> events_;
+  std::array<Voice, kVoiceCapacity> voices_{};
+  double sample_rate_ = 48000.0;
+};
+
 // Platform-neutral M0 transport. CoreAudio will call processBlock() from its
 // callback; UI/device threads only enqueue commands and record xruns.
 class BlockScheduler {
@@ -112,4 +189,3 @@ class BlockScheduler {
 };
 
 }  // namespace daw
-

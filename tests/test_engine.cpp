@@ -5,6 +5,8 @@
 #include "daw/timeline.hpp"
 #include "daw/wav.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -186,6 +188,15 @@ int main() {
   if (!scheduler.enqueue({TransportCommandType::Stop, 0, 0.0})) return fail("transport stop enqueue");
   scheduler.processBlock(256);
   if (scheduler.snapshot().running || scheduler.snapshot().sample_position != 356) return fail("transport stop");
+
+  SineVoiceBank synth;
+  if (!synth.enqueue({VoiceEventType::NoteOn, 69, 100})) return fail("sine voice enqueue");
+  std::array<float, 128> audio{};
+  synth.render(audio.data(), 64, 2, 48000.0);
+  float peak = 0.0F;
+  for (const float sample : audio) peak = std::max(peak, std::abs(sample));
+  if (peak <= 0.0F) return fail("sine voice render");
+  if (!synth.enqueue({VoiceEventType::NoteOff, 69, 0})) return fail("sine voice off enqueue");
 
   const auto invalid_musicxml_path = temp / "classical_daw_invalid.musicxml";
   const std::string invalid_musicxml =

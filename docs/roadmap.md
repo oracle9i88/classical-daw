@@ -19,6 +19,9 @@ not count as completion.
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and
   silence-safe callback behavior; instrument rendering is still separate.
+- Route note events through a fixed polyphonic sine diagnostic voice so the
+  callback produces real samples while the production instrument layer is
+  still pending.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
