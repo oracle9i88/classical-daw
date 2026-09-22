@@ -139,7 +139,7 @@ bool validateScore(const Score& score, std::string* error) {
         if (note.start < 0 || note.duration <= 0 || note.duration > std::numeric_limits<Tick>::max() - note.start) {
           return fail(error, "project note timing out of range");
         }
-        if (!note.rest && !validStep(note.pitch.step)) return fail(error, "project note pitch step is invalid");
+        if (!validStep(note.pitch.step)) return fail(error, "project note pitch step is invalid");
         if (note.pitch.alter < -128 || note.pitch.alter > 127 || note.pitch.octave < -128 || note.pitch.octave > 127) {
           return fail(error, "project note pitch out of range");
         }
@@ -267,7 +267,11 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
     temporary += ".tmp";
     {
       std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-      if (!file) return fail(error, "cannot open temporary project file");
+      if (!file) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return fail(error, "cannot open temporary project file");
+      }
       file.write(serialized.data(), static_cast<std::streamsize>(serialized.size()));
       file.flush();
       if (!file) {
