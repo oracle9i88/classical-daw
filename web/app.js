@@ -3,6 +3,8 @@
 
   // Keep exported MusicXML durations on the engine's canonical 960 PPQ grid.
   const PPQ = 960;
+  const PROJECT_FORMAT = "classical-daw-web-project";
+  const PROJECT_VERSION = 1;
   const BEATS = 16;
   const ROWS = 24;
   const LOWEST_MIDI = 60;
@@ -31,6 +33,9 @@
     tempo: document.querySelector("#tempo"),
     add: document.querySelector("#add-note"),
     clear: document.querySelector("#clear"),
+    saveProject: document.querySelector("#save-project"),
+    openProject: document.querySelector("#open-project"),
+    projectFile: document.querySelector("#project-file"),
     importButton: document.querySelector("#import"),
     musicXmlFile: document.querySelector("#musicxml-file"),
     remove: document.querySelector("#delete-note"),
@@ -569,6 +574,126 @@ ${lines.join("\n")}
     setStatus("已导出 MusicXML（单声部子集）");
   }
 
+  function projectJson() {
+    const project = {
+      format: PROJECT_FORMAT,
+      version: PROJECT_VERSION,
+      ppq: PPQ,
+      tempo: clamp(Number(dom.tempo.value) || 96, 30, 240),
+      notes: cloneNotes(notes),
+      selectedId,
+      nextId
+    };
+    return `${JSON.stringify(project, null, 2)}\n`;
+  }
+
+  function isQuarterGridValue(value) {
+    return Math.abs(value * 4 - Math.round(value * 4)) < 1e-6;
+  }
+
+  function parseProject(text) {
+    let documentNode;
+    try {
+      documentNode = JSON.parse(text);
+    } catch (_) {
+      throw new Error("工程文件不是有效的 JSON");
+    }
+    if (!documentNode || typeof documentNode !== "object" || Array.isArray(documentNode)) {
+      throw new Error("工程文件必须是 JSON 对象");
+    }
+    if (documentNode.format !== PROJECT_FORMAT) {
+      throw new Error("工程文件格式不匹配");
+    }
+    if (documentNode.version !== PROJECT_VERSION) {
+      throw new Error(`不支持的工程版本：${String(documentNode.version)}`);
+    }
+    if (!Array.isArray(documentNode.notes) || documentNode.notes.length > 10000) {
+      throw new Error("工程文件的 notes 必须是数组，且不能超过 10000 个音符");
+    }
+    if (documentNode.ppq !== PPQ) {
+      throw new Error(`工程文件必须使用 ${PPQ} PPQ`);
+    }
+    const tempo = documentNode.tempo;
+    if (typeof tempo !== "number" || !Number.isFinite(tempo) || tempo < 30 || tempo > 240) {
+      throw new Error("tempo 必须是 30–240 范围内的数字");
+    }
+
+    const ids = new Set();
+    const importedNotes = documentNode.notes.map((source, index) => {
+      if (!source || typeof source !== "object" || Array.isArray(source)) {
+        throw new Error(`第 ${index + 1} 个音符不是对象`);
+      }
+      const { id, midi, start, duration, velocity, lyric } = source;
+      if (!Number.isSafeInteger(id) || id < 1 || ids.has(id)) {
+        throw new Error(`第 ${index + 1} 个音符的 id 无效或重复`);
+      }
+      if (!Number.isInteger(midi) || midi < LOWEST_MIDI || midi >= LOWEST_MIDI + ROWS) {
+        throw new Error(`第 ${index + 1} 个音符的 midi 超出 C4–B5 范围`);
+      }
+      if (typeof start !== "number" || !Number.isFinite(start) || start < 0 || start > BEATS - 0.25 || !isQuarterGridValue(start)) {
+        throw new Error(`第 ${index + 1} 个音符的 start 无效`);
+      }
+      if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0.25 || duration > BEATS - start || !isQuarterGridValue(duration)) {
+        throw new Error(`第 ${index + 1} 个音符的 duration 无效`);
+      }
+      if (!Number.isInteger(velocity) || velocity < 1 || velocity > 127) {
+        throw new Error(`第 ${index + 1} 个音符的 velocity 必须是 1–127 的整数`);
+      }
+      if (lyric !== undefined && (typeof lyric !== "string" || lyric.length > 256)) {
+        throw new Error(`第 ${index + 1} 个音符的 lyric 无效`);
+      }
+      ids.add(id);
+      const note = { id, midi, start, duration, velocity };
+      if (lyric !== undefined) note.lyric = lyric;
+      return note;
+    });
+
+    const selected = documentNode.selectedId;
+    if (selected !== null && (!Number.isSafeInteger(selected) || !ids.has(selected))) {
+      throw new Error("selectedId 必须为空或指向工程中的音符");
+    }
+    const maxId = importedNotes.reduce((max, note) => Math.max(max, note.id), 0);
+    if (!Number.isSafeInteger(documentNode.nextId) || documentNode.nextId <= maxId) {
+      throw new Error("nextId 必须大于所有音符 id");
+    }
+    return {
+      notes: importedNotes,
+      nextId: documentNode.nextId,
+      selectedId: selected,
+      tempo
+    };
+  }
+
+  function downloadProject() {
+    const blob = new Blob([projectJson()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "classical-daw-project-v1.classical-daw.json";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus("已保存工程 JSON");
+  }
+
+  async function importProjectFile(file) {
+    try {
+      const project = parseProject(await file.text());
+      stopPlayback();
+      commitMutation(() => {
+        notes = cloneNotes(project.notes);
+        nextId = project.nextId;
+        selectedId = project.selectedId;
+        dom.tempo.value = String(project.tempo);
+        restoreState({ notes, nextId, selectedId, tempo: String(project.tempo) });
+      });
+      setStatus(`已打开工程（${notes.length} 个音符）`);
+    } catch (error) {
+      setStatus(`打开工程失败：${error.message}`);
+    } finally {
+      dom.projectFile.value = "";
+    }
+  }
+
   dom.roll.addEventListener("click", (event) => {
     if (event.target !== dom.roll) return;
     const rect = dom.roll.getBoundingClientRect();
@@ -600,6 +725,12 @@ ${lines.join("\n")}
     if (file) importMusicXmlFile(file);
   });
   dom.exportButton.addEventListener("click", downloadMusicXml);
+  dom.saveProject.addEventListener("click", downloadProject);
+  dom.openProject.addEventListener("click", () => dom.projectFile.click());
+  dom.projectFile.addEventListener("change", () => {
+    const [file] = dom.projectFile.files || [];
+    if (file) importProjectFile(file);
+  });
   dom.pitch.addEventListener("change", () => commitMutation(() => updateSelected({ midi: Number(dom.pitch.value) })));
   dom.start.addEventListener("change", () => commitMutation(() => updateSelected({ start: Number(dom.start.value) })));
   dom.duration.addEventListener("change", () => commitMutation(() => updateSelected({ duration: Number(dom.duration.value) })));

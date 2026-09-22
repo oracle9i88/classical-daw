@@ -86,6 +86,7 @@ button { cursor: pointer; }
 .button:disabled { cursor: default; opacity: .45; }
 .button-primary { color: #fff; border-color: #6478ea; background: var(--accent); }
 .button-quiet { color: #d8deec; border-color: #47536c; background: transparent; }
+.button-project { color: #e2e8ff; border-color: #53669e; background: #2b3856; }
 .button-export { color: #fff; border-color: #2caa9e; background: #239486; }
 .button-danger { width: 100%; color: #b43e52; border-color: #f1c6cf; background: #fff7f8; }
 
