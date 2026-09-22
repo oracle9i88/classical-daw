@@ -35,7 +35,7 @@ std::uint8_t toMidiPitch(const ScorePitch& pitch) {
 
 void validateNoteTiming(const ScoreNote& note) {
   if (note.start < 0) throw std::invalid_argument("score note start cannot be negative");
-  if (note.duration < 0) throw std::invalid_argument("score note duration cannot be negative");
+  if (note.duration <= 0) throw std::invalid_argument("score note duration must be positive");
   if (note.start > std::numeric_limits<Tick>::max() - note.duration) {
     throw std::invalid_argument("score note timing overflows tick range");
   }

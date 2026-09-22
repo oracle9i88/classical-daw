@@ -233,6 +233,11 @@ int main() {
   if (!readText(protected_midi_path, &protected_contents) || protected_contents != "keep-existing-file") {
     return fail("failed score MIDI conversion damaged destination");
   }
+  Score zero_duration_score = multi_voice_score;
+  zero_duration_score.parts[0].measures[0].notes[0].duration = 0;
+  if (scoreToMidiFile(zero_duration_score, &score_midi, &error)) {
+    return fail("zero-duration score MIDI note was accepted");
+  }
 
   SpscRing<int, 2> ring;
   if (!ring.push(10) || !ring.push(20) || ring.push(30) || ring.approximateSize() != 2) {
