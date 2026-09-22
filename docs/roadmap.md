@@ -55,8 +55,9 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
 and exact tick accounting. Extend the current versioned score file with
-autosave, recovery, and persisted snapshots for the existing undo history. The first user-facing vertical
-slice is MusicXML import → timeline edit → deterministic WAV export.
+autosave, recovery, and persisted snapshots for the existing undo history. The
+first user-facing vertical slice is MusicXML import → timeline edit →
+deterministic WAV export.
 
 ### M2: production workflow
 

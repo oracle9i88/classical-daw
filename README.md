@@ -37,8 +37,9 @@ validating score timing and audio rendering before platform integration.
   invalidation, and failure-preserving operations. It is an in-memory edit
   history; it is not used by the realtime callback and is not persisted yet.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
-- CTest coverage for tempo conversion, MIDI/MusicXML round-trips, Score-to-MIDI
-  export, project persistence, realtime primitives, and render smoke tests.
+- CTest coverage for tempo conversion, MIDI↔Score/MusicXML round-trips,
+  Score-to-MIDI export, project persistence, bounded edit history, realtime
+  primitives, and render smoke tests.
 
 The renderer is a diagnostic instrument, not an orchestral sampler. The
 MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,

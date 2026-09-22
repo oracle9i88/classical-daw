@@ -448,6 +448,7 @@ int main() {
   std::filesystem::remove(multi_part_musicxml_path);
   std::filesystem::remove(score_midi_path);
   std::filesystem::remove(multi_part_score_midi_path);
+  std::filesystem::remove(imported_musicxml_path);
   std::filesystem::remove(protected_midi_path);
   std::filesystem::remove(invalid_musicxml_path);
   std::filesystem::remove(trailing_musicxml_path);
