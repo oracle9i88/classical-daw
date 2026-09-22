@@ -36,6 +36,12 @@ realtime path and only accepts a single 960-PPQ part, while retaining multiple
 voices/staves inside each measure. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
+The Score-to-MIDI adapter is also outside the realtime path. It validates the
+one-part score, omits rests, preserves absolute tick timing and velocity, and
+hands a deterministic single-track `MidiFile` to the existing SMF writer. MIDI
+meter, lyric text, and instrument programs remain future fields in the MIDI
+model.
+
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks
 call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
