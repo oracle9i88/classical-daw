@@ -89,6 +89,17 @@ int main() {
     }
   }
 
+  // A control on another score part must address the shared MIDI channel,
+  // not only notes physically stored in that part. Muting channel 0 leaves
+  // exactly the independent channel-1 string part above.
+  Score controlled = score;
+  controlled.parts[1].midi_events.push_back({0, MidiChannelEventType::ControlChange, 0, 7, 0, 0});
+  MidiRenderReport report;
+  const auto controlled_audio = renderScore(controlled, 48000.0, 0.25, &report);
+  if (controlled_audio.samples != second.samples || report.interpreted_channel_events != 1) {
+    return fail("Score rendering did not share controller state across parts");
+  }
+
   // Conversion and render configuration errors throw before returning a
   // buffer; the input score itself remains unchanged after every failure.
   const Score unchanged = score;

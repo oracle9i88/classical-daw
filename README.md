@@ -68,6 +68,10 @@ validating score timing and audio rendering before platform integration.
   events without allocating in the callback.
 - `renderScore` converts the strict score model to a deterministic offline
   mono WAV diagnostic mix, preserving all score parts before the final clamp.
+- `renderMidiFile` applies CC64 sustain, CC7 volume, CC11 expression, fixed
+  +/-2-semitone pitch bend, and CC120/121/123 across tracks sharing a channel.
+  It uses the complete MIDI tempo map and reports unsupported messages,
+  terminal held voices, ignored release velocities, and clipping.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI↔Score/MusicXML round-trips,
   Score-to-MIDI export, project persistence/recovery, bounded edit history,
@@ -82,9 +86,10 @@ parts; it does not allocate multiple ports. It does not yet carry meter maps or
 MIDI lyrics. MIDI import uses
 canonical sharp pitch spellings and preserves one meter event; key-aware
 enharmonic spelling and meter changes remain future fields.
-SysEx and subsequent meter events are counted but not retained. Channel messages
-are preserved as data; the diagnostic renderer does not execute CC/pedal,
-program, pressure, or pitch-bend playback. The MIDI model retains tempo changes,
+SysEx and subsequent meter events are counted but not retained. The offline
+sine renderer interprets the controls listed above; program changes, pressure,
+pan, effects, RPN/bend-range changes and other controls remain unsupported and
+are counted. This does not extend the realtime CoreAudio synth. The MIDI model retains tempo changes,
 but conversion into the current single-BPM Score discards subsequent tempos.
 Same-channel/pitch note overlaps use LIFO pairing and are reported as ambiguous;
 orphan note-offs, unclosed notes, and notes collapsed by PPQ rounding are rejected.
@@ -117,6 +122,23 @@ Inspect a local MIDI file without playback or modifying it:
 ./build/daw_midi_inspect /path/to/score.midi
 ./build/daw_midi_inspect /path/to/score.midi --notes
 ```
+
+Render a local MIDI to a sine diagnostic WAV and JSON report (the output
+directory must not exist; optional sample rate defaults to 48000):
+
+```sh
+./build/daw_midi_render /path/to/score.midi /path/to/new-diagnostic-output 48000
+python3 scripts/check_midi_render_cli.py
+```
+
+This is an offline check of note timing and supported performance controls.
+It does not load orchestral sounds. Voices release over 35 ms after key/pedal
+release; the CLI includes a 100 ms ending tail. Missing final pedal-up is
+handled by releasing held voices at the last note/event and reporting the count.
+The in-memory output has a default 512 MiB frame budget (about 46.6 minutes
+at 48 kHz mono); oversized input fails before audio allocation. C++ hosts can
+pass a different frame budget. Streaming long-form bounce remains future work.
+See the [render contract and local evidence](docs/research/2026-09-23-midi-control-rendering.md).
 
 Timing is rounded once per absolute boundary to the nearest engine tick, with
 half-tick ties rounded up. The maximum error is half a 960-PPQ tick; short notes

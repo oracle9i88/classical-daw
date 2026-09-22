@@ -105,8 +105,29 @@ are not retained. The SMF tempo map survives file import, but the single-BPM Sco
 retain its later changes. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
 MusicXML currently omits raw performance metadata and exposes the omissions in
-`MusicXmlExportReport`; only native project/SMF paths retain it. The diagnostic
-sine renderer still ignores these controllers and program/bend events.
+`MusicXmlExportReport`; only native project/SMF paths retain it.
+
+The offline `renderMidiFile` merges note edges and channel events across tracks,
+with tick → track index → source/fallback order, then schedules each boundary
+at its nearest output sample. It shares the within-track comparator with the
+SMF writer and rejects the same stale retrigger ordinals. Per-note voice IDs
+prevent same-pitch retriggers and cross-track unisons from terminating each
+other. All tracks share 16 channel states: CC7/11 gain, CC64 sustain, fixed
+two-semitone pitch bend, and CC120/121/123 are interpreted. Frequency changes
+preserve oscillator phase. The final mix is clamped once, with clipping counted.
+`renderNotes` and `renderScore` delegate to this path; the latter remains
+limited by Score's single BPM. The renderer uses dynamic storage, runs only
+offline, and has no connection to the realtime CoreAudio callback.
+
+The sine envelope has an 8 ms attack and 35 ms release after a key/pedal
+release. CC123 honors sustain; CC120 kills voices immediately. CC121 resets
+expression, bend and pedal, retains channel volume, and releases only keys
+already lifted. Volume/expression use a diagnostic linear curve with initial
+values 127. At the last note/event, remaining pedal-held voices are released
+and counted. Output ends after the requested tail; a tail shorter than 35 ms
+can truncate a release. Program/pressure/RPN and other unsupported messages,
+nonzero release velocities, and final forced releases are exposed in the
+report. This is not a GM implementation or an orchestral sampler.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks

@@ -1,5 +1,7 @@
 #include "daw/midi.hpp"
 
+#include "midi_order.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -231,17 +233,10 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
         // Metadata does not change channel state. Imported channel events and
         // note edges retain source order, including after PPQ rounding merges
         // nearby ticks. Newly authored events use the documented fallback.
-        if ((a.priority < 0) != (b.priority < 0)) return a.priority < 0;
-        if (a.priority < 0) return false;
         // An authored note ending here must release before an imported
         // same-pitch retrigger. Otherwise note-on followed by that new off
         // would prematurely release the new note (or form a zero-length pair).
-        const bool a_new_release = a.order == 0 && a.priority == 0;
-        const bool b_new_release = b.order == 0 && b.priority == 0;
-        if (a_new_release != b_new_release) return a_new_release;
-        if ((a.order == 0) != (b.order == 0)) return a.order != 0;
-        if (a.order != b.order) return a.order < b.order;
-        return a.priority < b.priority;
+        return detail::midiEventBefore(a.priority, a.order, b.priority, b.order);
       });
       for (const TimedEvent& event : timed_events) {
         if (event.tick < previous_tick || event.tick - previous_tick > 0x0fffffff) {
