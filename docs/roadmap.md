@@ -16,8 +16,10 @@ not count as completion.
 - Add a first MusicXML vertical slice: multiple ordered `score-partwise` parts
   with multiple voices/staves, notes, rests, chords, ties, tuplets, meter,
   tempo, and 960-PPQ import/export, including one lyric text per note.
-- Add a validated Score-to-SMF bridge that exports one part to a deterministic
-  MIDI track without damaging an existing destination on conversion failure.
+- Add a validated Score-to-SMF bridge that exports ordered multi-part scores to
+  deterministic Type 1 MIDI tracks, assigns stable channels 0–15, rejects more
+  than 16 parts, and does not damage an existing destination on conversion
+  failure.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and

@@ -246,12 +246,43 @@ int main() {
       exported_score_midi.tracks.size() != 1 || exported_score_midi.tracks[0].notes.size() != 5) {
     return fail("score MIDI file round-trip: " + error);
   }
+
+  const auto multi_part_score_midi_path = temp / "classical_daw_multi_part_score_export.mid";
+  MidiFile multi_part_score_midi;
+  if (!scoreToMidiFile(multi_part_score, &multi_part_score_midi, &error)) {
+    return fail("multi-part score to MIDI conversion: " + error);
+  }
+  if (multi_part_score_midi.format != 1 || multi_part_score_midi.tracks.size() != 2 ||
+      multi_part_score_midi.tracks[0].name != "Piano" || multi_part_score_midi.tracks[1].name != "Cello" ||
+      multi_part_score_midi.tracks[0].notes.size() != 5 || multi_part_score_midi.tracks[1].notes.size() != 1 ||
+      multi_part_score_midi.tracks[0].notes[0].channel != 0 || multi_part_score_midi.tracks[1].notes[0].channel != 1 ||
+      multi_part_score_midi.tracks[1].notes[0].pitch != 48 ||
+      multi_part_score_midi.tempo.changes().size() != 1 ||
+      !closeEnough(multi_part_score_midi.tempo.changes()[0].bpm, 96.0)) {
+    return fail("multi-part score MIDI track/channel mapping");
+  }
+  if (!writeScoreMidiFile(multi_part_score, multi_part_score_midi_path.string(), &error)) {
+    return fail("multi-part score MIDI file write: " + error);
+  }
+  MidiFile exported_multi_part_score_midi;
+  if (!readMidiFile(multi_part_score_midi_path.string(), &exported_multi_part_score_midi, &error) ||
+      exported_multi_part_score_midi.tracks.size() != 2 ||
+      exported_multi_part_score_midi.tracks[0].name != "Piano" ||
+      exported_multi_part_score_midi.tracks[1].name != "Cello" ||
+      exported_multi_part_score_midi.tracks[0].notes.size() != 5 ||
+      exported_multi_part_score_midi.tracks[1].notes.size() != 1 ||
+      exported_multi_part_score_midi.tracks[1].notes[0].channel != 1) {
+    return fail("multi-part score MIDI file round-trip: " + error);
+  }
   const auto protected_midi_path = temp / "classical_daw_score_export_protected.mid";
   if (!writeText(protected_midi_path, "keep-existing-file")) return fail("protected MIDI fixture write");
-  Score invalid_score = multi_voice_score;
-  invalid_score.parts.push_back(ScorePart{"P2", "Extra", {}});
-  if (writeScoreMidiFile(invalid_score, protected_midi_path.string(), &error)) {
-    return fail("multi-part score MIDI export was accepted");
+  Score too_many_parts = score;
+  too_many_parts.parts.clear();
+  for (int index = 0; index < 17; ++index) {
+    too_many_parts.parts.push_back(ScorePart{"P" + std::to_string(index + 1), "Part " + std::to_string(index + 1), {}});
+  }
+  if (writeScoreMidiFile(too_many_parts, protected_midi_path.string(), &error)) {
+    return fail("score MIDI export accepted more than 16 parts");
   }
   std::string protected_contents;
   if (!readText(protected_midi_path, &protected_contents) || protected_contents != "keep-existing-file") {
@@ -362,6 +393,7 @@ int main() {
   std::filesystem::remove(multi_voice_musicxml_path);
   std::filesystem::remove(multi_part_musicxml_path);
   std::filesystem::remove(score_midi_path);
+  std::filesystem::remove(multi_part_score_midi_path);
   std::filesystem::remove(protected_midi_path);
   std::filesystem::remove(invalid_musicxml_path);
   std::filesystem::remove(trailing_musicxml_path);

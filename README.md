@@ -16,9 +16,11 @@ validating score timing and audio rendering before platform integration.
   parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
   meter, tempo, and one escaped lyric text per note with deterministic
   import/export.
-- A deterministic Score-to-SMF bridge for exporting the current one-part score
-  to a MIDI track, retaining note timing, pitch, velocity, voices as events,
-  and BPM.
+- A deterministic Score-to-SMF bridge for exporting ordered score parts as a
+  Type 1 MIDI track per part, retaining note timing, pitch, velocity, voices as
+  events, and BPM. Parts receive stable channels 0–15; export rejects more than
+  16 parts instead of colliding channels. Tuplet spelling is represented by its
+  resolved tick durations.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
   ring, block scheduler, and xrun counter.
 - On macOS, an optional `daw_coreaudio` target owns the default-output
@@ -34,8 +36,9 @@ The renderer is a diagnostic instrument, not an orchestral sampler. The
 MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
 key changes, dynamics, multiple lyric verses/syllabic metadata, or full XML
 validation.
-The MIDI bridge currently exports one score part to channel 0; the existing MIDI
-model does not yet carry meter, lyrics, or instrument programs.
+The MIDI bridge currently rejects scores with more than 16 parts because the
+existing MIDI model does not yet carry a channel-allocation map. It also does
+not yet carry meter, lyrics, or instrument programs.
 There is no production instrument library, score engraving, automation, mixer,
 plugin hosting, undo stack, autosave/recovery workflow, or multi-part project
 package yet.

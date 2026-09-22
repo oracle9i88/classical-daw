@@ -58,7 +58,11 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     return false;
   }
   try {
-    if (score.parts.size() != 1) throw std::invalid_argument("MIDI export requires exactly one score part");
+    if (score.parts.empty()) throw std::invalid_argument("MIDI export requires at least one score part");
+    // One channel per part keeps the exported file deterministic and avoids
+    // channel collisions.  This bridge does not yet emit program changes or
+    // a channel-allocation map, so reject rather than silently aliasing parts.
+    if (score.parts.size() > 16) throw std::invalid_argument("MIDI export supports at most 16 score parts");
     if (score.divisions != kTicksPerQuarter) {
       throw std::invalid_argument("score divisions must be 960 ticks per quarter");
     }
@@ -66,28 +70,31 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
       throw std::invalid_argument("score tempo must be finite and positive");
     }
 
-    const ScorePart& part = score.parts.front();
-    MidiTrack track;
-    track.name = part.name.empty() ? part.id : part.name;
-    for (const ScoreMeasure& measure : part.measures) {
-      if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
-      for (const ScoreNote& note : measure.notes) {
-        validateNoteTiming(note);
-        if (note.rest) continue;
-        track.notes.push_back({note.start, note.duration, toMidiPitch(note.pitch), note.velocity, 0});
-      }
-    }
-    // Keep deterministic ordering for callers inspecting the in-memory
-    // result. Equal-start notes are stable, so chords remain independent.
-    std::stable_sort(track.notes.begin(), track.notes.end(), [](const MidiNote& left, const MidiNote& right) {
-      return left.start < right.start;
-    });
-
     MidiFile converted;
     converted.format = 1;
     converted.ticks_per_quarter = kTicksPerQuarter;
     converted.tempo = TempoMap(score.bpm);
-    converted.tracks.push_back(std::move(track));
+    converted.tracks.reserve(score.parts.size());
+    for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
+      const ScorePart& part = score.parts[part_index];
+      MidiTrack track;
+      track.name = part.name.empty() ? part.id : part.name;
+      const auto channel = static_cast<std::uint8_t>(part_index);
+      for (const ScoreMeasure& measure : part.measures) {
+        if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
+        for (const ScoreNote& note : measure.notes) {
+          validateNoteTiming(note);
+          if (note.rest) continue;
+          track.notes.push_back({note.start, note.duration, toMidiPitch(note.pitch), note.velocity, channel});
+        }
+      }
+      // Keep deterministic ordering for callers inspecting the in-memory
+      // result. Equal-start notes are stable, so chords remain independent.
+      std::stable_sort(track.notes.begin(), track.notes.end(), [](const MidiNote& left, const MidiNote& right) {
+        return left.start < right.start;
+      });
+      converted.tracks.push_back(std::move(track));
+    }
     *midi = std::move(converted);
     return true;
   } catch (const std::exception& exception) {
