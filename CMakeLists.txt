@@ -43,6 +43,10 @@ add_executable(daw_project_history_tests tests/project_history_tests.cpp)
 target_link_libraries(daw_project_history_tests PRIVATE daw_engine)
 add_test(NAME daw_project_history_tests COMMAND daw_project_history_tests)
 
+add_executable(daw_score_render_tests tests/score_render_tests.cpp)
+target_link_libraries(daw_score_render_tests PRIVATE daw_engine)
+add_test(NAME daw_score_render_tests COMMAND daw_score_render_tests)
+
 if(APPLE)
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp
