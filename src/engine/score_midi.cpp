@@ -24,6 +24,11 @@ int pitchClass(char step) {
   }
 }
 
+bool validTimeSignature(const TimeSignature& signature) {
+  if (signature.numerator == 0 || signature.denominator == 0) return false;
+  return (signature.denominator & static_cast<std::uint8_t>(signature.denominator - 1U)) == 0U;
+}
+
 std::uint8_t toMidiPitch(const ScorePitch& pitch) {
   // Use a wide intermediate so even a hostile int octave/alter value cannot
   // wrap before the range check.
@@ -58,7 +63,6 @@ ScorePitch fromMidiPitch(std::uint8_t midi_pitch) {
                     kAlter[static_cast<std::size_t>(pitch_class)], pitch / 12 - 1};
 }
 
-constexpr Tick kMeasureTicks = static_cast<Tick>(4) * kTicksPerQuarter;
 constexpr std::size_t kMaximumImportedMeasures = 1000000;
 
 std::filesystem::path temporaryPath(const std::string& destination) {
@@ -87,10 +91,14 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     if (!std::isfinite(score.bpm) || score.bpm <= 0.0) {
       throw std::invalid_argument("score tempo must be finite and positive");
     }
+    if (!validTimeSignature(score.time_signature)) {
+      throw std::invalid_argument("score time signature must have a positive numerator and power-of-two denominator");
+    }
 
     MidiFile converted;
     converted.format = 1;
     converted.ticks_per_quarter = kTicksPerQuarter;
+    converted.time_signature = score.time_signature;
     converted.tempo = TempoMap(score.bpm);
     converted.tracks.reserve(score.parts.size());
     for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
@@ -168,9 +176,15 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
     if (midi.ticks_per_quarter != kTicksPerQuarter) {
       throw std::invalid_argument("MIDI import requires 960 ticks per quarter note");
     }
+    if (!validTimeSignature(midi.time_signature)) {
+      throw std::invalid_argument("MIDI time signature must have a positive numerator and power-of-two denominator");
+    }
     if (midi.tracks.empty()) {
       throw std::invalid_argument("MIDI import requires at least one non-empty track");
     }
+    const Tick measure_ticks = static_cast<Tick>(midi.time_signature.numerator) *
+                               kTicksPerQuarter * 4 / midi.time_signature.denominator;
+    if (measure_ticks <= 0) throw std::invalid_argument("MIDI time signature produces an empty measure");
 
     double first_bpm = 0.0;
     for (const TempoChange& change : midi.tempo.changes()) {
@@ -185,7 +199,7 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
 
     Score converted;
     converted.divisions = kTicksPerQuarter;
-    converted.time_signature = {4, 4};
+    converted.time_signature = midi.time_signature;
     converted.bpm = first_bpm;
     converted.parts.reserve(midi.tracks.size());
 
@@ -228,8 +242,8 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         }
       }
 
-      const Tick measure_count_tick = max_end / kMeasureTicks;
-      const Tick measure_count_remainder = max_end % kMeasureTicks;
+      const Tick measure_count_tick = max_end / measure_ticks;
+      const Tick measure_count_remainder = max_end % measure_ticks;
       const Tick measure_count_with_remainder =
           measure_count_tick + (measure_count_remainder == 0 ? 0 : 1);
       if (measure_count_with_remainder <= 0 ||
@@ -245,10 +259,10 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
         part.measures[measure_index].number = static_cast<int>(measure_index + 1);
         part.measures[measure_index].start =
-            static_cast<Tick>(measure_index) * kMeasureTicks;
+            static_cast<Tick>(measure_index) * measure_ticks;
       }
       for (ScoreNote& note : notes) {
-        const Tick measure_index_tick = note.start / kMeasureTicks;
+        const Tick measure_index_tick = note.start / measure_ticks;
         if (measure_index_tick < 0 ||
             static_cast<std::uint64_t>(measure_index_tick) >= measure_count) {
           throw std::invalid_argument("MIDI note cannot be assigned to a score measure");

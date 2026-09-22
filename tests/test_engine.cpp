@@ -71,6 +71,7 @@ int main() {
   const auto wav_path = temp / "classical_daw_alpha_test.wav";
 
   MidiFile original;
+  original.time_signature = {6, 8};
   original.tempo = tempo;
   original.tracks = {
       MidiTrack{"Piano", {MidiNote{0, 960, 60, 96, 0}, MidiNote{960, 480, 64, 80, 0}}},
@@ -89,6 +90,9 @@ int main() {
     return fail("MIDI notes round-trip");
   }
   if (!closeEnough(parsed.tempo.tickToSeconds(1920), 1.5)) return fail("MIDI tempo round-trip");
+  if (parsed.time_signature.numerator != 6 || parsed.time_signature.denominator != 8) {
+    return fail("MIDI time signature round-trip");
+  }
 
   // Regression fixture: one-byte channel messages must not consume the next
   // event's first byte. It also exercises running status and an ignored SysEx
@@ -152,6 +156,14 @@ int main() {
   zero_duration_midi.tracks = {MidiTrack{"Piano", {{0, 0, 60, 80, 0}}}};
   if (writeMidiFile(zero_duration_midi, zero_duration_midi_path.string(), &error)) {
     return fail("zero-duration MIDI note was accepted by file writer");
+  }
+
+  const auto invalid_meter_path = temp / "classical_daw_invalid_meter.mid";
+  MidiFile invalid_meter;
+  invalid_meter.time_signature = {3, 3};
+  invalid_meter.tracks = {MidiTrack{"Piano", {{0, 960, 60, 80, 0}}}};
+  if (writeMidiFile(invalid_meter, invalid_meter_path.string(), &error)) {
+    return fail("non-power-of-two MIDI meter was accepted");
   }
 
   const auto musicxml_path = temp / "classical_daw_score_roundtrip.musicxml";
@@ -242,6 +254,7 @@ int main() {
   if (score_midi.tracks.size() != 1 || score_midi.tracks[0].notes.size() != 5 ||
       score_midi.tracks[0].notes[0].pitch != 60 || score_midi.tracks[0].notes[0].channel != 0 ||
       score_midi.tracks[0].notes[0].duration != 960 ||
+      score_midi.time_signature.numerator != 4 || score_midi.time_signature.denominator != 4 ||
       score_midi.tempo.changes().size() != 1 || !closeEnough(score_midi.tempo.changes()[0].bpm, 96.0)) {
     return fail("score to MIDI note/tempo mapping");
   }
@@ -308,6 +321,17 @@ int main() {
       imported_midi_score.parts[1].measures[0].notes[0].pitch.octave != 3 ||
       imported_midi_score.parts[1].measures[0].notes[0].duration != 1920) {
     return fail("multi-track MIDI to score round-trip");
+  }
+  MidiFile six_eight_midi = exported_multi_part_score_midi;
+  six_eight_midi.time_signature = {6, 8};
+  six_eight_midi.tracks[0].notes.push_back(MidiNote{2880, 960, 67, 80, 0});
+  Score six_eight_score;
+  if (!midiToScore(six_eight_midi, &six_eight_score, &error) ||
+      six_eight_score.time_signature.numerator != 6 ||
+      six_eight_score.time_signature.denominator != 8 ||
+      six_eight_score.parts[0].measures.size() != 2 ||
+      six_eight_score.parts[0].measures[1].start != 2880) {
+    return fail("MIDI meter-aware score measure mapping: " + error);
   }
   const auto imported_musicxml_path = temp / "classical_daw_midi_import.musicxml";
   if (!writeMusicXmlFile(imported_midi_score, imported_musicxml_path.string(), &error)) {
@@ -451,6 +475,7 @@ int main() {
   std::filesystem::remove(invalid_tempo_path);
   std::filesystem::remove(overflow_path);
   std::filesystem::remove(zero_duration_midi_path);
+  std::filesystem::remove(invalid_meter_path);
   std::filesystem::remove(musicxml_path);
   std::filesystem::remove(multi_voice_musicxml_path);
   std::filesystem::remove(multi_part_musicxml_path);

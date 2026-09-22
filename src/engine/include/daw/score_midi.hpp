@@ -15,16 +15,17 @@ namespace daw {
 // velocity are retained. Tuplet metadata has no separate MIDI representation
 // and is therefore represented by the already-resolved tick durations.
 // The score's BPM becomes the tick-zero TempoMap entry. The existing MidiFile
-// model has no time-signature field, so score meter is intentionally not
-// serialized by this bridge.
+// The score's single time signature is serialized as the first MIDI meter
+// event; meter changes and other notation maps remain outside this bridge.
 bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);
 
 // Convert a Standard MIDI File model into the score interchange model. Each
 // ordered MIDI track becomes one ScorePart. Track names are retained; unnamed
 // tracks receive deterministic "Part N" names. MIDI channels become score
 // voices (channel + 1) and notes use canonical sharp spellings. The import
-// bridge deliberately accepts the engine's fixed 960-PPQ domain, uses the
-// first valid tempo as Score::bpm, and supplies a default 4/4 meter.
+// bridge deliberately accepts the engine's fixed 960-PPQ domain, carries the
+// first MIDI meter event (defaulting to 4/4), and uses the first valid tempo as
+// Score::bpm.
 bool midiToScore(const MidiFile& midi, Score* score, std::string* error = nullptr);
 
 // Read an SMF and then convert it to the score model without exposing a

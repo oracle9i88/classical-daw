@@ -10,8 +10,8 @@ validating score timing and audio rendering before platform integration.
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.
-- Standard MIDI File type 0/1 read/write for notes, track names, and tempo
-  events (unknown events are skipped on read).
+- Standard MIDI File type 0/1 read/write for notes, track names, tempo, and a
+  single time-signature event (unknown events are skipped on read).
 - A deliberately limited MusicXML `score-partwise` slice: multiple ordered
   parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
   meter, tempo, and one escaped lyric text per note with deterministic
@@ -23,9 +23,9 @@ validating score timing and audio rendering before platform integration.
   resolved tick durations.
 - A matching MIDI-to-Score bridge for importing non-empty 960-PPQ tracks as
   ordered score parts, retaining track names, note timing, pitch, velocity, and
-  MIDI channels as score voices. It supplies a default 4/4 meter and uses the
-  first valid MIDI tempo, so an imported file can continue through MusicXML or
-  project persistence.
+  MIDI channels as score voices. It carries the first MIDI meter event, or
+  defaults to 4/4 when the file has none, and uses the first valid MIDI tempo,
+  so an imported file can continue through MusicXML or project persistence.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
   ring, block scheduler, and xrun counter.
 - On macOS, an optional `daw_coreaudio` target owns the default-output
@@ -47,9 +47,9 @@ key changes, dynamics, multiple lyric verses/syllabic metadata, or full XML
 validation.
 The MIDI bridge currently rejects scores with more than 16 parts because the
 existing MIDI model does not yet carry a channel-allocation map. It also does
-not yet carry meter, lyrics, or instrument programs. MIDI import uses canonical
-sharp pitch spellings and a default 4/4 meter; key-aware enharmonic spelling,
-MIDI meter maps, and program metadata remain future fields.
+not yet carry meter maps, lyrics, or instrument programs. MIDI import uses
+canonical sharp pitch spellings and preserves one meter event; key-aware
+enharmonic spelling, meter changes, and program metadata remain future fields.
 There is no production instrument library, score engraving, automation, mixer,
 plugin hosting, autosave/recovery workflow, persisted undo history, or multi-part
 project package yet.

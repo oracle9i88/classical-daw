@@ -26,13 +26,15 @@ struct MidiTrack {
 struct MidiFile {
   std::int16_t format = 1;
   Tick ticks_per_quarter = kTicksPerQuarter;
+  TimeSignature time_signature{};
   TempoMap tempo;
   std::vector<MidiTrack> tracks;
 };
 
 // A deliberately small Standard MIDI File (SMF) Type 0/1 reader and writer.
-// It covers note events, track names, and tempo events; unknown events are
-// skipped so files from a full DAW can still be inspected.
+// It covers note events, track names, tempo events, and the first time
+// signature event; unknown events are skipped so files from a full DAW can
+// still be inspected.
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error = nullptr);
 bool readMidiFile(const std::string& path, MidiFile* file, std::string* error = nullptr);
 

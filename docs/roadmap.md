@@ -22,9 +22,9 @@ not count as completion.
   failure.
 - Add the inverse MIDI-to-Score bridge: non-empty 960-PPQ tracks become ordered
   score parts with track names, note timing, pitch, velocity, and channel-backed
-  voices. The importer supplies a default 4/4 measure grid and first-valid-tempo
-  mapping, and its multi-track round-trip is covered by normal and sanitizer
-  tests.
+  voices. The importer carries the first MIDI meter event (defaulting to 4/4)
+  and first-valid-tempo mapping, and its multi-track round-trip is covered by
+  normal and sanitizer tests.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and

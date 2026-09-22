@@ -89,6 +89,20 @@ struct TimedEvent {
   Bytes payload;
 };
 
+bool validTimeSignature(const TimeSignature& signature) {
+  if (signature.numerator == 0 || signature.denominator == 0) return false;
+  return (signature.denominator & static_cast<std::uint8_t>(signature.denominator - 1U)) == 0U;
+}
+
+std::uint8_t denominatorExponent(std::uint8_t denominator) {
+  std::uint8_t exponent = 0;
+  while (denominator > 1U) {
+    denominator = static_cast<std::uint8_t>(denominator >> 1U);
+    ++exponent;
+  }
+  return exponent;
+}
+
 }  // namespace
 
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error) {
@@ -99,6 +113,9 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
     }
     if (file.ticks_per_quarter != kTicksPerQuarter) {
       throw std::invalid_argument("Alpha MIDI support requires 960 ticks per quarter note");
+    }
+    if (!validTimeSignature(file.time_signature)) {
+      throw std::invalid_argument("MIDI time signature must have a positive numerator and power-of-two denominator");
     }
     const std::size_t track_count = std::max<std::size_t>(1, file.tracks.size());
     if (track_count > 0xffff) throw std::invalid_argument("too many MIDI tracks");
@@ -137,6 +154,15 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
           payload.push_back(static_cast<std::uint8_t>(micros & 0xff));
           timed_events.push_back({change.tick, 1, std::move(payload)});
         }
+        timed_events.push_back({0,
+                                1,
+                                Bytes{0xff,
+                                      0x58,
+                                      0x04,
+                                      file.time_signature.numerator,
+                                      denominatorExponent(file.time_signature.denominator),
+                                      24,
+                                      8}});
       }
       if (track != nullptr) {
         std::vector<MidiEvent> note_events;
@@ -215,6 +241,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
     parsed.format = static_cast<std::int16_t>(format);
     parsed.ticks_per_quarter = static_cast<Tick>(division);
     parsed.tracks.reserve(track_count);
+    bool time_signature_seen = false;
     for (std::uint16_t track_index = 0; track_index < track_count; ++track_index) {
       if (pos + 8 > data.size() || std::string(reinterpret_cast<const char*>(data.data() + pos), 4) != "MTrk") {
         throw std::runtime_error("missing MIDI track chunk");
@@ -257,6 +284,15 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
                                          (static_cast<std::uint32_t>(data[pos + 1]) << 8) |
                                          data[pos + 2];
             if (micros != 0) parsed.tempo.addChange(tick, 60000000.0 / micros);
+          } else if (type == 0x58 && length == 4 && !time_signature_seen) {
+            const std::uint8_t numerator = data[pos];
+            const std::uint8_t exponent = data[pos + 1];
+            if (numerator == 0 || exponent > 7) {
+              throw std::runtime_error("invalid MIDI time signature");
+            }
+            parsed.time_signature = {
+                numerator, static_cast<std::uint8_t>(static_cast<std::uint16_t>(1U) << exponent)};
+            time_signature_seen = true;
           }
           pos += length;
           continue;
