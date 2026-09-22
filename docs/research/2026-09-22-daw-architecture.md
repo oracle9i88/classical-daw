@@ -44,10 +44,17 @@ score model must retain pitch step/alter/octave, integer duration, voice/staff,
 ties, tuplets, key/time signatures, tempo, and structured harmony fields. A
 string such as `Cm7(b5)` must not be the only representation of harmony.
 
+The first implementation now deliberately accepts only a fail-closed subset:
+`score-partwise`, one part/voice, plain XML (no `.mxl`), and 960 PPQ. The
+semantics follow the [MusicXML divisions](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/divisions/),
+[duration](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/duration/),
+and [note](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/note/)
+definitions. Unsupported voices, tuplets, and compressed files are explicit
+future work rather than silently discarded data.
+
 ## License and adoption rule
 
 Every future dependency gets a notice and license review before it is linked or
 distributed. The first implementation slices stay self-contained so that the
 engine's timing and realtime guarantees can be tested independently of a UI,
 notation renderer, sampler, or AI service.
-

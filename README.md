@@ -12,11 +12,16 @@ validating score timing and audio rendering before platform integration.
 - MIDI note, track, and file data structures.
 - Standard MIDI File type 0/1 read/write for notes, track names, and tempo
   events (unknown events are skipped on read).
+- A deliberately limited MusicXML `score-partwise` slice: one part/voice,
+  960-PPQ notes and rests, chords, ties, meter, tempo, and deterministic
+  import/export.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI round-trip, and render smoke tests.
 
-The renderer is a diagnostic instrument, not an orchestral sampler. There is no
-real-time audio callback, device selection, score engraving, MusicXML parser,
+The renderer is a diagnostic instrument, not an orchestral sampler. The
+MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
+multiple voices/staves, tuplets, key changes, dynamics, or full XML validation.
+There is no real-time audio callback, device selection, score engraving,
 automation, mixer, plugin hosting, undo stack, or project persistence yet.
 
 ## Build and test

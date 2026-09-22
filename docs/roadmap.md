@@ -13,6 +13,8 @@ not count as completion.
 - Reject invalid format-0 files containing multiple tracks.
 - Reject tempo values that cannot be encoded in MIDI's 24-bit microseconds
   field and guard MIDI tick/duration arithmetic against signed overflow.
+- Add a first MusicXML vertical slice: one `score-partwise` part/voice with
+  notes, rests, chords, ties, meter, tempo, and 960-PPQ import/export.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
@@ -27,9 +29,9 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Define the Score/Part/Staff/Voice/Measure/TimedEvent model, then implement a
-single-voice MusicXML import/export round trip with tempo, meter, dynamics,
-ties, and exact tick accounting. Add a project package with versioned manifest,
+Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
+implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
+and exact tick accounting. Add a project package with versioned manifest,
 autosave, recovery, and persisted undo history. The first user-facing vertical
 slice is MusicXML import → timeline edit → deterministic WAV export.
 
@@ -45,4 +47,3 @@ Add score editing/engraving, articulations, orchestral instrument libraries,
 freeze/render caches, and AI services behind the same command boundary. AI must
 not run in the realtime callback or become a substitute for deterministic
 project state.
-

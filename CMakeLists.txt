@@ -7,6 +7,7 @@ enable_testing()
 add_library(daw_engine STATIC
   src/engine/midi.cpp
   src/engine/render.cpp
+  src/engine/score.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
   src/engine/wav.cpp

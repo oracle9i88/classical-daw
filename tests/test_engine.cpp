@@ -1,5 +1,6 @@
 #include "daw/midi.hpp"
 #include "daw/render.hpp"
+#include "daw/score.hpp"
 #include "daw/timeline.hpp"
 #include "daw/wav.hpp"
 
@@ -26,6 +27,13 @@ bool writeBytes(const std::filesystem::path& path, const std::vector<std::uint8_
   std::ofstream output(path, std::ios::binary);
   if (!output) return false;
   output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+  return static_cast<bool>(output);
+}
+
+bool writeText(const std::filesystem::path& path, const std::string& text) {
+  std::ofstream output(path, std::ios::binary);
+  if (!output) return false;
+  output << text;
   return static_cast<bool>(output);
 }
 
@@ -125,6 +133,60 @@ int main() {
     return fail("overflowing MIDI note duration was accepted");
   }
 
+  const auto musicxml_path = temp / "classical_daw_score_roundtrip.musicxml";
+  Score score;
+  score.time_signature = {4, 4};
+  score.bpm = 96.0;
+  score.parts = {ScorePart{"P1", "Piano", {
+      ScoreMeasure{1, 0, {
+          ScoreNote{0, 960, ScorePitch{'C', 0, 4}, false, false, true, false, 100},
+          ScoreNote{960, 960, ScorePitch{'E', 0, 4}, false, false, false, false, 100},
+          ScoreNote{1920, 1920, ScorePitch{'G', 0, 4}, false, false, false, true, 100},
+          ScoreNote{1920, 1920, ScorePitch{'C', 0, 5}, false, true, false, false, 100},
+      }},
+  }}};
+  if (!writeMusicXmlFile(score, musicxml_path.string(), &error)) return fail("MusicXML write: " + error);
+  Score parsed_score;
+  if (!readMusicXmlFile(musicxml_path.string(), &parsed_score, &error)) return fail("MusicXML read: " + error);
+  if (parsed_score.parts.size() != 1 || parsed_score.parts[0].name != "Piano" ||
+      parsed_score.parts[0].measures.size() != 1 || parsed_score.parts[0].measures[0].notes.size() != 4 ||
+      parsed_score.parts[0].measures[0].notes[0].start != 0 ||
+      parsed_score.parts[0].measures[0].notes[1].start != 960 ||
+      parsed_score.parts[0].measures[0].notes[2].tie_stop != true ||
+      parsed_score.parts[0].measures[0].notes[3].chord != true) {
+    return fail("MusicXML score round-trip");
+  }
+  if (parsed_score.time_signature.numerator != 4 || parsed_score.time_signature.denominator != 4 ||
+      !closeEnough(parsed_score.bpm, 96.0)) {
+    return fail("MusicXML score metadata round-trip");
+  }
+
+  const auto invalid_musicxml_path = temp / "classical_daw_invalid.musicxml";
+  const std::string invalid_musicxml =
+      "<score-partwise><part-list><score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list>"
+      "<part id=\"P1\"><measure number=\"1\"><attributes><divisions>480</divisions></attributes>"
+      "</measure></part></score-partwise>";
+  if (!writeText(invalid_musicxml_path, invalid_musicxml)) return fail("invalid MusicXML fixture write");
+  if (readMusicXmlFile(invalid_musicxml_path.string(), &parsed_score, &error)) {
+    return fail("unsupported MusicXML divisions were accepted");
+  }
+
+  const auto trailing_musicxml_path = temp / "classical_daw_trailing.musicxml";
+  if (!writeText(trailing_musicxml_path, "<score-partwise></score-partwise><garbage/>")) {
+    return fail("trailing MusicXML fixture write");
+  }
+  if (readMusicXmlFile(trailing_musicxml_path.string(), &parsed_score, &error)) {
+    return fail("trailing MusicXML data was accepted");
+  }
+
+  const auto prefix_musicxml_path = temp / "classical_daw_prefix.musicxml";
+  if (!writeText(prefix_musicxml_path, "<garbage/><score-partwise></score-partwise>")) {
+    return fail("prefix MusicXML fixture write");
+  }
+  if (readMusicXmlFile(prefix_musicxml_path.string(), &parsed_score, &error)) {
+    return fail("prefix MusicXML data was accepted");
+  }
+
   const AudioBuffer rendered = renderNotes(original.tracks[0], tempo, 48000.0, 0.05);
   if (rendered.sample_rate != 48000 || rendered.channels != 1 || rendered.frameCount() < 48000) {
     return fail("offline render shape");
@@ -139,6 +201,10 @@ int main() {
   std::filesystem::remove(format_zero_path);
   std::filesystem::remove(invalid_tempo_path);
   std::filesystem::remove(overflow_path);
+  std::filesystem::remove(musicxml_path);
+  std::filesystem::remove(invalid_musicxml_path);
+  std::filesystem::remove(trailing_musicxml_path);
+  std::filesystem::remove(prefix_musicxml_path);
   std::filesystem::remove(wav_path);
   std::cout << "classical-daw Alpha engine tests passed\n";
   return 0;

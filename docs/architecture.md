@@ -28,6 +28,12 @@ publish events and immutable state snapshots for the UI. A project package will
 eventually contain a versioned manifest, score/MIDI data, media, peak caches,
 autosave snapshots, and plugin state.
 
+The current score boundary is intentionally small: `Score -> Part -> Measure ->
+ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords, and
+ties. The MusicXML adapter runs outside the realtime path and only accepts a
+single 960-PPQ part/voice. It can be replaced by a full XML reader later
+without changing the callback or transport contracts.
+
 ## Delivery slices
 
 1. **Alpha (current):** tempo/tick/sample conversion, SMF type 0/1 note
