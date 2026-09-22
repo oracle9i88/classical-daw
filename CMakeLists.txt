@@ -6,6 +6,7 @@ enable_testing()
 
 add_library(daw_engine STATIC
   src/engine/midi.cpp
+  src/engine/project.cpp
   src/engine/render.cpp
   src/engine/score.cpp
   src/engine/tempo_map.cpp
@@ -23,6 +24,10 @@ endif()
 add_executable(daw_tests tests/test_engine.cpp)
 target_link_libraries(daw_tests PRIVATE daw_engine)
 add_test(NAME daw_tests COMMAND daw_tests)
+
+add_executable(daw_project_tests tests/project_tests.cpp)
+target_link_libraries(daw_project_tests PRIVATE daw_engine)
+add_test(NAME daw_project_tests COMMAND daw_project_tests)
 
 if(APPLE)
   add_library(daw_coreaudio STATIC
