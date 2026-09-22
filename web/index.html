@@ -21,6 +21,20 @@
           <input id="tempo" type="number" min="30" max="240" value="96" aria-label="BPM">
           <span>BPM</span>
         </label>
+        <label class="meter-control">拍号
+          <select id="meter-numerator" aria-label="拍号分子">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="6">6</option>
+          </select>
+          <span>/</span>
+          <select id="meter-denominator" aria-label="拍号分母">
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+          </select>
+          <span id="meter-label" aria-live="polite">4/4</span>
+        </label>
         <button id="play" class="button button-primary" type="button">▶ 播放</button>
         <button id="stop" class="button" type="button" disabled>■ 停止</button>
         <button id="undo" class="button" type="button" disabled title="撤销（⌘/Ctrl+Z）">↶ 撤销</button>
@@ -72,7 +86,7 @@
         </form>
         <div class="legend">
           <span class="legend-dot"></span>
-          <span>网格以四分音符为一拍，当前显示 4 小节。</span>
+          <span id="meter-hint">网格以四分音符为一拍，当前显示 4 小节。</span>
         </div>
         <div class="license-note">AGPL-3.0-or-later · 本页为无后端静态原型</div>
       </aside>

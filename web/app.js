@@ -5,7 +5,14 @@
   const PPQ = 960;
   const PROJECT_FORMAT = "classical-daw-web-project";
   const PROJECT_VERSION = 1;
-  const BEATS = 16;
+  const MEASURES = 4;
+  const DEFAULT_METER = Object.freeze({ numerator: 4, denominator: 4 });
+  const ALLOWED_METERS = Object.freeze([
+    Object.freeze({ numerator: 2, denominator: 4 }),
+    Object.freeze({ numerator: 3, denominator: 4 }),
+    Object.freeze({ numerator: 4, denominator: 4 }),
+    Object.freeze({ numerator: 6, denominator: 8 })
+  ]);
   const ROWS = 24;
   const LOWEST_MIDI = 60;
   const rowHeight = 31;
@@ -31,6 +38,10 @@
     undo: document.querySelector("#undo"),
     redo: document.querySelector("#redo"),
     tempo: document.querySelector("#tempo"),
+    meterNumerator: document.querySelector("#meter-numerator"),
+    meterDenominator: document.querySelector("#meter-denominator"),
+    meterLabel: document.querySelector("#meter-label"),
+    meterHint: document.querySelector("#meter-hint"),
     add: document.querySelector("#add-note"),
     clear: document.querySelector("#clear"),
     saveProject: document.querySelector("#save-project"),
@@ -51,6 +62,7 @@
     { id: 6, midi: 72, start: 6, duration: 2, velocity: 94 }
   ];
   let nextId = 7;
+  let timeSignature = { ...DEFAULT_METER };
   let selectedId = null;
   let audioContext = null;
   let activeSources = [];
@@ -72,6 +84,35 @@
 
   function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 
+  function isAllowedMeter(numerator, denominator) {
+    return ALLOWED_METERS.some((meter) => meter.numerator === numerator && meter.denominator === denominator);
+  }
+
+  function measureBeats(meter = timeSignature) {
+    return meter.numerator * 4 / meter.denominator;
+  }
+
+  function visibleBeats(meter = timeSignature) {
+    return MEASURES * measureBeats(meter);
+  }
+
+  function meterText(meter = timeSignature) {
+    return `${meter.numerator}/${meter.denominator}`;
+  }
+
+  function syncMeterControls() {
+    const text = meterText();
+    dom.meterNumerator.value = String(timeSignature.numerator);
+    dom.meterDenominator.value = String(timeSignature.denominator);
+    Array.from(dom.meterDenominator.options).forEach((option) => {
+      option.disabled = (timeSignature.numerator === 6 && option.value !== "8")
+        || (timeSignature.numerator !== 6 && option.value !== "4");
+    });
+    dom.meterLabel.textContent = text;
+    dom.meterHint.textContent = `网格以四分音符为一拍，当前 ${text}，显示 ${MEASURES} 小节。`;
+    dom.start.max = String(Math.max(0.25, visibleBeats() - 0.25));
+  }
+
   function cloneNotes(source) {
     return source.map((note) => ({ ...note }));
   }
@@ -81,7 +122,8 @@
       notes: cloneNotes(notes),
       nextId,
       selectedId,
-      tempo: String(dom.tempo.value)
+      tempo: String(dom.tempo.value),
+      timeSignature: { ...timeSignature }
     };
   }
 
@@ -132,6 +174,10 @@
     nextId = state.nextId;
     selectedId = state.selectedId;
     dom.tempo.value = state.tempo;
+    timeSignature = isAllowedMeter(state.timeSignature?.numerator, state.timeSignature?.denominator)
+      ? { numerator: state.timeSignature.numerator, denominator: state.timeSignature.denominator }
+      : { ...DEFAULT_METER };
+    syncMeterControls();
     const selected = notes.find((note) => note.id === selectedId);
     if (selected) {
       dom.noteForm.hidden = false;
@@ -148,6 +194,7 @@
       dom.hint.hidden = false;
       dom.lyric.value = "";
     }
+    renderBeatLabels();
     renderRoll();
   }
 
@@ -193,18 +240,25 @@
 
   function renderBeatLabels() {
     dom.beatLabels.replaceChildren();
-    for (let beat = 0; beat < BEATS; beat += 1) {
+    const totalBeats = visibleBeats();
+    const measureLength = measureBeats();
+    dom.beatLabels.style.width = `${totalBeats * beatWidth}px`;
+    for (let beat = 0; beat < totalBeats; beat += 1) {
       const label = document.createElement("div");
-      label.className = `beat-label ${beat % 4 === 0 ? "measure" : ""}`;
+      const measureStart = Math.abs(beat % measureLength) < 0.001;
+      label.className = `beat-label ${measureStart ? "measure" : ""}`;
       label.style.left = `${beat * beatWidth}px`;
-      label.textContent = beat % 4 === 0 ? `小节 ${beat / 4 + 1}` : `${beat + 1}`;
+      label.textContent = measureStart ? `小节 ${Math.floor(beat / measureLength) + 1}` : `${beat + 1}`;
       dom.beatLabels.append(label);
     }
   }
 
   function renderRoll() {
     dom.roll.querySelectorAll(".note, .measure-line, .playhead").forEach((element) => element.remove());
-    for (let beat = 0; beat <= BEATS; beat += 4) {
+    const totalBeats = visibleBeats();
+    const measureLength = measureBeats();
+    dom.roll.style.width = `${totalBeats * beatWidth}px`;
+    for (let beat = 0; beat <= totalBeats; beat += measureLength) {
       const line = document.createElement("div");
       line.className = "measure-line";
       line.style.left = `${beat * beatWidth}px`;
@@ -265,7 +319,7 @@
   function addNote(midi = 72, start = null, duration = 1) {
     commitMutation(() => {
       const occupied = notes.map((note) => note.start + note.duration);
-      const suggestedStart = Math.min(BEATS - duration, Math.max(0, Math.ceil(Math.max(0, ...occupied) * 4) / 4));
+      const suggestedStart = Math.min(visibleBeats() - duration, Math.max(0, Math.ceil(Math.max(0, ...occupied) * 4) / 4));
       const note = { id: nextId++, midi, start: Number(start === null ? suggestedStart : start), duration, velocity: 90 };
       notes.push(note);
       selectNote(note.id);
@@ -277,11 +331,40 @@
     const note = notes.find((item) => item.id === selectedId);
     if (!note) return;
     Object.assign(note, patch);
-    note.start = clamp(Math.round(Number(note.start) * 4) / 4, 0, BEATS - 0.25);
-    note.duration = clamp(Number(note.duration), 0.25, BEATS - note.start);
+    note.start = clamp(Math.round(Number(note.start) * 4) / 4, 0, visibleBeats() - 0.25);
+    note.duration = clamp(Number(note.duration), 0.25, visibleBeats() - note.start);
     note.midi = clamp(Math.round(Number(note.midi)), LOWEST_MIDI, LOWEST_MIDI + ROWS - 1);
     note.velocity = clamp(Math.round(Number(note.velocity)), 1, 127);
     selectNote(note.id);
+  }
+
+  function changeTimeSignature() {
+    const numerator = Number(dom.meterNumerator.value);
+    // The compact UI only exposes the four supported combinations. Selecting
+    // 6 switches to 6/8; all other numerators use a quarter-note denominator.
+    const denominator = numerator === 6 ? 8 : 4;
+    dom.meterDenominator.value = String(denominator);
+    if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || !isAllowedMeter(numerator, denominator)) {
+      syncMeterControls();
+      setStatus("拍号不受支持：仅支持 2/4、3/4、4/4、6/8");
+      return;
+    }
+    const nextMeter = { numerator, denominator };
+    const nextTotalBeats = visibleBeats(nextMeter);
+    const exceedsVisibleRange = notes.some((note) => note.start + note.duration > nextTotalBeats + 1e-6);
+    if (exceedsVisibleRange) {
+      syncMeterControls();
+      setStatus(`拍号变更失败：音符超出 ${meterText(nextMeter)} 的 4 小节范围`);
+      return;
+    }
+    finishLiveHistory();
+    const before = snapshot();
+    timeSignature = nextMeter;
+    syncMeterControls();
+    renderBeatLabels();
+    renderRoll();
+    pushHistory(before);
+    setStatus(`已设置拍号 ${meterText()}`);
   }
 
   function setStatus(text) { dom.status.textContent = text; }
@@ -351,8 +434,9 @@
     if (!measures.length) throw new Error("MusicXML 中没有小节");
 
     let divisions = PPQ;
-    let beatsPerMeasure = 4;
-    let beatType = 4;
+    let beatsPerMeasure = DEFAULT_METER.numerator;
+    let beatType = DEFAULT_METER.denominator;
+    let timeSignatureSeen = false;
     let measureOffset = 0;
     const imported = [];
     let skipped = 0;
@@ -363,11 +447,15 @@
         const nextDivisions = numberChild(attributes, "divisions", null);
         if (nextDivisions && nextDivisions > 0) divisions = nextDivisions;
         const time = childByName(attributes, "time");
-        if (time) {
+        if (time && !timeSignatureSeen) {
           const nextBeats = numberChild(time, "beats", null);
           const nextBeatType = numberChild(time, "beat-type", null);
-          if (nextBeats && nextBeats > 0) beatsPerMeasure = nextBeats;
-          if (nextBeatType && nextBeatType > 0) beatType = nextBeatType;
+          if (!Number.isInteger(nextBeats) || !Number.isInteger(nextBeatType) || !isAllowedMeter(nextBeats, nextBeatType)) {
+            throw new Error("MusicXML 首个拍号不受支持（仅支持 2/4、3/4、4/4、6/8）");
+          }
+          beatsPerMeasure = nextBeats;
+          beatType = nextBeatType;
+          timeSignatureSeen = true;
         }
       }
       const measureLength = beatsPerMeasure * 4 / beatType;
@@ -398,9 +486,10 @@
         } else {
           const midi = Math.round((octave + 1) * 12 + stepIndex + alter);
           const absoluteStart = measureOffset + onset;
-          if (absoluteStart < BEATS && absoluteStart + duration > 0) {
-            const start = Math.round(clamp(absoluteStart, 0, BEATS - 0.25) * 4) / 4;
-            const visibleDuration = Math.min(duration, BEATS - start);
+          if (absoluteStart < visibleBeats({ numerator: beatsPerMeasure, denominator: beatType }) && absoluteStart + duration > 0) {
+            const totalVisibleBeats = visibleBeats({ numerator: beatsPerMeasure, denominator: beatType });
+            const start = Math.round(clamp(absoluteStart, 0, totalVisibleBeats - 0.25) * 4) / 4;
+            const visibleDuration = Math.min(duration, totalVisibleBeats - start);
             if (visibleDuration >= 0.25 && midi >= LOWEST_MIDI && midi < LOWEST_MIDI + ROWS) {
               const velocity = clamp(numberChild(noteElement, "velocity", 90), 1, 127);
               imported.push({ midi, start, duration: Math.max(0.25, Math.round(visibleDuration * 4) / 4), velocity, lyric });
@@ -431,7 +520,12 @@
     const parsedTempo = tempoNode ? Number(tempoNode.textContent.trim()) : Number(dom.tempo.value);
     const tempo = clamp(Number.isFinite(parsedTempo) ? parsedTempo : 96, 30, 240);
     if (!imported.length) throw new Error("没有找到当前卷帘可显示的音符（范围为 C4–B5、前 4 小节）");
-    return { notes: imported, tempo, skipped };
+    return {
+      notes: imported,
+      tempo,
+      skipped,
+      timeSignature: { numerator: beatsPerMeasure, denominator: beatType }
+    };
   }
 
   async function importMusicXmlFile(file) {
@@ -444,6 +538,9 @@
         dom.noteForm.hidden = true;
         dom.hint.hidden = false;
         dom.tempo.value = String(result.tempo);
+        timeSignature = { ...result.timeSignature };
+        syncMeterControls();
+        renderBeatLabels();
         renderRoll();
       });
       const suffix = result.skipped ? `，忽略 ${result.skipped} 个超出当前范围的事件` : "";
@@ -492,7 +589,7 @@
     const animate = () => {
       if (!playhead) return;
       const elapsed = (performance.now() - playStartedAt) / 1000;
-      playhead.style.left = `${Math.min(BEATS * beatWidth - 2, elapsed / secondsPerBeat * beatWidth)}px`;
+      playhead.style.left = `${Math.min(visibleBeats() * beatWidth - 2, elapsed / secondsPerBeat * beatWidth)}px`;
       if (elapsed < playDuration) window.requestAnimationFrame(animate);
     };
     window.requestAnimationFrame(animate);
@@ -525,6 +622,7 @@
   function musicXml() {
     const sorted = [...notes].sort((a, b) => a.start - b.start || a.midi - b.midi);
     const divisions = PPQ;
+    const totalBeats = visibleBeats();
     const lines = [];
     let cursor = 0;
     let index = 0;
@@ -533,11 +631,11 @@
       lines.push(`      <note><rest/><duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type></note>`);
     };
     while (index < sorted.length) {
-      const start = clamp(Number(sorted[index].start), 0, BEATS);
+      const start = clamp(Number(sorted[index].start), 0, totalBeats);
       if (start > cursor) emitRest(start - cursor);
       const group = sorted.filter((note) => Math.abs(note.start - start) < 0.001);
       group.forEach((note, groupIndex) => {
-        const duration = clamp(Number(note.duration), 0.25, BEATS - start);
+        const duration = clamp(Number(note.duration), 0.25, totalBeats - start);
         const ticks = Math.max(1, Math.round(duration * divisions));
         const lyricXml = note.lyric ? `<lyric><text>${xmlEscape(note.lyric)}</text></lyric>` : "";
         lines.push(`      <note>${groupIndex ? "<chord/>" : ""}${pitchXml(note.midi)}<duration>${ticks}</duration><voice>1</voice><type>${typeForDuration(duration)}</type><velocity>${Math.round(note.velocity)}</velocity>${lyricXml}</note>`);
@@ -545,8 +643,9 @@
       cursor = Math.max(cursor, ...group.map((note) => start + Number(note.duration)));
       index += group.length;
     }
-    if (cursor < BEATS) emitRest(BEATS - cursor);
+    if (cursor < totalBeats) emitRest(totalBeats - cursor);
     const tempo = clamp(Number(dom.tempo.value) || 96, 30, 240);
+    const meter = timeSignature;
     return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <score-partwise version="4.0">
   <work><work-title>Classical DAW Web Sketch</work-title></work>
@@ -554,7 +653,7 @@
   <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
-      <attributes><divisions>${divisions}</divisions><key><fifths>0</fifths><mode>major</mode></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <attributes><divisions>${divisions}</divisions><key><fifths>0</fifths><mode>major</mode></key><time><beats>${meter.numerator}</beats><beat-type>${meter.denominator}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
       <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${tempo}</per-minute></metronome></direction-type><sound tempo="${tempo}"/></direction>
 ${lines.join("\n")}
     </measure>
@@ -580,6 +679,7 @@ ${lines.join("\n")}
       version: PROJECT_VERSION,
       ppq: PPQ,
       tempo: clamp(Number(dom.tempo.value) || 96, 30, 240),
+      timeSignature: { ...timeSignature },
       notes: cloneNotes(notes),
       selectedId,
       nextId
@@ -589,6 +689,18 @@ ${lines.join("\n")}
 
   function isQuarterGridValue(value) {
     return Math.abs(value * 4 - Math.round(value * 4)) < 1e-6;
+  }
+
+  function parseProjectMeter(source) {
+    if (source === undefined) return { ...DEFAULT_METER };
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("timeSignature 必须是对象");
+    }
+    const { numerator, denominator } = source;
+    if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || !isAllowedMeter(numerator, denominator)) {
+      throw new Error("timeSignature 只支持 2/4、3/4、4/4、6/8");
+    }
+    return { numerator, denominator };
   }
 
   function parseProject(text) {
@@ -617,6 +729,8 @@ ${lines.join("\n")}
     if (typeof tempo !== "number" || !Number.isFinite(tempo) || tempo < 30 || tempo > 240) {
       throw new Error("tempo 必须是 30–240 范围内的数字");
     }
+    const importedMeter = parseProjectMeter(documentNode.timeSignature);
+    const importedTotalBeats = visibleBeats(importedMeter);
 
     const ids = new Set();
     const importedNotes = documentNode.notes.map((source, index) => {
@@ -630,10 +744,10 @@ ${lines.join("\n")}
       if (!Number.isInteger(midi) || midi < LOWEST_MIDI || midi >= LOWEST_MIDI + ROWS) {
         throw new Error(`第 ${index + 1} 个音符的 midi 超出 C4–B5 范围`);
       }
-      if (typeof start !== "number" || !Number.isFinite(start) || start < 0 || start > BEATS - 0.25 || !isQuarterGridValue(start)) {
+      if (typeof start !== "number" || !Number.isFinite(start) || start < 0 || start > importedTotalBeats - 0.25 || !isQuarterGridValue(start)) {
         throw new Error(`第 ${index + 1} 个音符的 start 无效`);
       }
-      if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0.25 || duration > BEATS - start || !isQuarterGridValue(duration)) {
+      if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0.25 || duration > importedTotalBeats - start || !isQuarterGridValue(duration)) {
         throw new Error(`第 ${index + 1} 个音符的 duration 无效`);
       }
       if (!Number.isInteger(velocity) || velocity < 1 || velocity > 127) {
@@ -660,7 +774,8 @@ ${lines.join("\n")}
       notes: importedNotes,
       nextId: documentNode.nextId,
       selectedId: selected,
-      tempo
+      tempo,
+      timeSignature: importedMeter
     };
   }
 
@@ -684,7 +799,7 @@ ${lines.join("\n")}
         nextId = project.nextId;
         selectedId = project.selectedId;
         dom.tempo.value = String(project.tempo);
-        restoreState({ notes, nextId, selectedId, tempo: String(project.tempo) });
+        restoreState({ notes, nextId, selectedId, tempo: String(project.tempo), timeSignature: project.timeSignature });
       });
       setStatus(`已打开工程（${notes.length} 个音符）`);
     } catch (error) {
@@ -697,7 +812,7 @@ ${lines.join("\n")}
   dom.roll.addEventListener("click", (event) => {
     if (event.target !== dom.roll) return;
     const rect = dom.roll.getBoundingClientRect();
-    const start = clamp(Math.floor((event.clientX - rect.left) / beatWidth * 4) / 4, 0, BEATS - 0.25);
+    const start = clamp(Math.floor((event.clientX - rect.left) / beatWidth * 4) / 4, 0, visibleBeats() - 0.25);
     const row = clamp(Math.floor((event.clientY - rect.top) / rowHeight), 0, ROWS - 1);
     addNote(LOWEST_MIDI + ROWS - 1 - row, start, 1);
   });
@@ -719,6 +834,8 @@ ${lines.join("\n")}
   dom.redo.addEventListener("click", redo);
   dom.play.addEventListener("click", () => { startPlayback().catch(() => setStatus("浏览器音频未能启动，请再次点击播放")); });
   dom.stop.addEventListener("click", stopPlayback);
+  dom.meterNumerator.addEventListener("change", changeTimeSignature);
+  dom.meterDenominator.addEventListener("change", changeTimeSignature);
   dom.importButton.addEventListener("click", () => dom.musicXmlFile.click());
   dom.musicXmlFile.addEventListener("change", () => {
     const [file] = dom.musicXmlFile.files || [];
@@ -767,6 +884,7 @@ ${lines.join("\n")}
   });
 
   renderPitchLabels();
+  syncMeterControls();
   renderBeatLabels();
   populatePitchOptions();
   renderRoll();
