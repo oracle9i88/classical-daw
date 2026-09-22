@@ -5,7 +5,9 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 namespace daw {
@@ -46,6 +48,9 @@ void validateNoteTiming(const ScoreNote& note) {
     throw std::invalid_argument("score note timing overflows tick range");
   }
   if (note.velocity > 127) throw std::invalid_argument("score note velocity is outside MIDI 0..127");
+  if (!note.rest && note.velocity == 0) {
+    throw std::invalid_argument("score sounding note attack velocity must be in MIDI 1..127");
+  }
   if (note.voice == 0 || note.staff == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
 }
 
@@ -64,6 +69,7 @@ ScorePitch fromMidiPitch(std::uint8_t midi_pitch) {
 }
 
 constexpr std::size_t kMaximumImportedMeasures = 1000000;
+constexpr std::size_t kMaximumImportedNoteSegments = 1000000;
 
 std::filesystem::path temporaryPath(const std::string& destination) {
   // A sibling path keeps the final rename on one filesystem. This is not used
@@ -106,13 +112,59 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
       MidiTrack track;
       track.name = part.name.empty() ? part.id : part.name;
       const auto channel = static_cast<std::uint8_t>(part_index);
+      std::vector<const ScoreNote*> ordered_notes;
       for (const ScoreMeasure& measure : part.measures) {
         if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
         for (const ScoreNote& note : measure.notes) {
           validateNoteTiming(note);
-          if (note.rest) continue;
-          track.notes.push_back({note.start, note.duration, toMidiPitch(note.pitch), note.velocity, channel});
+          if (note.rest) {
+            if (note.tie_start || note.tie_stop) throw std::invalid_argument("score rest cannot carry a tie");
+            continue;
+          }
+          ordered_notes.push_back(&note);
         }
+      }
+      std::stable_sort(ordered_notes.begin(), ordered_notes.end(), [](const ScoreNote* left, const ScoreNote* right) {
+        return left->start < right->start;
+      });
+      // A notated tie sustains one attack. Keep its identity within the
+      // part/staff/voice and sounding pitch, so an adjacent instrument or
+      // another voice on the same pitch cannot accidentally complete it.
+      using TieKey = std::tuple<std::uint16_t, std::uint16_t, std::uint8_t>;
+      std::map<TieKey, std::size_t> active_ties;
+      for (const ScoreNote* source : ordered_notes) {
+        const ScoreNote& note = *source;
+        const std::uint8_t pitch = toMidiPitch(note.pitch);
+        const TieKey key{note.staff, note.voice, pitch};
+        const auto tie = active_ties.find(key);
+        const auto tieError = [&](const char* message) {
+          return std::invalid_argument(std::string(message) + " in part " + part.id + " at tick " +
+                                       std::to_string(note.start) + " (staff " + std::to_string(note.staff) +
+                                       ", voice " + std::to_string(note.voice) + ", MIDI pitch " +
+                                       std::to_string(pitch) + ")");
+        };
+        if (note.tie_stop) {
+          if (tie == active_ties.end()) throw tieError("score tie stop has no matching start");
+          MidiNote& sustained = track.notes[tie->second];
+          if (sustained.end() != note.start) {
+            throw tieError("score tied notes must be exactly contiguous");
+          }
+          sustained.duration = note.start + note.duration - sustained.start;
+          // Continuation velocity is notation, not a second MIDI note-on.
+          if (!note.tie_start) active_ties.erase(tie);
+        } else {
+          if (tie != active_ties.end()) throw tieError("score tie is missing its continuation stop");
+          track.notes.push_back({note.start, note.duration, pitch, note.velocity, channel});
+          if (note.tie_start) active_ties.emplace(key, track.notes.size() - 1U);
+        }
+      }
+      if (!active_ties.empty()) {
+        const auto& missing = *active_ties.begin();
+        throw std::invalid_argument("score tie start has no matching stop in part " + part.id + " at tick " +
+                                    std::to_string(track.notes[missing.second].start) + " (staff " +
+                                    std::to_string(std::get<0>(missing.first)) + ", voice " +
+                                    std::to_string(std::get<1>(missing.first)) + ", MIDI pitch " +
+                                    std::to_string(std::get<2>(missing.first)) + ")");
       }
       // Keep deterministic ordering for callers inspecting the in-memory
       // result. Equal-start notes are stable, so chords remain independent.
@@ -217,6 +269,9 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         if (midi_note.pitch > 127 || midi_note.velocity > 127 || midi_note.channel > 15) {
           throw std::invalid_argument("MIDI note has an out-of-range field");
         }
+        if (midi_note.velocity == 0) {
+          throw std::invalid_argument("MIDI sounding note attack velocity must be in 1..127");
+        }
         const Tick end = midi_note.start + midi_note.duration;
         max_end = std::max(max_end, end);
         ScoreNote note;
@@ -233,13 +288,24 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         if (left.voice != right.voice) return left.voice < right.voice;
         return left.pitch.octave < right.pitch.octave;
       });
-      for (std::size_t note_index = 1; note_index < notes.size(); ++note_index) {
-        if (notes[note_index].start == notes[note_index - 1].start &&
-            notes[note_index].voice == notes[note_index - 1].voice) {
-          notes[note_index].chord = true;
+      // One MIDI channel becomes one score voice. Overlapping instances of
+      // the same pitch cannot retain independent note/tie identities in that
+      // voice, especially after splitting at barlines. Fail before returning
+      // a score that could not be exported again without guessing.
+      using VoicePitch = std::pair<std::uint16_t, std::uint8_t>;
+      std::map<VoicePitch, Tick> previous_ends;
+      for (const ScoreNote& note : notes) {
+        const std::uint8_t pitch = toMidiPitch(note.pitch);
+        const VoicePitch key{note.voice, pitch};
+        const auto previous = previous_ends.find(key);
+        if (previous != previous_ends.end() && note.start < previous->second) {
+          throw std::invalid_argument("MIDI same-channel same-pitch overlap cannot be represented by one score voice in track " +
+                                      std::to_string(track_index + 1U) + " at tick " + std::to_string(note.start) +
+                                      " (channel " + std::to_string(note.voice - 1U) + ", MIDI pitch " +
+                                      std::to_string(pitch) + ")");
         }
+        previous_ends[key] = note.start + note.duration;
       }
-
       const Tick measure_count_tick = max_end / measure_ticks;
       const Tick measure_count_remainder = max_end % measure_ticks;
       const Tick measure_count_with_remainder =
@@ -260,13 +326,45 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         part.measures[measure_index].start =
             static_cast<Tick>(measure_index) * measure_ticks;
       }
-      for (ScoreNote& note : notes) {
-        const Tick measure_index_tick = note.start / measure_ticks;
-        if (measure_index_tick < 0 ||
-            static_cast<std::uint64_t>(measure_index_tick) >= measure_count) {
-          throw std::invalid_argument("MIDI note cannot be assigned to a score measure");
+      std::size_t segment_count = 0;
+      for (const ScoreNote& note : notes) {
+        const Tick note_end = note.start + note.duration;
+        Tick segment_start = note.start;
+        while (segment_start < note_end) {
+          const Tick measure_index_tick = segment_start / measure_ticks;
+          if (measure_index_tick < 0 ||
+              static_cast<std::uint64_t>(measure_index_tick) >= measure_count) {
+            throw std::invalid_argument("MIDI note cannot be assigned to a score measure");
+          }
+          if (segment_count >= kMaximumImportedNoteSegments) {
+            throw std::invalid_argument("MIDI import requires a bounded note segment count");
+          }
+          const Tick until_barline = measure_ticks - segment_start % measure_ticks;
+          const Tick segment_duration = std::min(note_end - segment_start, until_barline);
+          ScoreNote segment = note;
+          segment.start = segment_start;
+          segment.duration = segment_duration;
+          segment.tie_stop = segment_start != note.start;
+          segment.tie_start = segment_duration < note_end - segment_start;
+          part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(segment));
+          segment_start += segment_duration;
+          ++segment_count;
         }
-        part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(note));
+      }
+      // A held note can join a newly attacked chord at the next barline.
+      // Recompute chord flags after splitting rather than copying the flag
+      // from the source note, whose original onset may have been elsewhere.
+      for (ScoreMeasure& measure : part.measures) {
+        std::stable_sort(measure.notes.begin(), measure.notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
+          if (left.start != right.start) return left.start < right.start;
+          return left.voice < right.voice;
+        });
+        for (std::size_t note_index = 1; note_index < measure.notes.size(); ++note_index) {
+          if (measure.notes[note_index].start == measure.notes[note_index - 1].start &&
+              measure.notes[note_index].voice == measure.notes[note_index - 1].voice) {
+            measure.notes[note_index].chord = true;
+          }
+        }
       }
       converted.parts.push_back(std::move(part));
     }

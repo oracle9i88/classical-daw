@@ -232,6 +232,10 @@ int main() {
 
   const auto multi_voice_musicxml_path = temp / "classical_daw_multi_voice.musicxml";
   Score multi_voice_score = score;
+  // The XML fixture above exercises isolated notation flags. Performance
+  // export requires complete, contiguous tie chains instead.
+  multi_voice_score.parts[0].measures[0].notes[0].tie_start = false;
+  multi_voice_score.parts[0].measures[0].notes[2].tie_stop = false;
   ScoreNote tuplet_note{0, 640, ScorePitch{'D', 0, 5}, false, false, false, false, 90};
   tuplet_note.voice = 2;
   tuplet_note.tuplet_actual = 3;
@@ -354,7 +358,9 @@ int main() {
   }
   MidiFile six_eight_midi = exported_multi_part_score_midi;
   six_eight_midi.time_signature = {6, 8};
-  six_eight_midi.tracks[0].notes.push_back(MidiNote{2880, 960, 67, 80, 0});
+  // Use a distinct pitch: this fixture checks the meter grid, not an
+  // ambiguous same-channel/pitch overlap with the existing sustained G4.
+  six_eight_midi.tracks[0].notes.push_back(MidiNote{2880, 960, 69, 80, 0});
   Score six_eight_score;
   if (!midiToScore(six_eight_midi, &six_eight_score, &error) ||
       six_eight_score.time_signature.numerator != 6 ||

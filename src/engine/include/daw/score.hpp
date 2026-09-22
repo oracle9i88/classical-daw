@@ -54,9 +54,10 @@ struct Score {
   std::vector<ScorePart> parts;
 };
 
-// This first vertical slice supports one part with multiple voices/staves.
+// This first vertical slice supports ordered parts with multiple voices/staves.
 // It preserves pitch, integer duration, rests, chords, ties, tuplets, meter,
-// and tempo. Full engraving metadata remains outside this model.
+// tempo, and MIDI velocity via the standard note dynamics percentage.
+// Full engraving metadata remains outside this model.
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr);
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr);
 

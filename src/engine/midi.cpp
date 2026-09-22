@@ -58,10 +58,10 @@ void putVlq(Bytes& out, std::uint32_t value) {
   }
 }
 
-std::uint32_t getVlq(const Bytes& data, std::size_t& pos) {
+std::uint32_t getVlq(const Bytes& data, std::size_t& pos, std::size_t end) {
   std::uint32_t value = 0;
   for (int i = 0; i < 4; ++i) {
-    if (pos >= data.size()) throw std::runtime_error("truncated MIDI variable-length quantity");
+    if (pos >= end) throw std::runtime_error("truncated MIDI variable-length quantity");
     const std::uint8_t byte = data[pos++];
     value = (value << 7) | (byte & 0x7f);
     if ((byte & 0x80) == 0) return value;
@@ -101,6 +101,19 @@ std::uint8_t denominatorExponent(std::uint8_t denominator) {
     ++exponent;
   }
   return exponent;
+}
+
+Tick canonicalTick(Tick tick, Tick source_ppq, std::uint64_t* rounded) {
+  // Division first bounds intermediate arithmetic even for long files. The
+  // remainder is below 32768, so its product with 960 cannot overflow Tick.
+  const Tick whole = tick / source_ppq;
+  const Tick remainder = (tick % source_ppq) * kTicksPerQuarter;
+  const Tick fraction = (remainder + source_ppq / 2) / source_ppq;
+  if (whole > (std::numeric_limits<Tick>::max() - fraction) / kTicksPerQuarter) {
+    throw std::runtime_error("MIDI time exceeds the engine tick range after PPQ conversion");
+  }
+  if (remainder % source_ppq != 0) ++*rounded;
+  return whole * kTicksPerQuarter + fraction;
 }
 
 }  // namespace
@@ -169,7 +182,7 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
         for (const MidiNote& note : track->notes) {
           if (note.start < 0 || note.duration <= 0 ||
               note.start > std::numeric_limits<Tick>::max() - note.duration ||
-              note.pitch > 127 || note.velocity > 127 || note.channel > 15) {
+              note.pitch > 127 || note.velocity == 0 || note.velocity > 127 || note.channel > 15) {
             throw std::invalid_argument("MIDI note has an out-of-range field");
           }
           note_events.push_back({note.start, false, note.channel, note.pitch, note.velocity});
@@ -213,7 +226,7 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
   }
 }
 
-bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
+bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, MidiImportReport* report) {
   if (file == nullptr) {
     if (error) *error = "file output pointer is null";
     return false;
@@ -232,15 +245,18 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
     const auto format = readU16(data, pos);
     const auto track_count = readU16(data, pos);
     const auto division = readU16(data, pos);
-    if (format > 1 || (division & 0x8000) != 0 || division != kTicksPerQuarter) {
-      throw std::runtime_error("unsupported MIDI format or time division (Alpha requires 960 PPQ)");
+    if (format > 1 || (division & 0x8000) != 0 || division == 0) {
+      throw std::runtime_error("unsupported MIDI format or time division (requires Type 0/1 and positive PPQ)");
     }
     if (track_count == 0) throw std::runtime_error("MIDI file requires at least one track");
+    if (format == 0 && track_count != 1) throw std::runtime_error("MIDI format 0 can contain only one track");
     pos = 8 + header_length;
 
     MidiFile parsed;
+    MidiImportReport diagnostics;
+    diagnostics.source_ticks_per_quarter = division;
     parsed.format = static_cast<std::int16_t>(format);
-    parsed.ticks_per_quarter = static_cast<Tick>(division);
+    parsed.ticks_per_quarter = kTicksPerQuarter;
     parsed.tracks.reserve(track_count);
     bool time_signature_seen = false;
     for (std::uint16_t track_index = 0; track_index < track_count; ++track_index) {
@@ -257,7 +273,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
       std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::pair<Tick, std::uint8_t>>> active;
       bool end_of_track_seen = false;
       while (pos < track_end) {
-        const Tick delta = static_cast<Tick>(getVlq(data, pos));
+        const Tick delta = static_cast<Tick>(getVlq(data, pos, track_end));
         if (delta > std::numeric_limits<Tick>::max() - tick) {
           throw std::runtime_error("MIDI event tick overflow");
         }
@@ -275,12 +291,13 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           running_status = 0;
           if (pos >= track_end) throw std::runtime_error("truncated MIDI meta event");
           const std::uint8_t type = data[pos++];
-          const std::uint32_t length = getVlq(data, pos);
+          const std::uint32_t length = getVlq(data, pos, track_end);
           if (length > track_end - pos) throw std::runtime_error("truncated MIDI meta payload");
           if (type == 0x2f) {
             if (length != 0) throw std::runtime_error("invalid MIDI end-of-track length");
             end_of_track_seen = true;
             pos += length;
+            if (pos != track_end) throw std::runtime_error("extra data after MIDI end-of-track event");
             break;
           } else if (type == 0x03) {
             track.name.assign(reinterpret_cast<const char*>(data.data() + pos), length);
@@ -290,30 +307,35 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
                                          (static_cast<std::uint32_t>(data[pos + 1]) << 8) |
                                          data[pos + 2];
             if (micros == 0) throw std::runtime_error("invalid MIDI tempo value");
-            parsed.tempo.addChange(tick, 60000000.0 / micros);
+            parsed.tempo.addChange(canonicalTick(tick, division, &diagnostics.rounded_tempo_events),
+                                   60000000.0 / micros);
           } else if (type == 0x58) {
             if (length != 4) throw std::runtime_error("invalid MIDI time signature length");
-            if (time_signature_seen) {
-              pos += length;
-              continue;
-            }
             const std::uint8_t numerator = data[pos];
             const std::uint8_t exponent = data[pos + 1];
             if (numerator == 0 || exponent > 7) {
               throw std::runtime_error("invalid MIDI time signature");
             }
+            if (time_signature_seen) {
+              ++diagnostics.ignored_time_signature_events;
+              pos += length;
+              continue;
+            }
             parsed.time_signature = {
                 numerator, static_cast<std::uint8_t>(static_cast<std::uint16_t>(1U) << exponent)};
             time_signature_seen = true;
+          } else {
+            ++diagnostics.ignored_meta_events;
           }
           pos += length;
           continue;
         }
         if (status == 0xf0 || status == 0xf7) {
           running_status = 0;
-          const std::uint32_t length = getVlq(data, pos);
+          const std::uint32_t length = getVlq(data, pos, track_end);
           if (length > track_end - pos) throw std::runtime_error("truncated MIDI sysex payload");
           pos += length;
+          ++diagnostics.ignored_sysex_events;
           continue;
         }
         if (status < 0x80 || status >= 0xf0) throw std::runtime_error("unsupported MIDI event");
@@ -324,6 +346,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
             throw std::runtime_error("truncated MIDI channel event");
           }
           ++pos;  // Program Change and Channel Pressure each carry one data byte.
+          ++diagnostics.ignored_channel_events;
         } else {
           if (pos >= track_end || (data[pos] & 0x80) != 0) {
             throw std::runtime_error("truncated MIDI channel event");
@@ -334,22 +357,28 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           }
           const std::uint8_t value = data[pos++];
           if (command == 0x90 && value != 0) {
+            if (!active[{channel, pitch}].empty()) ++diagnostics.overlapping_same_pitch_notes;
             active[{channel, pitch}].push_back({tick, value});
           } else if (command == 0x80 || (command == 0x90 && value == 0)) {
             auto& stack = active[{channel, pitch}];
-            if (!stack.empty()) {
-              const auto [start, velocity] = stack.back();
-              stack.pop_back();
-              track.notes.push_back({start, std::max<Tick>(0, tick - start), pitch, velocity, channel});
+            if (stack.empty()) throw std::runtime_error("MIDI note-off has no matching note-on");
+            const auto [start, velocity] = stack.back();
+            stack.pop_back();
+            if (tick <= start) throw std::runtime_error("MIDI note duration must be positive");
+            const Tick normalized_start = canonicalTick(start, division, &diagnostics.rounded_note_boundaries);
+            const Tick normalized_end = canonicalTick(tick, division, &diagnostics.rounded_note_boundaries);
+            if (normalized_end <= normalized_start) {
+              throw std::runtime_error("MIDI note collapses to zero duration at 960 PPQ");
             }
+            track.notes.push_back({normalized_start, normalized_end - normalized_start, pitch, velocity, channel});
+          } else {
+            ++diagnostics.ignored_channel_events;
           }
         }
       }
       if (!end_of_track_seen) throw std::runtime_error("MIDI track is missing end-of-track event");
-      for (const auto& [key, stack] : active) {
-        for (const auto& [start, velocity] : stack) {
-          track.notes.push_back({start, std::max<Tick>(0, tick - start), key.second, velocity, key.first});
-        }
+      for (const auto& entry : active) {
+        if (!entry.second.empty()) throw std::runtime_error("MIDI track has unclosed notes at end-of-track");
       }
       std::sort(track.notes.begin(), track.notes.end(), [](const MidiNote& a, const MidiNote& b) {
         if (a.start != b.start) return a.start < b.start;
@@ -361,6 +390,8 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
     }
     if (pos != data.size()) throw std::runtime_error("trailing data after MIDI tracks");
     *file = std::move(parsed);
+    if (report != nullptr) *report = diagnostics;
+    if (error != nullptr) error->clear();
     return true;
   } catch (const std::exception& exception) {
     if (error) *error = exception.what();

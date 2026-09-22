@@ -4,8 +4,10 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <limits>
+#include <locale>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -83,7 +85,7 @@ bool hasElement(const std::string& xml, const std::string& tag, std::size_t begi
   return hasSelfClosingTag(xml, tag, begin, end) || !findBlocks(xml, tag, begin, end).empty();
 }
 
-std::string attribute(const std::string& opening, const std::string& name);
+std::string attribute(const std::string& opening, const std::string& name, bool* present = nullptr);
 
 bool hasSelfClosingAttribute(const std::string& xml, const std::string& tag, const std::string& name,
                              const std::string& value, std::size_t begin, std::size_t end) {
@@ -105,17 +107,32 @@ bool hasSelfClosingAttribute(const std::string& xml, const std::string& tag, con
   return false;
 }
 
-std::string attribute(const std::string& opening, const std::string& name) {
-  const std::string needle = name + "=";
-  const std::size_t position = opening.find(needle);
-  if (position == std::string::npos) return {};
-  std::size_t quote = position + needle.size();
-  while (quote < opening.size() && std::isspace(static_cast<unsigned char>(opening[quote])) != 0) ++quote;
-  if (quote >= opening.size() || (opening[quote] != '\"' && opening[quote] != '\'')) return {};
-  const char delimiter = opening[quote++];
-  const std::size_t end = opening.find(delimiter, quote);
-  if (end == std::string::npos) return {};
-  return opening.substr(quote, end - quote);
+std::string attribute(const std::string& opening, const std::string& name, bool* present) {
+  if (present) *present = false;
+  std::size_t position = opening.find_first_of(" \t\r\n/>");
+  while (position != std::string::npos && position < opening.size()) {
+    while (position < opening.size() && std::isspace(static_cast<unsigned char>(opening[position]))) ++position;
+    if (position == opening.size() || opening[position] == '/' || opening[position] == '>') break;
+    const std::size_t name_end = opening.find_first_of("= \t\r\n/>", position);
+    if (name_end == std::string::npos) throw std::runtime_error("invalid MusicXML attribute");
+    const std::string key = opening.substr(position, name_end - position);
+    position = name_end;
+    while (position < opening.size() && std::isspace(static_cast<unsigned char>(opening[position]))) ++position;
+    if (position == opening.size() || opening[position++] != '=') throw std::runtime_error("invalid MusicXML attribute " + key);
+    while (position < opening.size() && std::isspace(static_cast<unsigned char>(opening[position]))) ++position;
+    if (position == opening.size() || (opening[position] != '\"' && opening[position] != '\'')) {
+      throw std::runtime_error("invalid MusicXML attribute " + key);
+    }
+    const char delimiter = opening[position++];
+    const std::size_t end = opening.find(delimiter, position);
+    if (end == std::string::npos) throw std::runtime_error("invalid MusicXML attribute " + key);
+    if (key == name) {
+      if (present) *present = true;
+      return opening.substr(position, end - position);
+    }
+    position = end + 1;
+  }
+  return {};
 }
 
 std::string unescape(std::string value) {
@@ -173,6 +190,33 @@ double realText(const std::string& value, const std::string& field) {
   return parsed;
 }
 
+std::uint8_t noteVelocity(const std::string& opening) {
+  bool present = false;
+  const std::string value = trim(attribute(opening, "dynamics", &present));
+  if (!present) return 100;  // Preserve the existing default for older files.
+
+  // MusicXML dynamics is a non-negative decimal percentage: 100 means
+  // MIDI velocity 90, not 100. Reject non-decimal and non-finite inputs.
+  std::size_t position = 0;
+  if (!value.empty() && (value[0] == '+' || value[0] == '-')) ++position;
+  bool have_digit = false;
+  bool have_point = false;
+  for (; position < value.size(); ++position) {
+    const char c = value[position];
+    if (c >= '0' && c <= '9') have_digit = true;
+    else if (c == '.' && !have_point) have_point = true;
+    else throw std::runtime_error("invalid MusicXML dynamics decimal");
+  }
+  if (!have_digit) throw std::runtime_error("invalid MusicXML dynamics decimal");
+  std::istringstream input(value);
+  input.imbue(std::locale::classic());
+  double percent = 0.0;
+  if (!(input >> percent) || !std::isfinite(percent) || percent < 0.0 || percent > 127.0 * 100.0 / 90.0) {
+    throw std::runtime_error("MusicXML dynamics is outside MIDI velocity 0..127");
+  }
+  return static_cast<std::uint8_t>(std::lround(percent * 90.0 / 100.0));
+}
+
 Tick measureLength(const TimeSignature& signature) {
   if (signature.numerator == 0 || signature.denominator == 0 || (signature.denominator & (signature.denominator - 1)) != 0) {
     throw std::runtime_error("unsupported MusicXML time signature");
@@ -205,7 +249,11 @@ std::string escape(const std::string& value) {
 }
 
 void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, std::uint16_t voice, std::uint16_t staff) {
-  output << "      <note>\n";
+  if (note.velocity > 127) throw std::invalid_argument("score note velocity is outside MIDI 0..127");
+  const auto previous_precision = output.precision();
+  output << "      <note dynamics=\"" << std::setprecision(std::numeric_limits<double>::max_digits10)
+         << static_cast<double>(note.velocity) * 100.0 / 90.0 << "\">\n";
+  output.precision(previous_precision);
   if (chord) output << "        <chord/>\n";
   if (note.rest) {
     output << "        <rest/>\n";
@@ -214,16 +262,16 @@ void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, st
     if (note.pitch.alter != 0) output << "          <alter>" << note.pitch.alter << "</alter>\n";
     output << "          <octave>" << note.pitch.octave << "</octave></pitch>\n";
   }
-  output << "        <duration>" << note.duration << "</duration>\n"
-         << "        <voice>" << voice << "</voice>\n";
-  if (staff > 1) output << "        <staff>" << staff << "</staff>\n";
+  output << "        <duration>" << note.duration << "</duration>\n";
+  if (note.tie_stop) output << "        <tie type=\"stop\"/>\n";
+  if (note.tie_start) output << "        <tie type=\"start\"/>\n";
+  output << "        <voice>" << voice << "</voice>\n";
   if (note.tuplet_actual != 0 || note.tuplet_normal != 0) {
     if (note.tuplet_actual == 0 || note.tuplet_normal == 0) throw std::invalid_argument("tuplet actual/normal counts must both be set");
     output << "        <time-modification><actual-notes>" << note.tuplet_actual
            << "</actual-notes><normal-notes>" << note.tuplet_normal << "</normal-notes></time-modification>\n";
   }
-  if (note.tie_start) output << "        <tie type=\"start\"/>\n";
-  if (note.tie_stop) output << "        <tie type=\"stop\"/>\n";
+  if (staff > 1) output << "        <staff>" << staff << "</staff>\n";
   if (note.tie_start || note.tie_stop) {
     output << "        <notations>\n";
     if (note.tie_start) output << "          <tied type=\"start\"/>\n";
@@ -252,6 +300,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
       if (part.measures.empty()) throw std::invalid_argument("MusicXML part must contain a measure");
     }
     std::ostringstream output;
+    output.imbue(std::locale::classic());
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
            << "<score-partwise version=\"4.0\">\n"
            << "  <part-list>\n";
@@ -286,7 +335,10 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
           first_stream = false;
           std::vector<ScoreNote>& notes = stream.second;
           std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
-            return left.start < right.start;
+            if (left.start != right.start) return left.start < right.start;
+            // MusicXML chord tones cannot outlast the preceding tone. Put
+            // the longest note first without changing any sounding duration.
+            return left.duration > right.duration;
           });
           Tick cursor = measure.start;
           Tick last_start = std::numeric_limits<Tick>::min();
@@ -300,7 +352,12 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
               if (note.pitch.octave < 0 || note.pitch.octave > 9) throw std::invalid_argument("score pitch octave is out of range");
             }
             const bool is_chord = note.start == last_start;
-            if (!is_chord && note.start < cursor) throw std::invalid_argument("overlapping notes need chord=true timing");
+            if (!is_chord && note.start < cursor) {
+              // Performance MIDI can contain a held tone under a later attack
+              // in the same channel/voice. Move the XML time cursor back rather
+              // than truncating that held tone or calling the later note a chord.
+              output << "      <backup><duration>" << (cursor - note.start) << "</duration></backup>\n";
+            }
             if (!is_chord && note.start > cursor) {
               output << "      <forward><duration>" << (note.start - cursor) << "</duration></forward>\n";
             }
@@ -463,6 +520,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       for (const auto& forward : findBlocks(xml, "forward", measure_block.content_start, measure_block.content_end)) events.push_back({forward.start, "forward", forward});
       std::sort(events.begin(), events.end(), [](const TimedBlock& left, const TimedBlock& right) { return left.position < right.position; });
       Tick cursor = 0;
+      Tick furthest_position = 0;
       using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
       std::map<VoiceKey, Tick> last_note_starts;
       std::map<VoiceKey, bool> have_notes;
@@ -477,9 +535,11 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         if (event.tag == "forward") {
           if (cursor > std::numeric_limits<Tick>::max() - duration) throw std::runtime_error("MusicXML tick overflow");
           cursor += duration;
+          furthest_position = std::max(furthest_position, cursor);
           continue;
         }
         ScoreNote note;
+        note.velocity = noteVelocity(event.block.opening);
         note.duration = duration;
         note.chord = hasElement(xml, "chord", event.block.content_start, event.block.content_end);
         note.rest = hasElement(xml, "rest", event.block.content_start, event.block.content_end);
@@ -501,6 +561,10 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           throw std::runtime_error("MusicXML tick overflow");
         }
         note.start = measure_start + local_start;
+        if (local_start > std::numeric_limits<Tick>::max() - duration) {
+          throw std::runtime_error("MusicXML tick overflow");
+        }
+        furthest_position = std::max(furthest_position, local_start + duration);
         if (!note.rest) {
           const auto pitches = findBlocks(xml, "pitch", event.block.content_start, event.block.content_end);
           if (pitches.empty()) throw std::runtime_error("MusicXML note is missing pitch");
@@ -544,7 +608,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       }
       parsed_part.measures.push_back(std::move(measure));
       const Tick nominal_length = measureLength(parsed.time_signature);
-      const Tick measure_span = std::max(nominal_length, cursor);
+      const Tick measure_span = std::max(nominal_length, furthest_position);
       if (measure_span < 0 || measure_start > std::numeric_limits<Tick>::max() - measure_span) {
         throw std::runtime_error("MusicXML measure timing overflow");
       }

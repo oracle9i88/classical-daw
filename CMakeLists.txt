@@ -51,6 +51,26 @@ add_executable(daw_score_render_tests tests/score_render_tests.cpp)
 target_link_libraries(daw_score_render_tests PRIVATE daw_engine)
 add_test(NAME daw_score_render_tests COMMAND daw_score_render_tests)
 
+add_executable(daw_midi_import_tests tests/midi_import_tests.cpp)
+target_link_libraries(daw_midi_import_tests PRIVATE daw_engine)
+add_test(NAME daw_midi_import_tests COMMAND daw_midi_import_tests)
+
+add_executable(daw_score_tie_tests tests/score_tie_tests.cpp)
+target_link_libraries(daw_score_tie_tests PRIVATE daw_engine)
+add_test(NAME daw_score_tie_tests COMMAND daw_score_tie_tests)
+
+add_executable(daw_musicxml_dynamics_tests tests/musicxml_dynamics_tests.cpp)
+target_link_libraries(daw_musicxml_dynamics_tests PRIVATE daw_engine)
+add_test(NAME daw_musicxml_dynamics_tests COMMAND daw_musicxml_dynamics_tests)
+
+add_executable(daw_musicxml_timing_tests tests/musicxml_timing_tests.cpp)
+target_link_libraries(daw_musicxml_timing_tests PRIVATE daw_engine)
+add_test(NAME daw_musicxml_timing_tests COMMAND daw_musicxml_timing_tests)
+
+# Local import diagnostics; requires no audio device, UI, or network access.
+add_executable(daw_midi_inspect tools/midi_inspect.cpp)
+target_link_libraries(daw_midi_inspect PRIVATE daw_engine)
+
 if(APPLE)
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp

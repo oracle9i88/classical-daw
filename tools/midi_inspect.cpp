@@ -1,0 +1,61 @@
+#include "daw/midi.hpp"
+
+#include <iomanip>
+#include <iostream>
+#include <string>
+
+int main(int argc, char** argv) {
+  if (argc < 2 || argc > 3 || (argc == 3 && std::string(argv[2]) != "--notes")) {
+    std::cerr << "Usage: daw_midi_inspect input.mid [--notes]\n";
+    return 2;
+  }
+  daw::MidiFile midi;
+  daw::MidiImportReport report;
+  std::string error;
+  if (!daw::readMidiFile(argv[1], &midi, &error, &report)) {
+    std::cerr << "MIDI import failed: " << error << '\n';
+    return 1;
+  }
+  std::size_t note_count = 0;
+  for (const auto& track : midi.tracks) note_count += track.notes.size();
+  std::cout << std::setprecision(17)
+            << "{\n  \"format\": " << midi.format
+            << ",\n  \"source_ppq\": " << report.source_ticks_per_quarter
+            << ",\n  \"engine_ppq\": " << midi.ticks_per_quarter
+            << ",\n  \"note_count\": " << note_count
+            << ",\n  \"rounded_note_boundaries\": " << report.rounded_note_boundaries
+            << ",\n  \"rounded_tempo_events\": " << report.rounded_tempo_events
+            << ",\n  \"ignored_channel_events\": " << report.ignored_channel_events
+            << ",\n  \"ignored_meta_events\": " << report.ignored_meta_events
+            << ",\n  \"ignored_sysex_events\": " << report.ignored_sysex_events
+            << ",\n  \"ignored_time_signature_events\": " << report.ignored_time_signature_events
+            << ",\n  \"overlapping_same_pitch_notes\": " << report.overlapping_same_pitch_notes
+            << ",\n  \"meter\": [" << static_cast<int>(midi.time_signature.numerator)
+            << ", " << static_cast<int>(midi.time_signature.denominator) << "]"
+            << ",\n  \"tempo_changes\": [";
+  bool first = true;
+  for (const auto& change : midi.tempo.changes()) {
+    if (!first) std::cout << ", ";
+    first = false;
+    std::cout << "[" << change.tick << ", " << change.bpm << "]";
+  }
+  std::cout << "],\n  \"tracks\": [";
+  for (std::size_t index = 0; index < midi.tracks.size(); ++index) {
+    if (index) std::cout << ",";
+    const auto& track = midi.tracks[index];
+    std::cout << "\n    {\"index\": " << index << ", \"note_count\": " << track.notes.size();
+    if (argc == 3) {
+      std::cout << ", \"notes\": [";
+      for (std::size_t n = 0; n < track.notes.size(); ++n) {
+        if (n) std::cout << ", ";
+        const auto& note = track.notes[n];
+        // [absolute start, absolute end, pitch, attack velocity, channel]
+        std::cout << '[' << note.start << ", " << note.end() << ", " << static_cast<int>(note.pitch)
+                  << ", " << static_cast<int>(note.velocity) << ", " << static_cast<int>(note.channel) << ']';
+      }
+      std::cout << ']';
+    }
+    std::cout << '}';
+  }
+  std::cout << "\n  ]\n}\n";
+}

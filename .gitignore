@@ -1,5 +1,6 @@
 # Local build output
 build/
+build-*/
 out/
 
 # macOS/editor noise

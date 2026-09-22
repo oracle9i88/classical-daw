@@ -6,6 +6,17 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Import positive SMF PPQ 1–32767 into the 960-PPQ core using absolute boundary
+  rounding, with counters for rounding and ignored events. Reject malformed
+  note lifecycles, collapsed notes, and VLQs crossing track boundaries.
+- Merge contiguous notated ties into one sustained MIDI/render event; split
+  imported notes at barlines with tied notation and reject broken tie chains.
+- Preserve note velocity in MusicXML via the standard note `dynamics` attribute,
+  independently of future dynamic directions and hairpins.
+- Preserve held tones under later attacks in MusicXML, write unequal-duration
+  chord tones longest first, and measure all voices' ends when advancing bars.
+- Add a local MIDI inspection CLI and an optional independent mido comparator;
+  no GitHub workflow is needed for local interchange checks.
 - Correctly parse one-byte MIDI channel messages (Program Change and Channel
   Pressure) without consuming the next event.
 - Exercise running status, SysEx, text meta events, a real 960-tick note, and a
@@ -67,6 +78,11 @@ that the callback performs no allocation, file I/O, JSON parsing, or contended
 locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
+
+Prioritize retaining MIDI Program Change, CC, pitch bend, meter maps, and full
+tempo maps through Score/project persistence, then implement explicit instrument
+and channel routing (including the GM percussion channel and more than 16 parts).
+The current importer reports discarded event classes; it does not preserve them.
 
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
