@@ -56,3 +56,7 @@ third-party notices file and checked separately before distribution.
 The current study notes and acceptance gates are in
 [`docs/research/2026-09-22-daw-architecture.md`](docs/research/2026-09-22-daw-architecture.md)
 and [`docs/roadmap.md`](docs/roadmap.md).
+
+The no-build web prototype lives in [`web/`](web/) with its own deployment
+instructions. Run `python3 -m http.server 8080 --directory web` from the
+repository root for a local preview.

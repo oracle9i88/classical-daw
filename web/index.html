@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#172033">
+    <title>Classical DAW · Web Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">♪</div>
+        <div>
+          <h1>Classical DAW</h1>
+          <p>古典创作工作站 · Web Prototype</p>
+        </div>
+      </div>
+      <div class="toolbar" aria-label="Transport controls">
+        <label class="tempo-control">速度
+          <input id="tempo" type="number" min="30" max="240" value="96" aria-label="BPM">
+          <span>BPM</span>
+        </label>
+        <button id="play" class="button button-primary" type="button">▶ 播放</button>
+        <button id="stop" class="button" type="button" disabled>■ 停止</button>
+        <button id="clear" class="button button-quiet" type="button">清空</button>
+        <button id="export" class="button button-export" type="button">导出 MusicXML</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="inspector panel" aria-label="Note inspector">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">NOTE INSPECTOR</span>
+            <h2>音符编辑</h2>
+          </div>
+          <button id="add-note" class="icon-button" type="button" title="添加一个音符">＋</button>
+        </div>
+        <p id="selection-hint" class="hint">点击网格添加音符，或选择音符后编辑参数。</p>
+        <form id="note-form" class="note-form" hidden>
+          <label>音高
+            <select id="note-pitch" aria-label="音高"></select>
+          </label>
+          <label>起始拍
+            <input id="note-start" type="number" min="0" max="63.75" step="0.25">
+          </label>
+          <label>时值（拍）
+            <select id="note-duration" aria-label="时值">
+              <option value="0.25">十六分音符 · ¼</option>
+              <option value="0.5">八分音符 · ½</option>
+              <option value="1" selected>四分音符 · 1</option>
+              <option value="2">二分音符 · 2</option>
+              <option value="4">全音符 · 4</option>
+            </select>
+          </label>
+          <label>力度
+            <input id="note-velocity" type="range" min="1" max="127" value="90">
+            <output id="velocity-value" for="note-velocity">90</output>
+          </label>
+          <button id="delete-note" class="button button-danger" type="button">删除所选音符</button>
+        </form>
+        <div class="legend">
+          <span class="legend-dot"></span>
+          <span>网格以四分音符为一拍，当前显示 4 小节。</span>
+        </div>
+        <div class="license-note">AGPL-3.0-or-later · 本页为无后端静态原型</div>
+      </aside>
+
+      <section class="editor panel" aria-label="Piano roll editor">
+        <div class="editor-heading">
+          <div>
+            <span class="eyebrow">PIANO ROLL</span>
+            <h2>钢琴卷帘</h2>
+          </div>
+          <div id="note-count" class="counter">0 个音符</div>
+        </div>
+        <div class="roll-shell">
+          <div class="pitch-column" id="pitch-labels" aria-hidden="true"></div>
+          <div class="roll-scroll">
+            <div id="beat-labels" class="beat-labels" aria-hidden="true"></div>
+            <div id="roll" class="roll" tabindex="0" aria-label="钢琴卷帘音符网格"></div>
+          </div>
+        </div>
+        <div class="editor-footer">
+          <span id="transport-status" role="status">准备就绪</span>
+          <span>快捷键：空格播放 / Delete 删除所选音符</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Classical DAW Web Prototype</span>
+      <span>仅使用浏览器原生 Web Audio API，无外部依赖</span>
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>
