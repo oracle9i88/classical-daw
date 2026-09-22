@@ -255,6 +255,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
       Tick tick = 0;
       std::uint8_t running_status = 0;
       std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::pair<Tick, std::uint8_t>>> active;
+      bool end_of_track_seen = false;
       while (pos < track_end) {
         const Tick delta = static_cast<Tick>(getVlq(data, pos));
         if (delta > std::numeric_limits<Tick>::max() - tick) {
@@ -277,15 +278,19 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           const std::uint32_t length = getVlq(data, pos);
           if (length > track_end - pos) throw std::runtime_error("truncated MIDI meta payload");
           if (type == 0x2f) {
+            if (length != 0) throw std::runtime_error("invalid MIDI end-of-track length");
+            end_of_track_seen = true;
             pos += length;
             break;
           } else if (type == 0x03) {
             track.name.assign(reinterpret_cast<const char*>(data.data() + pos), length);
-          } else if (type == 0x51 && length == 3) {
+          } else if (type == 0x51) {
+            if (length != 3) throw std::runtime_error("invalid MIDI tempo length");
             const std::uint32_t micros = (static_cast<std::uint32_t>(data[pos]) << 16) |
                                          (static_cast<std::uint32_t>(data[pos + 1]) << 8) |
                                          data[pos + 2];
-            if (micros != 0) parsed.tempo.addChange(tick, 60000000.0 / micros);
+            if (micros == 0) throw std::runtime_error("invalid MIDI tempo value");
+            parsed.tempo.addChange(tick, 60000000.0 / micros);
           } else if (type == 0x58) {
             if (length != 4) throw std::runtime_error("invalid MIDI time signature length");
             if (time_signature_seen) {
@@ -340,6 +345,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           }
         }
       }
+      if (!end_of_track_seen) throw std::runtime_error("MIDI track is missing end-of-track event");
       for (const auto& [key, stack] : active) {
         for (const auto& [start, velocity] : stack) {
           track.notes.push_back({start, std::max<Tick>(0, tick - start), key.second, velocity, key.first});

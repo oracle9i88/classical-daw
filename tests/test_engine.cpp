@@ -141,6 +141,15 @@ int main() {
     return fail("MIDI running status was incorrectly retained after meta event");
   }
 
+  const auto missing_eot_path = temp / "classical_daw_missing_eot.mid";
+  std::vector<std::uint8_t> missing_eot_midi = boundary_midi;
+  missing_eot_midi[21] = 0x1c;
+  missing_eot_midi.resize(missing_eot_midi.size() - 4U);
+  if (!writeBytes(missing_eot_path, missing_eot_midi) ||
+      readMidiFile(missing_eot_path.string(), &boundary_file, &error)) {
+    return fail("MIDI track without end-of-track was accepted");
+  }
+
   const auto trailing_data_path = temp / "classical_daw_trailing_data.mid";
   std::vector<std::uint8_t> trailing_data_midi = boundary_midi;
   trailing_data_midi.push_back(0x00);
@@ -503,6 +512,7 @@ int main() {
   std::filesystem::remove(boundary_path);
   std::filesystem::remove(truncated_path);
   std::filesystem::remove(running_status_reset_path);
+  std::filesystem::remove(missing_eot_path);
   std::filesystem::remove(trailing_data_path);
   std::filesystem::remove(format_zero_path);
   std::filesystem::remove(invalid_tempo_path);
