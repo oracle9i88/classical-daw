@@ -15,6 +15,9 @@ validating score timing and audio rendering before platform integration.
 - A deliberately limited MusicXML `score-partwise` slice: one part/voice,
   960-PPQ notes and rests, chords, ties, meter, tempo, and deterministic
   import/export.
+- A platform-neutral realtime transport skeleton with a bounded SPSC command
+  ring, block scheduler, and xrun counter; CoreAudio device integration is
+  still pending.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI round-trip, and render smoke tests.
 

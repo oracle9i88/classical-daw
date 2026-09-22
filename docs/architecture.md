@@ -34,6 +34,12 @@ ties. The MusicXML adapter runs outside the realtime path and only accepts a
 single 960-PPQ part/voice. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
+The platform-neutral M0 transport now has a bounded SPSC command ring and a
+block scheduler. It is deliberately separate from CoreAudio: device callbacks
+will call `processBlock`, while UI/device threads enqueue `Start`, `Stop`,
+`SeekSamples`, and `SetTempo` commands. CoreAudio device enumeration and
+reconnect still require a macOS adapter and are not claimed by this module.
+
 ## Delivery slices
 
 1. **Alpha (current):** tempo/tick/sample conversion, SMF type 0/1 note

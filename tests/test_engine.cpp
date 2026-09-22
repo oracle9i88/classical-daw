@@ -1,5 +1,6 @@
 #include "daw/midi.hpp"
 #include "daw/render.hpp"
+#include "daw/realtime.hpp"
 #include "daw/score.hpp"
 #include "daw/timeline.hpp"
 #include "daw/wav.hpp"
@@ -160,6 +161,31 @@ int main() {
       !closeEnough(parsed_score.bpm, 96.0)) {
     return fail("MusicXML score metadata round-trip");
   }
+
+  SpscRing<int, 2> ring;
+  if (!ring.push(10) || !ring.push(20) || ring.push(30) || ring.approximateSize() != 2) {
+    return fail("SPSC queue capacity");
+  }
+  int value = 0;
+  if (!ring.pop(&value) || value != 10 || !ring.pop(&value) || value != 20 || ring.pop(&value)) {
+    return fail("SPSC queue ordering");
+  }
+
+  BlockScheduler scheduler;
+  if (!scheduler.enqueue({TransportCommandType::SeekSamples, 100, 120.0}) ||
+      !scheduler.enqueue({TransportCommandType::SetTempo, 0, 90.0}) ||
+      !scheduler.enqueue({TransportCommandType::Start, 0, 0.0})) {
+    return fail("transport command enqueue");
+  }
+  scheduler.recordXrun();
+  scheduler.processBlock(256);
+  const TransportSnapshot running = scheduler.snapshot();
+  if (!running.running || running.sample_position != 356 || !closeEnough(running.bpm, 90.0) || running.xrun_count != 1) {
+    return fail("transport block scheduling");
+  }
+  if (!scheduler.enqueue({TransportCommandType::Stop, 0, 0.0})) return fail("transport stop enqueue");
+  scheduler.processBlock(256);
+  if (scheduler.snapshot().running || scheduler.snapshot().sample_position != 356) return fail("transport stop");
 
   const auto invalid_musicxml_path = temp / "classical_daw_invalid.musicxml";
   const std::string invalid_musicxml =

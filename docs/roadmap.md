@@ -15,6 +15,8 @@ not count as completion.
   field and guard MIDI tick/duration arithmetic against signed overflow.
 - Add a first MusicXML vertical slice: one `score-partwise` part/voice with
   notes, rests, chords, ties, meter, tempo, and 960-PPQ import/export.
+- Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
+  block scheduler, and xrun counter with no callback allocation or locks.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
@@ -22,8 +24,9 @@ not count as completion.
 
 ### M0: realtime audio
 
-CoreAudio device enumeration and reconnect, a fixed block scheduler, a bounded
-lock-free command/event queue, and an xrun counter. The test harness must prove
+CoreAudio device enumeration and reconnect, then connect the existing fixed
+block scheduler, bounded lock-free command/event queue, and xrun counter. The
+test harness must prove
 that the callback performs no allocation, file I/O, JSON parsing, or contended
 locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
