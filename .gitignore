@@ -1,0 +1,16 @@
+# Local build output
+build/
+out/
+
+# macOS/editor noise
+.DS_Store
+.vscode/
+.idea/
+compile_commands.json
+
+# Generated audio and temporary project files
+*.wav
+*.aiff
+*.mid
+*.midi
+*.dawproj
