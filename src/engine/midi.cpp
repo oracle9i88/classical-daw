@@ -235,6 +235,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
     if (format > 1 || (division & 0x8000) != 0 || division != kTicksPerQuarter) {
       throw std::runtime_error("unsupported MIDI format or time division (Alpha requires 960 PPQ)");
     }
+    if (track_count == 0) throw std::runtime_error("MIDI file requires at least one track");
     pos = 8 + header_length;
 
     MidiFile parsed;
@@ -270,6 +271,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           running_status = status;
         }
         if (status == 0xff) {
+          running_status = 0;
           if (pos >= track_end) throw std::runtime_error("truncated MIDI meta event");
           const std::uint8_t type = data[pos++];
           const std::uint32_t length = getVlq(data, pos);
@@ -284,7 +286,12 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
                                          (static_cast<std::uint32_t>(data[pos + 1]) << 8) |
                                          data[pos + 2];
             if (micros != 0) parsed.tempo.addChange(tick, 60000000.0 / micros);
-          } else if (type == 0x58 && length == 4 && !time_signature_seen) {
+          } else if (type == 0x58) {
+            if (length != 4) throw std::runtime_error("invalid MIDI time signature length");
+            if (time_signature_seen) {
+              pos += length;
+              continue;
+            }
             const std::uint8_t numerator = data[pos];
             const std::uint8_t exponent = data[pos + 1];
             if (numerator == 0 || exponent > 7) {
@@ -298,6 +305,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           continue;
         }
         if (status == 0xf0 || status == 0xf7) {
+          running_status = 0;
           const std::uint32_t length = getVlq(data, pos);
           if (length > track_end - pos) throw std::runtime_error("truncated MIDI sysex payload");
           pos += length;
@@ -345,6 +353,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
       parsed.tracks.push_back(std::move(track));
       pos = track_end;
     }
+    if (pos != data.size()) throw std::runtime_error("trailing data after MIDI tracks");
     *file = std::move(parsed);
     return true;
   } catch (const std::exception& exception) {

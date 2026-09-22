@@ -52,13 +52,13 @@ the score's single meter is emitted as the first MIDI time-signature event,
 while meter changes, lyric text, and instrument programs remain future fields.
 
 The inverse MIDI-to-Score adapter follows the ordered SMF tracks and creates one
-score part per non-empty track. It retains track names, note timing, pitch,
-velocity, and channel (as `voice = channel + 1`), then assigns notes to a
-measure grid using the first MIDI meter event, defaulting to 4/4. It accepts
-only the engine's 960-PPQ domain and carries the first valid tempo into
-`Score::bpm`; canonical sharp spellings are used until a key-aware notation
-layer is available. Both directions remain worker-thread operations and never
-run in the realtime callback.
+score part per non-empty track; tempo-only tracks are skipped. It retains track
+names, note timing, pitch, velocity, and channel (as `voice = channel + 1`),
+then assigns notes to a measure grid using the first MIDI meter event, defaulting
+to 4/4. It accepts only the engine's 960-PPQ domain and carries the first valid
+tempo into `Score::bpm`; canonical sharp spellings are used until a key-aware
+notation layer is available. Both directions remain worker-thread operations
+and never run in the realtime callback.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks

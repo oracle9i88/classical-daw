@@ -14,7 +14,7 @@ namespace daw {
 // not collide. Rests are omitted, while note start, duration, pitch, and
 // velocity are retained. Tuplet metadata has no separate MIDI representation
 // and is therefore represented by the already-resolved tick durations.
-// The score's BPM becomes the tick-zero TempoMap entry. The existing MidiFile
+// The score's BPM becomes the tick-zero TempoMap entry.
 // The score's single time signature is serialized as the first MIDI meter
 // event; meter changes and other notation maps remain outside this bridge.
 bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);

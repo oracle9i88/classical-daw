@@ -205,9 +205,7 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
 
     for (std::size_t track_index = 0; track_index < midi.tracks.size(); ++track_index) {
       const MidiTrack& track = midi.tracks[track_index];
-      if (track.notes.empty()) {
-        throw std::invalid_argument("MIDI import rejects empty tracks");
-      }
+      if (track.notes.empty()) continue;  // Track 0 often carries only tempo/meter.
       std::vector<ScoreNote> notes;
       notes.reserve(track.notes.size());
       Tick max_end = 0;
@@ -253,8 +251,9 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       const std::size_t measure_count = static_cast<std::size_t>(measure_count_with_remainder);
 
       ScorePart part;
-      part.id = "P" + std::to_string(track_index + 1);
-      part.name = track.name.empty() ? "Part " + std::to_string(track_index + 1) : track.name;
+      const std::size_t part_index = converted.parts.size();
+      part.id = "P" + std::to_string(part_index + 1);
+      part.name = track.name.empty() ? "Part " + std::to_string(part_index + 1) : track.name;
       part.measures.resize(measure_count);
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
         part.measures[measure_index].number = static_cast<int>(measure_index + 1);
@@ -270,6 +269,9 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(note));
       }
       converted.parts.push_back(std::move(part));
+    }
+    if (converted.parts.empty()) {
+      throw std::invalid_argument("MIDI import requires at least one non-empty track");
     }
     *score = std::move(converted);
     return true;

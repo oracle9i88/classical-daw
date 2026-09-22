@@ -33,8 +33,8 @@ struct MidiFile {
 
 // A deliberately small Standard MIDI File (SMF) Type 0/1 reader and writer.
 // It covers note events, track names, tempo events, and the first time
-// signature event; unknown events are skipped so files from a full DAW can
-// still be inspected.
+// signature event. Unknown meta and SysEx events are skipped; unsupported
+// system-common events are rejected so malformed timing data is not hidden.
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error = nullptr);
 bool readMidiFile(const std::string& path, MidiFile* file, std::string* error = nullptr);
 

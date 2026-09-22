@@ -128,6 +128,27 @@ int main() {
     return fail("truncated MIDI channel event was accepted");
   }
 
+  const auto running_status_reset_path = temp / "classical_daw_running_status_reset.mid";
+  const std::vector<std::uint8_t> running_status_reset_midi = {
+      'M', 'T', 'h', 'd', 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x03, 0xc0,
+      'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x10,
+      0x00, 0x90, 0x3c, 0x64,       // note-on establishes running status
+      0x00, 0xff, 0x01, 0x01, 0x41,  // meta event clears running status
+      0x00, 0x3d, 0x64,             // bare data byte is invalid after the meta event
+      0x00, 0xff, 0x2f, 0x00};
+  if (!writeBytes(running_status_reset_path, running_status_reset_midi) ||
+      readMidiFile(running_status_reset_path.string(), &boundary_file, &error)) {
+    return fail("MIDI running status was incorrectly retained after meta event");
+  }
+
+  const auto trailing_data_path = temp / "classical_daw_trailing_data.mid";
+  std::vector<std::uint8_t> trailing_data_midi = boundary_midi;
+  trailing_data_midi.push_back(0x00);
+  if (!writeBytes(trailing_data_path, trailing_data_midi) ||
+      readMidiFile(trailing_data_path.string(), &boundary_file, &error)) {
+    return fail("MIDI trailing data was accepted");
+  }
+
   const auto format_zero_path = temp / "classical_daw_format_zero.mid";
   MidiFile invalid_format_zero;
   invalid_format_zero.format = 0;
@@ -343,9 +364,19 @@ int main() {
     return fail("empty MIDI input was accepted");
   }
   MidiFile empty_track_midi;
-  empty_track_midi.tracks = {MidiTrack{"Empty", {}}};
-  if (midiToScore(empty_track_midi, &imported_midi_score, &error)) {
-    return fail("empty MIDI track was accepted");
+  empty_track_midi.tracks = {
+      MidiTrack{"Conductor", {}},
+      MidiTrack{"Piano", {MidiNote{0, 960, 60, 80, 0}}},
+  };
+  if (!midiToScore(empty_track_midi, &imported_midi_score, &error) ||
+      imported_midi_score.parts.size() != 1 || imported_midi_score.parts[0].id != "P1" ||
+      imported_midi_score.parts[0].name != "Piano") {
+    return fail("empty MIDI conductor track handling: " + error);
+  }
+  MidiFile all_empty_midi;
+  all_empty_midi.tracks = {MidiTrack{"Empty", {}}};
+  if (midiToScore(all_empty_midi, &imported_midi_score, &error)) {
+    return fail("all-empty MIDI tracks were accepted");
   }
   MidiFile invalid_timing_midi;
   invalid_timing_midi.tracks = {
@@ -471,6 +502,8 @@ int main() {
   std::filesystem::remove(midi_path);
   std::filesystem::remove(boundary_path);
   std::filesystem::remove(truncated_path);
+  std::filesystem::remove(running_status_reset_path);
+  std::filesystem::remove(trailing_data_path);
   std::filesystem::remove(format_zero_path);
   std::filesystem::remove(invalid_tempo_path);
   std::filesystem::remove(overflow_path);
