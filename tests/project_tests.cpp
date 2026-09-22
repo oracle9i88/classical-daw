@@ -23,7 +23,14 @@ bool equalScore(const daw::Score& left, const daw::Score& right) {
   for (std::size_t part_index = 0; part_index < left.parts.size(); ++part_index) {
     const daw::ScorePart& a = left.parts[part_index];
     const daw::ScorePart& b = right.parts[part_index];
-    if (a.id != b.id || a.name != b.name || a.measures.size() != b.measures.size()) return false;
+    if (a.id != b.id || a.name != b.name || a.measures.size() != b.measures.size() ||
+        a.midi_events.size() != b.midi_events.size()) return false;
+    for (std::size_t event_index = 0; event_index < a.midi_events.size(); ++event_index) {
+      const auto& ae = a.midi_events[event_index];
+      const auto& be = b.midi_events[event_index];
+      if (ae.tick != be.tick || ae.type != be.type || ae.channel != be.channel || ae.data1 != be.data1 ||
+          ae.data2 != be.data2 || ae.order != be.order) return false;
+    }
     for (std::size_t measure_index = 0; measure_index < a.measures.size(); ++measure_index) {
       const daw::ScoreMeasure& am = a.measures[measure_index];
       const daw::ScoreMeasure& bm = b.measures[measure_index];
@@ -35,7 +42,9 @@ bool equalScore(const daw::Score& left, const daw::Score& right) {
             an.pitch.alter != bn.pitch.alter || an.pitch.octave != bn.pitch.octave || an.rest != bn.rest ||
             an.chord != bn.chord || an.tie_start != bn.tie_start || an.tie_stop != bn.tie_stop ||
             an.velocity != bn.velocity || an.voice != bn.voice || an.staff != bn.staff ||
-            an.tuplet_actual != bn.tuplet_actual || an.tuplet_normal != bn.tuplet_normal || an.lyric != bn.lyric) {
+            an.tuplet_actual != bn.tuplet_actual || an.tuplet_normal != bn.tuplet_normal || an.lyric != bn.lyric ||
+            an.midi_channel != bn.midi_channel || an.midi_on_order != bn.midi_on_order ||
+            an.midi_off_order != bn.midi_off_order || an.midi_release_velocity != bn.midi_release_velocity) {
           return false;
         }
       }
@@ -91,34 +100,34 @@ int main() {
 
   std::string serialized;
   if (!readText(path, &serialized)) return fail("project fixture read");
-  if (serialized.rfind("CLASSICAL_DAW_PROJECT 2\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
+  if (serialized.rfind("CLASSICAL_DAW_PROJECT 3\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
       serialized.find("lyric ") == std::string::npos) {
     return fail("project format header/footer");
   }
 
-  // Version 1 predates lyrics.  It remains readable and defaults the new
-  // field to empty instead of silently shifting the following note fields.
-  Score legacy_expected = source;
-  legacy_expected.parts[0].measures[0].notes[0].lyric.clear();
-  std::string legacy = serialized;
-  legacy.replace(0, std::string("CLASSICAL_DAW_PROJECT 2").size(), "CLASSICAL_DAW_PROJECT 1");
-  const std::string lyric_prefix = "lyric ";
-  std::size_t lyric_position = 0;
-  while ((lyric_position = legacy.find(lyric_prefix, lyric_position)) != std::string::npos) {
-    const std::size_t line_end = legacy.find('\n', lyric_position);
-    if (line_end == std::string::npos) return fail("legacy lyric fixture malformed");
-    legacy.erase(lyric_position, line_end - lyric_position + 1U);
-  }
-  if (!writeText(path, legacy)) return fail("legacy project fixture write");
-  if (!readProjectFile(path.string(), &loaded, &error) || !equalScore(legacy_expected, loaded)) {
-    return fail("version 1 project compatibility");
+  // Legacy files lack MIDI fields, and version 1 also predates lyrics.
+  for (const int version : {1, 2}) {
+    Score legacy_expected = source;
+    if (version == 1) legacy_expected.parts[0].measures[0].notes[0].lyric.clear();
+    std::istringstream current(serialized);
+    std::ostringstream legacy;
+    std::string line;
+    while (std::getline(current, line)) {
+      if (line.rfind("midi_", 0) == 0 || (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
+      if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
+      legacy << line << '\n';
+    }
+    if (!writeText(path, legacy.str())) return fail("legacy project fixture write");
+    if (!readProjectFile(path.string(), &loaded, &error) || !equalScore(legacy_expected, loaded)) {
+      return fail("version " + std::to_string(version) + " project compatibility");
+    }
   }
 
   // Unknown versions are rejected before mutating the caller's score.
   loaded = source;
   const Score sentinel = loaded;
   std::string unknown_version = serialized;
-  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 2").size(), "CLASSICAL_DAW_PROJECT 99");
+  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 3").size(), "CLASSICAL_DAW_PROJECT 99");
   if (!writeText(path, unknown_version)) return fail("unknown-version fixture write");
   if (readProjectFile(path.string(), &loaded, &error)) return fail("unknown project version accepted");
   if (!equalScore(loaded, sentinel)) return fail("unknown-version read mutated score");

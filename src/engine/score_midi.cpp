@@ -51,6 +51,12 @@ void validateNoteTiming(const ScoreNote& note) {
   if (!note.rest && note.velocity == 0) {
     throw std::invalid_argument("score sounding note attack velocity must be in MIDI 1..127");
   }
+  if (note.midi_channel < -1 || note.midi_channel > 15) {
+    throw std::invalid_argument("score note MIDI channel must be -1 or in 0..15");
+  }
+  if (note.midi_release_velocity > 127) {
+    throw std::invalid_argument("score note release velocity is outside MIDI 0..127");
+  }
   if (note.voice == 0 || note.staff == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
 }
 
@@ -87,10 +93,6 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
   }
   try {
     if (score.parts.empty()) throw std::invalid_argument("MIDI export requires at least one score part");
-    // One channel per part keeps the exported file deterministic and avoids
-    // channel collisions.  This bridge does not yet emit program changes or
-    // a channel-allocation map, so reject rather than silently aliasing parts.
-    if (score.parts.size() > 16) throw std::invalid_argument("MIDI export supports at most 16 score parts");
     if (score.divisions != kTicksPerQuarter) {
       throw std::invalid_argument("score divisions must be 960 ticks per quarter");
     }
@@ -107,11 +109,16 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     converted.time_signature = score.time_signature;
     converted.tempo = TempoMap(score.bpm);
     converted.tracks.reserve(score.parts.size());
+    bool has_playback_content = false;
     for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
       const ScorePart& part = score.parts[part_index];
       MidiTrack track;
       track.name = part.name.empty() ? part.id : part.name;
-      const auto channel = static_cast<std::uint8_t>(part_index);
+      for (const MidiChannelEvent& event : part.midi_events) {
+        if (!validMidiChannelEvent(event)) throw std::invalid_argument("score MIDI channel event is invalid");
+      }
+      track.channel_events = part.midi_events;
+      has_playback_content = has_playback_content || !track.channel_events.empty();
       std::vector<const ScoreNote*> ordered_notes;
       for (const ScoreMeasure& measure : part.measures) {
         if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
@@ -121,6 +128,10 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
             if (note.tie_start || note.tie_stop) throw std::invalid_argument("score rest cannot carry a tie");
             continue;
           }
+          if (note.midi_channel == -1 && (score.parts.size() > 16 || part_index >= 16)) {
+            throw std::invalid_argument("MIDI export of more than 16 score parts requires explicit note channels");
+          }
+          has_playback_content = true;
           ordered_notes.push_back(&note);
         }
       }
@@ -128,14 +139,16 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
         return left->start < right->start;
       });
       // A notated tie sustains one attack. Keep its identity within the
-      // part/staff/voice and sounding pitch, so an adjacent instrument or
-      // another voice on the same pitch cannot accidentally complete it.
-      using TieKey = std::tuple<std::uint16_t, std::uint16_t, std::uint8_t>;
+      // part/staff/voice, sounding pitch, and output channel, so another
+      // instrument or route on the same pitch cannot accidentally complete it.
+      using TieKey = std::tuple<std::uint16_t, std::uint16_t, std::uint8_t, std::uint8_t>;
       std::map<TieKey, std::size_t> active_ties;
       for (const ScoreNote* source : ordered_notes) {
         const ScoreNote& note = *source;
         const std::uint8_t pitch = toMidiPitch(note.pitch);
-        const TieKey key{note.staff, note.voice, pitch};
+        const auto channel = note.midi_channel == -1 ? static_cast<std::uint8_t>(part_index)
+                                                     : static_cast<std::uint8_t>(note.midi_channel);
+        const TieKey key{note.staff, note.voice, pitch, channel};
         const auto tie = active_ties.find(key);
         const auto tieError = [&](const char* message) {
           return std::invalid_argument(std::string(message) + " in part " + part.id + " at tick " +
@@ -150,11 +163,14 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
             throw tieError("score tied notes must be exactly contiguous");
           }
           sustained.duration = note.start + note.duration - sustained.start;
+          sustained.off_order = note.midi_off_order;
+          sustained.release_velocity = note.midi_release_velocity;
           // Continuation velocity is notation, not a second MIDI note-on.
           if (!note.tie_start) active_ties.erase(tie);
         } else {
           if (tie != active_ties.end()) throw tieError("score tie is missing its continuation stop");
-          track.notes.push_back({note.start, note.duration, pitch, note.velocity, channel});
+          track.notes.push_back({note.start, note.duration, pitch, note.velocity, channel,
+                                 note.midi_release_velocity, note.midi_on_order, note.midi_off_order});
           if (note.tie_start) active_ties.emplace(key, track.notes.size() - 1U);
         }
       }
@@ -172,6 +188,12 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
         return left.start < right.start;
       });
       converted.tracks.push_back(std::move(track));
+    }
+    // A larger imported arrangement has explicit routes even when several
+    // tracks share one channel. Preserve the previous guard for a bare score
+    // with no routed playback content at all.
+    if (score.parts.size() > 16 && !has_playback_content) {
+      throw std::invalid_argument("MIDI export supports at most 16 empty score parts");
     }
     *midi = std::move(converted);
     return true;
@@ -257,7 +279,12 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
 
     for (std::size_t track_index = 0; track_index < midi.tracks.size(); ++track_index) {
       const MidiTrack& track = midi.tracks[track_index];
-      if (track.notes.empty()) continue;  // Track 0 often carries only tempo/meter.
+      // Track 0 often carries only tempo/meter, but an event-only track can
+      // still own program changes, pedal, or other essential playback data.
+      if (track.notes.empty() && track.channel_events.empty()) continue;
+      for (const MidiChannelEvent& event : track.channel_events) {
+        if (!validMidiChannelEvent(event)) throw std::invalid_argument("MIDI channel event is invalid");
+      }
       std::vector<ScoreNote> notes;
       notes.reserve(track.notes.size());
       Tick max_end = 0;
@@ -266,7 +293,8 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
             midi_note.start > std::numeric_limits<Tick>::max() - midi_note.duration) {
           throw std::invalid_argument("MIDI note timing is negative, empty, or overflowing");
         }
-        if (midi_note.pitch > 127 || midi_note.velocity > 127 || midi_note.channel > 15) {
+        if (midi_note.pitch > 127 || midi_note.velocity > 127 || midi_note.channel > 15 ||
+            midi_note.release_velocity > 127) {
           throw std::invalid_argument("MIDI note has an out-of-range field");
         }
         if (midi_note.velocity == 0) {
@@ -279,6 +307,10 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
         note.duration = midi_note.duration;
         note.pitch = fromMidiPitch(midi_note.pitch);
         note.velocity = midi_note.velocity;
+        note.midi_channel = midi_note.channel;
+        note.midi_on_order = midi_note.on_order;
+        note.midi_off_order = midi_note.off_order;
+        note.midi_release_velocity = midi_note.release_velocity;
         note.voice = static_cast<std::uint16_t>(static_cast<std::uint16_t>(midi_note.channel) + 1U);
         note.staff = 1;
         notes.push_back(std::move(note));
@@ -308,10 +340,11 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       }
       const Tick measure_count_tick = max_end / measure_ticks;
       const Tick measure_count_remainder = max_end % measure_ticks;
+      // Channel events do not require notated bars. An event-only track gets
+      // one editable measure even if its final controller is very late.
       const Tick measure_count_with_remainder =
-          measure_count_tick + (measure_count_remainder == 0 ? 0 : 1);
-      if (measure_count_with_remainder <= 0 ||
-          static_cast<std::uint64_t>(measure_count_with_remainder) > kMaximumImportedMeasures) {
+          std::max<Tick>(1, measure_count_tick + (measure_count_remainder == 0 ? 0 : 1));
+      if (static_cast<std::uint64_t>(measure_count_with_remainder) > kMaximumImportedMeasures) {
         throw std::invalid_argument("MIDI import requires a bounded measure count");
       }
       const std::size_t measure_count = static_cast<std::size_t>(measure_count_with_remainder);
@@ -320,6 +353,7 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       const std::size_t part_index = converted.parts.size();
       part.id = "P" + std::to_string(part_index + 1);
       part.name = track.name.empty() ? "Part " + std::to_string(part_index + 1) : track.name;
+      part.midi_events = track.channel_events;
       part.measures.resize(measure_count);
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
         part.measures[measure_index].number = static_cast<int>(measure_index + 1);
@@ -346,6 +380,11 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
           segment.duration = segment_duration;
           segment.tie_stop = segment_start != note.start;
           segment.tie_start = segment_duration < note_end - segment_start;
+          if (segment.tie_stop) segment.midi_on_order = 0;
+          if (segment.tie_start) {
+            segment.midi_off_order = 0;
+            segment.midi_release_velocity = 0;
+          }
           part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(segment));
           segment_start += segment_duration;
           ++segment_count;

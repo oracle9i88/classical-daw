@@ -144,6 +144,25 @@ int main() {
       restored.tuplet_actual != 3 || restored.tuplet_normal != 2) {
     return fail("structured note round-trip lost notation or velocity");
   }
+  // MusicXML's current notation slice cannot encode raw MIDI performance
+  // events. Callers receive explicit omissions without altering the source.
+  structured.parts[0].midi_events.push_back({0, MidiChannelEventType::ControlChange, 3, 64, 127, 1});
+  note.midi_channel = 3;
+  note.midi_on_order = 2;
+  MusicXmlExportReport omissions;
+  if (!writeMusicXmlFile(structured, path.string(), &error, &omissions) ||
+      omissions.omitted_midi_events != 1 || omissions.omitted_note_midi_metadata != 1) {
+    return fail("MusicXML export failed to report MIDI performance omissions");
+  }
+  note.velocity = 255;
+  omissions.omitted_midi_events = 19;
+  if (writeMusicXmlFile(structured, path.string(), &error, &omissions) || omissions.omitted_midi_events != 19) {
+    return fail("failed MusicXML export changed omission report");
+  }
+  if (!writeMusicXmlFile(original, path.string(), &error, &omissions) ||
+      omissions.omitted_midi_events != 0 || omissions.omitted_note_midi_metadata != 0) {
+    return fail("MusicXML omission report was not reset after a clean export");
+  }
   std::filesystem::remove(path);
   std::cout << "classical-daw MusicXML dynamics tests passed\n";
   return 0;

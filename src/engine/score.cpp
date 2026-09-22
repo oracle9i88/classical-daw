@@ -286,7 +286,7 @@ void writeNote(std::ostringstream& output, const ScoreNote& note, bool chord, st
 
 }  // namespace
 
-bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error) {
+bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error, MusicXmlExportReport* report) {
   try {
     if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
@@ -294,10 +294,16 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
     (void)measureLength(score.time_signature);
 
     std::map<std::string, bool> part_ids;
+    MusicXmlExportReport omissions;
     for (const ScorePart& part : score.parts) {
       if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
       if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");
       if (part.measures.empty()) throw std::invalid_argument("MusicXML part must contain a measure");
+      omissions.omitted_midi_events += part.midi_events.size();
+      for (const auto& measure : part.measures) for (const auto& note : measure.notes) {
+        if (note.midi_channel != -1 || note.midi_on_order != 0 || note.midi_off_order != 0 ||
+            note.midi_release_velocity != 0) ++omissions.omitted_note_midi_metadata;
+      }
     }
     std::ostringstream output;
     output.imbue(std::locale::classic());
@@ -378,6 +384,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
     const std::string content = output.str();
     file.write(content.data(), static_cast<std::streamsize>(content.size()));
     if (!file) throw std::runtime_error("failed while writing MusicXML file");
+    if (report) *report = omissions;
     return true;
   } catch (const std::exception& exception) {
     if (error) *error = exception.what();

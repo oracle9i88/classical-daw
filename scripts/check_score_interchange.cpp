@@ -54,7 +54,9 @@ bool checkFile(const std::string& input_path, const std::filesystem::path& xml_p
   std::size_t file_notes = 0;
   for (std::size_t index = 0; index < original.tracks.size(); ++index) {
     file_notes += original.tracks[index].notes.size();
-    if (!original.tracks[index].notes.empty()) nonempty_tracks.push_back(index);
+    if (!original.tracks[index].notes.empty() || !original.tracks[index].channel_events.empty()) {
+      nonempty_tracks.push_back(index);
+    }
   }
   *imported_notes += file_notes;
   std::cout << "INPUT " << input_path << " notes=" << file_notes
@@ -62,11 +64,15 @@ bool checkFile(const std::string& input_path, const std::filesystem::path& xml_p
             << " normalized_ppq=" << original.ticks_per_quarter
             << " rounded_note_boundaries=" << report.rounded_note_boundaries << '\n';
   if (!daw::midiToScore(original, &score, &error)) return failure("midiToScore");
-  if (!daw::writeMusicXmlFile(score, xml_path.string(), &error)) return failure("writeMusicXmlFile");
+  daw::MusicXmlExportReport omissions;
+  if (!daw::writeMusicXmlFile(score, xml_path.string(), &error, &omissions)) return failure("writeMusicXmlFile");
+  std::cout << "  MusicXML omitted_channel_events=" << omissions.omitted_midi_events
+            << " omitted_note_playback_metadata=" << omissions.omitted_note_midi_metadata << '\n';
   if (!daw::readMusicXmlFile(xml_path.string(), &restored, &error)) return failure("readMusicXmlFile");
   if (!daw::scoreToMidiFile(restored, &exported, &error)) return failure("scoreToMidiFile");
 
-  // The score importer omits empty metadata/conductor tracks. All remaining
+  // The score importer omits metadata-only conductor tracks, but retains
+  // event-only tracks (whose events MusicXML reports as omitted). All remaining
   // tracks must correspond in source order, including duplicate note counts.
   if (exported.tracks.size() != nonempty_tracks.size()) {
     std::cerr << "FAIL " << input_path << " nonempty track count " << nonempty_tracks.size()

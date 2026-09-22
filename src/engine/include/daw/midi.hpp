@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daw/tempo_map.hpp"
+#include "daw/midi_event.hpp"
 
 #include <cstdint>
 #include <string>
@@ -14,6 +15,11 @@ struct MidiNote {
   std::uint8_t pitch = 60;
   std::uint8_t velocity = 100;  // Attack velocity 1..127; zero encodes note-off in SMF.
   std::uint8_t channel = 0;
+  std::uint8_t release_velocity = 0;
+  // Source ordinals are valid for unchanged events. Editors moving/repitching
+  // notes should clear these to zero; export rejects stale retrigger ordering.
+  std::uint64_t on_order = 0;
+  std::uint64_t off_order = 0;
 
   [[nodiscard]] Tick end() const { return start + duration; }
 };
@@ -21,6 +27,7 @@ struct MidiNote {
 struct MidiTrack {
   std::string name;
   std::vector<MidiNote> notes;
+  std::vector<MidiChannelEvent> channel_events{};
 };
 
 struct MidiFile {
@@ -39,6 +46,8 @@ struct MidiImportReport {
   std::uint64_t rounded_note_boundaries = 0;
   std::uint64_t rounded_tempo_events = 0;
   std::uint64_t ignored_channel_events = 0;
+  std::uint64_t preserved_channel_events = 0;
+  std::uint64_t rounded_channel_events = 0;
   std::uint64_t ignored_meta_events = 0;
   std::uint64_t ignored_sysex_events = 0;
   std::uint64_t ignored_time_signature_events = 0;
@@ -48,11 +57,11 @@ struct MidiImportReport {
 };
 
 // A deliberately small Standard MIDI File (SMF) Type 0/1 reader and writer.
-// It covers note events, track names, tempo events, and the first time
-// signature event. Unknown meta and SysEx events are skipped; unsupported
+// It covers note/release events, all channel voice messages, track names,
+// tempo events, and the first time signature event. Unknown meta and SysEx events are skipped; unsupported
 // system-common events are rejected so malformed timing data is not hidden.
 // Input accepts positive PPQ divisions (1..32767), normalizing absolute note
-// starts/ends and tempo positions to 960 PPQ with nearest-tick rounding (half
+// starts/ends and tempo/channel positions to 960 PPQ with nearest-tick rounding (half
 // up). No delta rounding is accumulated. Notes that collapse to zero duration
 // after normalization fail explicitly. SMPTE and Type 2 remain unsupported.
 // The writer and in-memory engine model continue to require 960 PPQ.

@@ -9,6 +9,7 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 namespace daw {
@@ -81,12 +82,14 @@ struct MidiEvent {
   std::uint8_t channel = 0;
   std::uint8_t pitch = 60;
   std::uint8_t velocity = 0;
+  std::uint64_t order = 0;
 };
 
 struct TimedEvent {
   Tick tick = 0;
   int priority = 0;
   Bytes payload;
+  std::uint64_t order = 0;
 };
 
 bool validTimeSignature(const TimeSignature& signature) {
@@ -165,10 +168,10 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
           payload.push_back(static_cast<std::uint8_t>((micros >> 16) & 0xff));
           payload.push_back(static_cast<std::uint8_t>((micros >> 8) & 0xff));
           payload.push_back(static_cast<std::uint8_t>(micros & 0xff));
-          timed_events.push_back({change.tick, 1, std::move(payload)});
+          timed_events.push_back({change.tick, -1, std::move(payload)});
         }
         timed_events.push_back({0,
-                                1,
+                                -1,
                                 Bytes{0xff,
                                       0x58,
                                       0x04,
@@ -179,14 +182,31 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
       }
       if (track != nullptr) {
         std::vector<MidiEvent> note_events;
+        using BoundaryKey = std::tuple<Tick, std::uint8_t, std::uint8_t>;
+        std::map<BoundaryKey, std::uint64_t> first_ordered_attack;
         for (const MidiNote& note : track->notes) {
           if (note.start < 0 || note.duration <= 0 ||
               note.start > std::numeric_limits<Tick>::max() - note.duration ||
-              note.pitch > 127 || note.velocity == 0 || note.velocity > 127 || note.channel > 15) {
+              note.pitch > 127 || note.velocity == 0 || note.velocity > 127 || note.channel > 15 ||
+              note.release_velocity > 127) {
             throw std::invalid_argument("MIDI note has an out-of-range field");
           }
-          note_events.push_back({note.start, false, note.channel, note.pitch, note.velocity});
-          note_events.push_back({note.end(), true, note.channel, note.pitch, 0});
+          note_events.push_back({note.start, false, note.channel, note.pitch, note.velocity, note.on_order});
+          note_events.push_back({note.end(), true, note.channel, note.pitch, note.release_velocity, note.off_order});
+          if (note.on_order != 0) {
+            const BoundaryKey key{note.start, note.channel, note.pitch};
+            const auto inserted = first_ordered_attack.emplace(key, note.on_order);
+            if (!inserted.second) inserted.first->second = std::min(inserted.first->second, note.on_order);
+          }
+        }
+        for (const MidiNote& note : track->notes) {
+          const auto attack = first_ordered_attack.find({note.end(), note.channel, note.pitch});
+          if (note.off_order != 0 && attack != first_ordered_attack.end() && note.off_order >= attack->second) {
+            // Moving or repitching an imported note can make its old ordinal
+            // inconsistent with an adjacent retrigger. Refuse the stale model
+            // before writing rather than silently creating a zero-length note.
+            throw std::invalid_argument("MIDI source order conflicts with a same-pitch retrigger; clear orders on edited notes");
+          }
         }
         std::stable_sort(note_events.begin(), note_events.end(), [](const MidiEvent& a, const MidiEvent& b) {
           if (a.tick != b.tick) return a.tick < b.tick;
@@ -195,11 +215,32 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
         for (const MidiEvent& event : note_events) {
           Bytes payload{static_cast<std::uint8_t>((event.note_off ? 0x80 : 0x90) | event.channel),
                         event.pitch, event.velocity};
-          timed_events.push_back({event.tick, event.note_off ? 0 : 2, std::move(payload)});
+          timed_events.push_back({event.tick, event.note_off ? 0 : 2, std::move(payload), event.order});
+        }
+        for (const MidiChannelEvent& event : track->channel_events) {
+          if (!validMidiChannelEvent(event)) throw std::invalid_argument("invalid MIDI channel event");
+          Bytes payload{static_cast<std::uint8_t>(static_cast<std::uint8_t>(event.type) | event.channel), event.data1};
+          if (event.type != MidiChannelEventType::ProgramChange && event.type != MidiChannelEventType::ChannelPressure) {
+            payload.push_back(event.data2);
+          }
+          timed_events.push_back({event.tick, 1, std::move(payload), event.order});
         }
       }
       std::stable_sort(timed_events.begin(), timed_events.end(), [](const TimedEvent& a, const TimedEvent& b) {
         if (a.tick != b.tick) return a.tick < b.tick;
+        // Metadata does not change channel state. Imported channel events and
+        // note edges retain source order, including after PPQ rounding merges
+        // nearby ticks. Newly authored events use the documented fallback.
+        if ((a.priority < 0) != (b.priority < 0)) return a.priority < 0;
+        if (a.priority < 0) return false;
+        // An authored note ending here must release before an imported
+        // same-pitch retrigger. Otherwise note-on followed by that new off
+        // would prematurely release the new note (or form a zero-length pair).
+        const bool a_new_release = a.order == 0 && a.priority == 0;
+        const bool b_new_release = b.order == 0 && b.priority == 0;
+        if (a_new_release != b_new_release) return a_new_release;
+        if ((a.order == 0) != (b.order == 0)) return a.order != 0;
+        if (a.order != b.order) return a.order < b.order;
         return a.priority < b.priority;
       });
       for (const TimedEvent& event : timed_events) {
@@ -270,9 +311,12 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
       MidiTrack track;
       Tick tick = 0;
       std::uint8_t running_status = 0;
-      std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::pair<Tick, std::uint8_t>>> active;
+      struct ActiveNote { Tick start; std::uint8_t velocity; std::uint64_t order; };
+      std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<ActiveNote>> active;
+      std::uint64_t event_order = 0;
       bool end_of_track_seen = false;
       while (pos < track_end) {
+        ++event_order;
         const Tick delta = static_cast<Tick>(getVlq(data, pos, track_end));
         if (delta > std::numeric_limits<Tick>::max() - tick) {
           throw std::runtime_error("MIDI event tick overflow");
@@ -345,8 +389,10 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
           if (pos >= track_end || (data[pos] & 0x80) != 0) {
             throw std::runtime_error("truncated MIDI channel event");
           }
-          ++pos;  // Program Change and Channel Pressure each carry one data byte.
-          ++diagnostics.ignored_channel_events;
+          const Tick normalized = canonicalTick(tick, division, &diagnostics.rounded_channel_events);
+          track.channel_events.push_back({normalized, static_cast<MidiChannelEventType>(command), channel,
+                                          data[pos++], 0, event_order});
+          ++diagnostics.preserved_channel_events;
         } else {
           if (pos >= track_end || (data[pos] & 0x80) != 0) {
             throw std::runtime_error("truncated MIDI channel event");
@@ -358,11 +404,11 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
           const std::uint8_t value = data[pos++];
           if (command == 0x90 && value != 0) {
             if (!active[{channel, pitch}].empty()) ++diagnostics.overlapping_same_pitch_notes;
-            active[{channel, pitch}].push_back({tick, value});
+            active[{channel, pitch}].push_back({tick, value, event_order});
           } else if (command == 0x80 || (command == 0x90 && value == 0)) {
             auto& stack = active[{channel, pitch}];
             if (stack.empty()) throw std::runtime_error("MIDI note-off has no matching note-on");
-            const auto [start, velocity] = stack.back();
+            const auto [start, velocity, on_order] = stack.back();
             stack.pop_back();
             if (tick <= start) throw std::runtime_error("MIDI note duration must be positive");
             const Tick normalized_start = canonicalTick(start, division, &diagnostics.rounded_note_boundaries);
@@ -370,9 +416,13 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
             if (normalized_end <= normalized_start) {
               throw std::runtime_error("MIDI note collapses to zero duration at 960 PPQ");
             }
-            track.notes.push_back({normalized_start, normalized_end - normalized_start, pitch, velocity, channel});
+            track.notes.push_back({normalized_start, normalized_end - normalized_start, pitch, velocity, channel,
+                                   value, on_order, event_order});
           } else {
-            ++diagnostics.ignored_channel_events;
+            const Tick normalized = canonicalTick(tick, division, &diagnostics.rounded_channel_events);
+            track.channel_events.push_back({normalized, static_cast<MidiChannelEventType>(command), channel,
+                                            pitch, value, event_order});
+            ++diagnostics.preserved_channel_events;
           }
         }
       }

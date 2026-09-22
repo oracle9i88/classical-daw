@@ -24,6 +24,8 @@ constexpr std::uint64_t kMaxMeasures = 1'000'000;
 constexpr std::uint64_t kMaxNotes = 1'000'000;
 constexpr std::uint64_t kMaxTotalMeasures = 1'000'000;
 constexpr std::uint64_t kMaxTotalNotes = 1'000'000;
+constexpr std::uint64_t kMaxMidiEvents = 1'000'000;
+constexpr std::uint64_t kMaxTotalMidiEvents = 1'000'000;
 constexpr std::size_t kMaxLineBytes = 4U * 1024U * 1024U;
 constexpr std::size_t kMaxStringBytes = 1U * 1024U * 1024U;
 
@@ -132,6 +134,7 @@ bool validateScore(const Score& score, std::string* error) {
   if (score.parts.size() > kMaxParts) return fail(error, "project has too many parts");
   std::uint64_t total_measures = 0;
   std::uint64_t total_notes = 0;
+  std::uint64_t total_midi_events = 0;
   for (const ScorePart& part : score.parts) {
     if (part.id.empty() || part.id.size() > kMaxStringBytes || part.name.size() > kMaxStringBytes) {
       return fail(error, "project part string out of range");
@@ -139,6 +142,14 @@ bool validateScore(const Score& score, std::string* error) {
     if (part.measures.size() > kMaxMeasures) return fail(error, "project has too many measures");
     if (part.measures.size() > kMaxTotalMeasures - total_measures) return fail(error, "project has too many measures");
     total_measures += static_cast<std::uint64_t>(part.measures.size());
+    if (part.midi_events.size() > kMaxMidiEvents ||
+        part.midi_events.size() > kMaxTotalMidiEvents - total_midi_events) {
+      return fail(error, "project has too many MIDI events");
+    }
+    total_midi_events += static_cast<std::uint64_t>(part.midi_events.size());
+    for (const MidiChannelEvent& event : part.midi_events) {
+      if (!validMidiChannelEvent(event)) return fail(error, "project MIDI event out of range");
+    }
     for (const ScoreMeasure& measure : part.measures) {
       if (measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes ||
           measure.notes.size() > kMaxTotalNotes - total_notes) {
@@ -159,6 +170,9 @@ bool validateScore(const Score& score, std::string* error) {
           return fail(error, "project note attribute out of range");
         }
         if (note.lyric.size() > kMaxStringBytes) return fail(error, "project note lyric out of range");
+        if (note.midi_channel < -1 || note.midi_channel > 15 || note.midi_release_velocity > 127) {
+          return fail(error, "project note MIDI metadata out of range");
+        }
       }
     }
   }
@@ -188,7 +202,8 @@ class LineReader {
   bool hasTrailingData() {
     std::string line;
     if (!std::getline(input_, line)) return false;
-    return fail(error_, "trailing data after end_project");
+    fail(error_, "trailing data after end_project");
+    return true;
   }
 
   std::size_t lineNumber() const { return line_number_; }
@@ -229,9 +244,9 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
 
     std::ostringstream output;
     output.precision(17);
-    // Version 2 adds one hex-encoded lyric field per note.  The reader keeps
-    // accepting version 1 and supplies an empty lyric for legacy files.
-    output << "CLASSICAL_DAW_PROJECT 2\n";
+    // Version 3 retains note playback identity and per-part channel events.
+    // Legacy versions default those fields; version 1 also defaults lyrics.
+    output << "CLASSICAL_DAW_PROJECT 3\n";
     output << "divisions " << score.divisions << "\n";
     output << "bpm " << score.bpm << "\n";
     output << "meter " << static_cast<unsigned int>(score.time_signature.numerator) << ' '
@@ -267,9 +282,19 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
           output << "tuplet_actual " << note.tuplet_actual << "\n";
           output << "tuplet_normal " << note.tuplet_normal << "\n";
           output << "lyric " << hexEncode(note.lyric) << "\n";
+          output << "midi_channel " << note.midi_channel << "\n";
+          output << "midi_on_order " << note.midi_on_order << "\n";
+          output << "midi_off_order " << note.midi_off_order << "\n";
+          output << "midi_release_velocity " << static_cast<unsigned int>(note.midi_release_velocity) << "\n";
           output << "end_note\n";
         }
         output << "end_measure\n";
+      }
+      output << "midi_events " << part.midi_events.size() << "\n";
+      for (const MidiChannelEvent& event : part.midi_events) {
+        output << "midi_event " << event.tick << ' ' << static_cast<unsigned int>(event.type) << ' '
+               << static_cast<unsigned int>(event.channel) << ' ' << static_cast<unsigned int>(event.data1) << ' '
+               << static_cast<unsigned int>(event.data2) << ' ' << event.order << "\n";
       }
       output << "end_part\n";
     }
@@ -316,7 +341,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
     std::uint64_t project_version = 0;
-    if (!parseU64(arguments[0], &project_version) || (project_version != 1 && project_version != 2)) {
+    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 3) {
       return fail(error, "unsupported project version: " + arguments[0]);
     }
 
@@ -337,6 +362,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     parsed.parts.resize(part_count);
     std::uint64_t total_measures = 0;
     std::uint64_t total_notes = 0;
+    std::uint64_t total_midi_events = 0;
 
     for (std::size_t part_index = 0; part_index < part_count; ++part_index) {
       if (!expectLine(&reader, "part", 1, &arguments, error)) return false;
@@ -418,7 +444,8 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
             return false;
           }
           std::uint16_t velocity = 0;
-          if (!expectLine(&reader, "velocity", 1, &arguments, error) || !parseUnsigned(arguments[0], &velocity)) {
+          if (!expectLine(&reader, "velocity", 1, &arguments, error) || !parseUnsigned(arguments[0], &velocity) ||
+              velocity > 127) {
             return fail(error, "invalid project note velocity");
           }
           note.velocity = static_cast<std::uint8_t>(velocity);
@@ -434,9 +461,42 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
               return fail(error, "invalid project note lyric");
             }
           }
+          if (project_version >= 3) {
+            if (!expectLine(&reader, "midi_channel", 1, &arguments, error) ||
+                !parseSigned(arguments[0], &note.midi_channel) ||
+                !expectLine(&reader, "midi_on_order", 1, &arguments, error) ||
+                !parseU64(arguments[0], &note.midi_on_order) ||
+                !expectLine(&reader, "midi_off_order", 1, &arguments, error) ||
+                !parseU64(arguments[0], &note.midi_off_order) ||
+                !expectLine(&reader, "midi_release_velocity", 1, &arguments, error) ||
+                !parseUnsigned(arguments[0], &note.midi_release_velocity)) {
+              return fail(error, "invalid project note MIDI metadata");
+            }
+          }
           if (!expectLine(&reader, "end_note", 0, &arguments, error)) return false;
         }
         if (!expectLine(&reader, "end_measure", 0, &arguments, error)) return false;
+      }
+      if (project_version >= 3) {
+        if (!expectLine(&reader, "midi_events", 1, &arguments, error)) return false;
+        std::size_t event_count = 0;
+        if (!parseCount(arguments[0], kMaxMidiEvents, &event_count, error, "MIDI event")) return false;
+        if (event_count > kMaxTotalMidiEvents - total_midi_events) {
+          return fail(error, "project has too many MIDI events");
+        }
+        total_midi_events += static_cast<std::uint64_t>(event_count);
+        part.midi_events.resize(event_count);
+        for (MidiChannelEvent& event : part.midi_events) {
+          std::uint8_t type = 0;
+          if (!expectLine(&reader, "midi_event", 6, &arguments, error) ||
+              !parseSigned(arguments[0], &event.tick) || !parseUnsigned(arguments[1], &type) ||
+              !parseUnsigned(arguments[2], &event.channel) || !parseUnsigned(arguments[3], &event.data1) ||
+              !parseUnsigned(arguments[4], &event.data2) || !parseU64(arguments[5], &event.order)) {
+            return fail(error, "invalid project MIDI event");
+          }
+          event.type = static_cast<MidiChannelEventType>(type);
+          if (!validMidiChannelEvent(event)) return fail(error, "project MIDI event out of range");
+        }
       }
       if (!expectLine(&reader, "end_part", 0, &arguments, error)) return false;
     }

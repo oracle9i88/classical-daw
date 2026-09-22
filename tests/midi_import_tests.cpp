@@ -100,7 +100,8 @@ int main() {
     require(midi.tracks[0].notes[0].start == 3 && midi.tracks[0].notes[0].end() == 323,
             "absolute-boundary rounding drift");
     require(report.rounded_note_boundaries == 2 && report.rounded_tempo_events == 1 &&
-            report.ignored_channel_events == 129, "rounding/content loss report");
+            report.ignored_channel_events == 0 && report.preserved_channel_events == 129,
+            "rounding/channel event report");
     require(midi.tempo.changes().back().tick == 483, "fractional tempo position");
     require(daw::writeMidiFile(midi, roundtrip.string(), &error), error);
     daw::MidiFile reloaded;

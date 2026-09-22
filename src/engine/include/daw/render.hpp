@@ -8,6 +8,8 @@ namespace daw {
 
 // Renders a deterministic, intentionally simple sine instrument. This is an
 // offline engine smoke test, not a finished sampler or orchestral instrument.
+// Channel events are retained for interchange but are not interpreted here:
+// CC/pedal, program changes, pressure, bend, and release velocity have no effect.
 AudioBuffer renderNotes(const MidiTrack& track, const TempoMap& tempo,
                         double sample_rate = 48000.0, double tail_seconds = 0.1);
 

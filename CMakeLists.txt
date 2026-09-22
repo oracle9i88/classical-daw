@@ -67,9 +67,24 @@ add_executable(daw_musicxml_timing_tests tests/musicxml_timing_tests.cpp)
 target_link_libraries(daw_musicxml_timing_tests PRIVATE daw_engine)
 add_test(NAME daw_musicxml_timing_tests COMMAND daw_musicxml_timing_tests)
 
+add_executable(daw_midi_channel_events_tests tests/midi_channel_events_tests.cpp)
+target_link_libraries(daw_midi_channel_events_tests PRIVATE daw_engine)
+add_test(NAME daw_midi_channel_events_tests COMMAND daw_midi_channel_events_tests)
+
+add_executable(daw_score_midi_events_tests tests/score_midi_events_tests.cpp)
+target_link_libraries(daw_score_midi_events_tests PRIVATE daw_engine)
+add_test(NAME daw_score_midi_events_tests COMMAND daw_score_midi_events_tests)
+
+add_executable(daw_project_midi_events_tests tests/project_midi_events_tests.cpp)
+target_link_libraries(daw_project_midi_events_tests PRIVATE daw_engine)
+add_test(NAME daw_project_midi_events_tests COMMAND daw_project_midi_events_tests)
+
 # Local import diagnostics; requires no audio device, UI, or network access.
 add_executable(daw_midi_inspect tools/midi_inspect.cpp)
 target_link_libraries(daw_midi_inspect PRIVATE daw_engine)
+
+add_executable(daw_midi_roundtrip tools/midi_roundtrip.cpp)
+target_link_libraries(daw_midi_roundtrip PRIVATE daw_engine)
 
 if(APPLE)
   add_library(daw_coreaudio STATIC

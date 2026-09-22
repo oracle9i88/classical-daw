@@ -6,6 +6,11 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Preserve CC, Program Change, Pitch Bend, poly/channel pressure, original
+  note channels, release velocity, and same-tick order through SMF → Score →
+  native project v3 → SMF. Keep event-only tracks and v1/v2 read compatibility.
+- Expose omitted performance metadata in MusicXML export reports; controller
+  playback and equivalent browser support remain pending.
 - Import positive SMF PPQ 1–32767 into the 960-PPQ core using absolute boundary
   rounding, with counters for rounding and ignored events. Reject malformed
   note lifecycles, collapsed notes, and VLQs crossing track boundaries.
@@ -28,8 +33,8 @@ not count as completion.
   with multiple voices/staves, notes, rests, chords, ties, tuplets, meter,
   tempo, and 960-PPQ import/export, including one lyric text per note.
 - Add a validated Score-to-SMF bridge that exports ordered multi-part scores to
-  deterministic Type 1 MIDI tracks, assigns stable channels 0–15, rejects more
-  than 16 parts, and does not damage an existing destination on conversion
+  deterministic Type 1 MIDI tracks, retains explicit channels or assigns the
+  default part channel, and does not damage an existing destination on conversion
   failure.
 - Add the inverse MIDI-to-Score bridge: non-empty 960-PPQ tracks become ordered
   score parts with track names, note timing, pitch, velocity, and channel-backed
@@ -79,10 +84,11 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize retaining MIDI Program Change, CC, pitch bend, meter maps, and full
-tempo maps through Score/project persistence, then implement explicit instrument
-and channel routing (including the GM percussion channel and more than 16 parts).
-The current importer reports discarded event classes; it does not preserve them.
+Prioritize full tempo and meter maps through Score/project persistence, then
+implement controller-aware playback and an instrument/port routing layer
+(including GM percussion and orchestras spanning multiple MIDI ports).
+Channel-event data now survives native interchange; the current sine renderer
+does not apply it. Bring the independent web model to parity separately.
 
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,

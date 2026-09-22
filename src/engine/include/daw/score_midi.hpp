@@ -9,16 +9,18 @@ namespace daw {
 
 // Convert the score interchange model into a Standard MIDI File model. Each
 // ordered ScorePart becomes one MIDI track; voices and staves remain independent
-// note events within that track. Parts use one stable MIDI channel each
-// (part index), and export rejects more than 16 parts so channels do
-// not collide. Rests are omitted, while note start, duration, pitch, and
-// velocity are retained. Tuplet metadata has no separate MIDI representation
-// and is therefore represented by the already-resolved tick durations.
+// note events within that track. Imported notes retain their explicit MIDI
+// channels; newly authored notes use the part index. More than 16 parts require
+// explicit channels for every sounding note and some routed playback content.
+// Rests are omitted, while note start, duration, pitch, attack/release velocity,
+// source event order, and part MIDI channel events are retained. Tuplet metadata
+// has no separate MIDI representation and uses the resolved tick durations.
 // Sounding notes require velocity 1..127; zero is MIDI note-off, not a silent
 // note-on. Rests may use velocity zero because they emit no MIDI event.
-// Exactly contiguous ties with the same part/staff/voice and sounding pitch
-// become one MIDI note with the first segment's attack velocity. Dangling,
-// discontinuous, ambiguous, or rest-attached ties fail without changing the
+// Exactly contiguous ties with the same part/staff/voice, sounding pitch, and
+// output channel become one MIDI note with the first segment's attack velocity
+// and source order, and the last segment's release velocity and source order.
+// Dangling, discontinuous, ambiguous, or rest-attached ties fail without changing the
 // caller's MIDI model; they are never silently exported as repeated attacks.
 // The score's BPM becomes the tick-zero TempoMap entry.
 // The score's single time signature is serialized as the first MIDI meter
@@ -26,14 +28,19 @@ namespace daw {
 bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);
 
 // Convert a Standard MIDI File model into the score interchange model. Each
-// ordered MIDI track becomes one ScorePart. Track names are retained; unnamed
+// ordered non-empty MIDI track becomes one ScorePart. Tracks containing only
+// channel events are retained with one empty measure; only tracks with neither
+// notes nor channel events are omitted. Track names are retained; unnamed
 // tracks receive deterministic "Part N" names. MIDI channels become score
-// voices (channel + 1) and notes use canonical sharp spellings. The import
-// bridge deliberately accepts the engine's fixed 960-PPQ domain, carries the
+// voices (channel + 1), their playback routes remain explicit, and notes use
+// canonical sharp spellings. Channel event bytes and source order are retained.
+// The import bridge deliberately accepts the engine's fixed 960-PPQ domain, carries the
 // first MIDI meter event (defaulting to 4/4), and uses the first valid tempo as
 // Score::bpm. Notes crossing barlines are split into tied score segments while
-// preserving their total sounding duration and velocity. Import limits both
-// the number of measures and resulting segments per part to one million.
+// preserving their total sounding duration and velocity. The first segment
+// carries the source note-on order, the last carries the note-off order and
+// release velocity, and all segments retain their original MIDI channel.
+// Import limits measures and resulting segments per part to one million each.
 // Sounding notes require velocity 1..127. Same-channel same-pitch overlapping
 // notes within a track are rejected: this model has no independent tie
 // identity for them. Adjacent reattacks and different-channel overlaps remain

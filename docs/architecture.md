@@ -61,20 +61,20 @@ performance timing without claiming to infer the composer's notated voices.
 
 The Score-to-MIDI adapter is also outside the realtime path. It validates the
 ordered score parts, emits one deterministic Type 1 MIDI track per part, omits
-rests, preserves absolute tick timing and velocity, and assigns each part a
-stable channel (`part index % 16`). Export rejects more than 16 parts because
-the current bridge has no channel-allocation map and must not silently collide
-parts. Tuplet metadata is represented by the already-resolved tick durations;
+rests, and preserves absolute tick timing and velocity. Imported notes retain
+explicit `midi_channel` routes; a newly authored note with channel -1 falls back
+to its part index. More than 16 parts require explicit note channels. Tuplet
+metadata is represented by the already-resolved tick durations;
 contiguous tie chains are matched by part/staff/voice/sounding pitch and become
 one sustained MIDI note using the initial velocity. An invalid chain fails
-without changing the caller's output. The current channel policy also assigns
+without changing the caller's output. The fallback channel policy still assigns
 channel 9 to the tenth part, which is inappropriate for a GM melodic part and
 remains an explicit routing limitation.
 the score's single meter is emitted as the first MIDI time-signature event,
-while meter changes, lyric text, and instrument programs remain future fields.
+while meter changes and MIDI lyric text remain future fields.
 
 The inverse MIDI-to-Score adapter follows the ordered SMF tracks and creates one
-score part per non-empty track; tempo-only tracks are skipped. It retains track
+score part per track containing notes or channel events; metadata-only tracks are skipped. It retains track
 names, note timing, pitch, velocity, and channel (as `voice = channel + 1`),
 then assigns notes to a measure grid using the first MIDI meter event, defaulting
 to 4/4. It accepts only the engine's 960-PPQ domain and carries the first valid
@@ -84,11 +84,29 @@ invoking this adapter. Notes crossing barlines are split into notation segments
 with ties, and simultaneous segments in a voice receive chord markers. Both directions remain worker-thread operations
 and never run in the realtime callback.
 
-This is not yet an orchestral interchange model. SMF control/program changes,
-pitch bend, pressure, SysEx, later meter events, and release velocities are not
-retained. The SMF tempo map survives file import, but the single-BPM Score cannot
+`MidiChannelEvent` retains the original channel-voice status type and 7-bit data
+bytes plus normalized tick and a per-track source ordinal. Original note attack
+and release ordinals share that namespace, preserving their order relative to
+CC, program, bend, and pressure events at the same tick. For authored events
+with order zero, the writer uses new note-off → source-ordered events → new
+channel-event vector order → new note-on at a shared tick. Releasing authored
+notes before imported reattacks prevents accidental zero-length retriggers;
+relative order within imported events is unchanged. Tie splitting
+keeps the attack ordinal only on the first segment and the release ordinal/
+velocity only on the last segment. Project v3 persists these fields and all
+part events; v1/v2 load with their original defaults. Copy-based history and
+recovery retain them without touching the realtime callback.
+Editors must clear source ordinals on moved/repitched notes or edited endpoints.
+The SMF writer rejects stale explicit ordinals that would put a same-pitch
+retrigger before the preceding release, preserving an existing destination.
+
+This is not yet an orchestral interchange model. SysEx and later meter events
+are not retained. The SMF tempo map survives file import, but the single-BPM Score cannot
 retain its later changes. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
+MusicXML currently omits raw performance metadata and exposes the omissions in
+`MusicXmlExportReport`; only native project/SMF paths retain it. The diagnostic
+sine renderer still ignores these controllers and program/bend events.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks

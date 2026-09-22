@@ -26,6 +26,8 @@ int main(int argc, char** argv) {
             << ",\n  \"rounded_note_boundaries\": " << report.rounded_note_boundaries
             << ",\n  \"rounded_tempo_events\": " << report.rounded_tempo_events
             << ",\n  \"ignored_channel_events\": " << report.ignored_channel_events
+            << ",\n  \"preserved_channel_events\": " << report.preserved_channel_events
+            << ",\n  \"rounded_channel_events\": " << report.rounded_channel_events
             << ",\n  \"ignored_meta_events\": " << report.ignored_meta_events
             << ",\n  \"ignored_sysex_events\": " << report.ignored_sysex_events
             << ",\n  \"ignored_time_signature_events\": " << report.ignored_time_signature_events
@@ -52,6 +54,14 @@ int main(int argc, char** argv) {
         // [absolute start, absolute end, pitch, attack velocity, channel]
         std::cout << '[' << note.start << ", " << note.end() << ", " << static_cast<int>(note.pitch)
                   << ", " << static_cast<int>(note.velocity) << ", " << static_cast<int>(note.channel) << ']';
+      }
+      std::cout << ']';
+      std::cout << ", \"channel_events\": [";
+      for (std::size_t n = 0; n < track.channel_events.size(); ++n) {
+        if (n) std::cout << ", ";
+        const auto& event = track.channel_events[n];
+        std::cout << '[' << event.tick << ", " << (static_cast<int>(event.type) | event.channel)
+                  << ", " << static_cast<int>(event.data1) << ", " << static_cast<int>(event.data2) << ']';
       }
       std::cout << ']';
     }
