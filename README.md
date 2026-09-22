@@ -35,6 +35,10 @@ validating score timing and audio rendering before platform integration.
   time-cursor moves, and orders unequal-duration chord tones longest first.
   Imported measure positions account for every voice's end, not just the last
   serialized voice.
+- MusicXML meter changes at stored measure boundaries survive across synchronized
+  parts. Short measures, empty measures and their trailing silence retain an
+  explicit extent, including the final measure. Conflicting part meters or
+  unsupported mid-measure declarations fail rather than shifting notes.
 - A matching MIDI-to-Score bridge for importing non-empty 960-PPQ tracks as
   ordered score parts for each non-empty track, retaining track names, note
   timing, pitch, velocity, and MIDI channels as score voices and playback metadata. Empty tempo-only
@@ -54,10 +58,13 @@ validating score timing and audio rendering before platform integration.
   selection before start, and connects that scheduler to a silence-safe
   callback with a fixed polyphonic sine diagnostic voice.
 - A versioned, line-oriented project file format with strict validation and
-  atomic replacement. Version 5 adds all four meter fields and the later meter
+  atomic replacement. Version 6 adds explicit measure durations, including final
+  partial measures and their trailing silence. Zero means the old unspecified
+  extent. Version 5 added all four meter fields and the later meter
   map; version 4 added the complete tempo map; version 3 added note routing, message order, release
   velocity, and per-part MIDI events through save/reload, undo/redo, and recovery;
-  the reader accepts versions 1–4, defaulting older meter metadata to 24 clocks
+  the reader accepts versions 1–5 with unspecified measure durations. Versions
+  1–4 default older meter metadata to 24 clocks
   per click and 8 notated 32nds per quarter with no later meters. Versions 1–3
   remain constant-tempo scores.
 - A crash-recovery sidecar writer and loader that tries the primary project,
@@ -100,7 +107,7 @@ SysEx is counted but not retained. The offline
 sine renderer interprets the controls listed above; program changes, pressure,
 pan, effects, RPN/bend-range changes and other controls remain unsupported and
 are counted. This does not extend the realtime CoreAudio synth. Tempo changes
-survive MIDI ↔ Score ↔ native project v5 and affect offline rendering. These
+survive MIDI ↔ Score ↔ native project v6 and affect offline rendering. These
 are discrete tempo steps; continuous tempo ramps are not implemented.
 Same-channel/pitch note overlaps use LIFO pairing and are reported as ambiguous;
 orphan note-offs, unclosed notes, and notes collapsed by PPQ rounding are rejected.
@@ -113,10 +120,12 @@ routing for newly authored notes must be implemented before using this bridge
 for a full orchestra. Explicit imported routes are retained.
 The current MusicXML notation export omits raw MIDI channel events, note routing,
 source-message order, release velocity and later tempo changes; `MusicXmlExportReport` counts these
-omissions. Export fails if the score has later meter changes or an initial
-notation ratio other than 8, avoiding silent measure shifts. A nondefault
-initial clocks-per-click value is allowed but counted in
-`omitted_meter_playback_metadata`. Use native projects and MIDI to retain these
+omissions. Meter n/d changes at measure starts are retained; nonstandard notation
+ratios (`bb != 8`), unrebared changes and conflicting part timelines fail explicitly.
+Nondefault MIDI clock settings and redundant n/d events are counted in
+`omitted_meter_playback_metadata`. The XML reader accepts leading time declarations
+and positive integer measure numbers; staff-specific, composite and mid-measure
+meters remain unsupported. Use native projects and MIDI to retain raw playback
 fields. The web prototype has
 its own model and does not yet share these C++ event-preservation features.
 There is no production instrument library, score engraving, automation, mixer,
@@ -181,6 +190,9 @@ The [tempo persistence record](docs/research/2026-09-23-score-tempo-persistence.
 documents project v4, legacy compatibility and the multi-tempo corpus checks.
 The [meter persistence record](docs/research/2026-09-23-score-meter-persistence.md)
 describes project v5, raw meter limits, measure-grid rules and MusicXML boundaries.
+The [MusicXML meter interchange record](docs/research/2026-09-23-musicxml-meter-interchange.md)
+updates that XML boundary, documents project v6 measure extents and provides
+the optional offline W3C schema check.
 
 ## Planned macOS slices
 

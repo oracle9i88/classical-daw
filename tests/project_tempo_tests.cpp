@@ -91,27 +91,31 @@ void run() {
   original.bpm = 120.0;
   original.tempo_changes = {{240, 90.25}, {960, 60.125}, {7680, 89.12345678901234}};
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v5: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v6: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 5\ndivisions 960\nbpm 120\ntempo_changes 3\n", 0) == 0,
-          "v5 tempo section follows initial BPM");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 6\ndivisions 960\nbpm 120\ntempo_changes 3\n", 0) == 0,
+          "v6 tempo section follows initial BPM");
   require(serialized.find("tempo 960 60.125\n") < serialized.find("meter 4 4 24 8\n"),
-          "v5 tempo section precedes meter");
+          "v6 tempo section precedes meter");
   Score loaded;
   require(readProjectFile(path.string(), &loaded, &error) && equal(loaded, original),
           "tempo ticks and full-precision BPM round trip: " + error);
   require(!std::filesystem::exists(path.string() + ".tmp"), "successful save left temporary file");
 
-  // Version 4 preserves the tempo section. Earlier layouts must clear the
+  // Versions 4/5 preserve the tempo section. Earlier layouts must clear the
   // destination's changes rather than retaining data from a previous load.
-  for (const int version : {1, 2, 3, 4}) {
+  for (const int version : {1, 2, 3, 4, 5}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
+    bool in_note = false;
     while (std::getline(input, line)) {
-      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+      if (line.rfind("note ", 0) == 0) in_note = true;
+      if (line == "end_note") in_note = false;
+      if ((!in_note && line.rfind("duration ", 0) == 0) ||
+          (version < 5 && (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0)) ||
           (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0))) continue;
-      if (line.rfind("meter ", 0) == 0) line = "meter 4 4";
+      if (version < 5 && line.rfind("meter ", 0) == 0) line = "meter 4 4";
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }

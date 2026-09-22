@@ -115,10 +115,20 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
       track.channel_events = part.midi_events;
       has_playback_content = has_playback_content || !track.channel_events.empty();
       std::vector<const ScoreNote*> ordered_notes;
-      for (const ScoreMeasure& measure : part.measures) {
+      for (std::size_t m = 0; m < part.measures.size(); ++m) {
+        const ScoreMeasure& measure = part.measures[m];
         if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
+        if (measure.duration < 0 || measure.start > std::numeric_limits<Tick>::max() - measure.duration ||
+            (measure.duration > 0 && m + 1 < part.measures.size() &&
+             measure.start + measure.duration != part.measures[m + 1].start)) {
+          throw std::invalid_argument("score measure duration is invalid or conflicts with the next boundary");
+        }
         for (const ScoreNote& note : measure.notes) {
           validateNoteTiming(note);
+          if (measure.duration > 0 && (note.start < measure.start ||
+              note.start + note.duration > measure.start + measure.duration)) {
+            throw std::invalid_argument("score note exceeds its explicit measure span");
+          }
           if (note.rest) {
             if (note.tie_start || note.tie_stop) throw std::invalid_argument("score rest cannot carry a tie");
             continue;
@@ -338,6 +348,7 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
         part.measures[measure_index].number = static_cast<int>(measure_index + 1);
         part.measures[measure_index].start = grid[measure_index].start;
+        part.measures[measure_index].duration = grid[measure_index].end - grid[measure_index].start;
       }
       std::size_t segment_count = 0;
       for (const ScoreNote& note : notes) {

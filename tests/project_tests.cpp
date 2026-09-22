@@ -49,7 +49,8 @@ bool equalScore(const daw::Score& left, const daw::Score& right) {
     for (std::size_t measure_index = 0; measure_index < a.measures.size(); ++measure_index) {
       const daw::ScoreMeasure& am = a.measures[measure_index];
       const daw::ScoreMeasure& bm = b.measures[measure_index];
-      if (am.number != bm.number || am.start != bm.start || am.notes.size() != bm.notes.size()) return false;
+      if (am.number != bm.number || am.start != bm.start || am.duration != bm.duration ||
+          am.notes.size() != bm.notes.size()) return false;
       for (std::size_t note_index = 0; note_index < am.notes.size(); ++note_index) {
         const daw::ScoreNote& an = am.notes[note_index];
         const daw::ScoreNote& bn = bm.notes[note_index];
@@ -115,25 +116,29 @@ int main() {
 
   std::string serialized;
   if (!readText(path, &serialized)) return fail("project fixture read");
-  if (serialized.rfind("CLASSICAL_DAW_PROJECT 5\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
+  if (serialized.rfind("CLASSICAL_DAW_PROJECT 6\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
       serialized.find("lyric ") == std::string::npos) {
     return fail("project format header/footer");
   }
 
-  // Legacy files lack later meters; pre-v4 lacks later tempos, versions 1/2
-  // lack MIDI fields, and version 1 also predates lyrics.
-  for (const int version : {1, 2, 3, 4}) {
+  // Legacy layouts omit explicit measure durations and each earlier field
+  // only when it was not yet supported by that version.
+  for (const int version : {1, 2, 3, 4, 5}) {
     Score legacy_expected = source;
     if (version == 1) legacy_expected.parts[0].measures[0].notes[0].lyric.clear();
     std::istringstream current(serialized);
     std::ostringstream legacy;
     std::string line;
+    bool in_note = false;
     while (std::getline(current, line)) {
-      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+      if (line.rfind("note ", 0) == 0) in_note = true;
+      if (line == "end_note") in_note = false;
+      if ((!in_note && line.rfind("duration ", 0) == 0) ||
+          (version < 5 && (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0)) ||
           (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0)) ||
           (version < 3 && line.rfind("midi_", 0) == 0) ||
           (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
-      if (line.rfind("meter ", 0) == 0) {
+      if (version < 5 && line.rfind("meter ", 0) == 0) {
         line = "meter " + std::to_string(source.time_signature.numerator) + " " +
                std::to_string(source.time_signature.denominator);
       }
@@ -150,7 +155,7 @@ int main() {
   loaded = source;
   const Score sentinel = loaded;
   std::string unknown_version = serialized;
-  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 5").size(), "CLASSICAL_DAW_PROJECT 99");
+  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 6").size(), "CLASSICAL_DAW_PROJECT 99");
   if (!writeText(path, unknown_version)) return fail("unknown-version fixture write");
   if (readProjectFile(path.string(), &loaded, &error)) return fail("unknown project version accepted");
   if (!equalScore(loaded, sentinel)) return fail("unknown-version read mutated score");

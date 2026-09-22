@@ -47,6 +47,9 @@ struct ScoreMeasure {
   int number = 1;
   Tick start = 0;
   std::vector<ScoreNote> notes;
+  // Explicit notated extent, including trailing silence. Zero is the legacy
+  // unspecified value: infer from the next measure or the active meter.
+  Tick duration = 0;
 };
 
 struct ScorePart {
@@ -84,6 +87,10 @@ TempoMap scoreTempoMap(const Score& score);
 // This first vertical slice supports ordered parts with multiple voices/staves.
 // It preserves pitch, integer duration, rests, chords, ties, tuplets, meter,
 // tempo, and MIDI velocity via the standard note dynamics percentage.
+// Meter declarations at measure starts are retained across synchronized parts.
+// Short/empty measures export explicit duration through forward moves;
+// implicit input measures use their actual note/forward extent. Mid-measure or
+// staff-specific time declarations and polymeter are explicitly unsupported.
 // Full engraving metadata remains outside this model.
 struct MusicXmlExportReport {
   // The native project and SMF bridge retain these fields; the current
@@ -93,9 +100,9 @@ struct MusicXmlExportReport {
   // The current MusicXML slice writes only the initial tempo. Native project
   // v4+ and SMF retain all tempo changes; this counter makes XML loss visible.
   std::uint64_t omitted_tempo_changes = 0;
-  // Nondefault initial MIDI metronome-click metadata has no representation
-  // in this XML slice. Later meter maps/nonstandard notation ratios fail
-  // export instead of producing a differently aligned score.
+  // One for a nondefault initial clock setting, plus one per later event
+  // with nondefault clocks or redundant n/d. XML retains canonical n/d changes
+  // only. Nonstandard notation ratios (bb != 8) fail rather than alter timing.
   std::uint64_t omitted_meter_playback_metadata = 0;
 };
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr,

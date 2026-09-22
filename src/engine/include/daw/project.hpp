@@ -19,7 +19,11 @@ enum class ProjectLoadSource {
 };
 
 // Persist the editable score state in the versioned line-oriented
-// CLASSICAL_DAW_PROJECT format. Version 5 stores all four MIDI meter fields
+// CLASSICAL_DAW_PROJECT format. Version 6 adds an explicit duration after each
+// measure start, including terminal silence. Zero keeps the legacy unspecified
+// extent; versions 1..5 load with zero measure durations. A positive duration
+// must contain the measure's notes and meet the next measure start, if any.
+// Version 5 stores all four MIDI meter fields
 // and up to one million later meter changes. Versions 1..4 default the extra
 // meter fields to 24 clocks per click and 8 notated 32nds per quarter, with
 // no later meter changes. Version 4 added up to one million later tempo

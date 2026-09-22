@@ -87,7 +87,8 @@ bool equal(const Score& a, const Score& b) {
     for (std::size_t m = 0; m < x.measures.size(); ++m) {
       const auto& xm = x.measures[m];
       const auto& ym = y.measures[m];
-      if (xm.number != ym.number || xm.start != ym.start || xm.notes.size() != ym.notes.size()) return false;
+      if (xm.number != ym.number || xm.start != ym.start || xm.duration != ym.duration ||
+          xm.notes.size() != ym.notes.size()) return false;
       for (std::size_t n = 0; n < xm.notes.size(); ++n) {
         const auto& xn = xm.notes[n];
         const auto& yn = ym.notes[n];
@@ -135,25 +136,29 @@ void run() {
   const auto invalid_path = files.directory / "invalid.cdaw";
   const Score original = fixture();
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v5: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v6: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 5\n", 0) == 0, "v5 header");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 6\n", 0) == 0, "v6 header");
   Score loaded;
   require(readProjectFile(path.string(), &loaded, &error) && equal(loaded, original),
           "all MIDI event types, full uint64 orders and event-only part round trip: " + error);
 
-  // Real legacy layouts omit later meter changes and any fields not yet
+  // Real legacy layouts omit measure durations and any fields not yet
   // introduced in that version. Note data and supported metadata stay intact.
-  for (const int version : {1, 2, 3, 4}) {
+  for (const int version : {1, 2, 3, 4, 5}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
+    bool in_note = false;
     while (std::getline(input, line)) {
-      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+      if (line.rfind("note ", 0) == 0) in_note = true;
+      if (line == "end_note") in_note = false;
+      if ((!in_note && line.rfind("duration ", 0) == 0) ||
+          (version < 5 && (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0)) ||
           (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0)) ||
           (version < 3 && line.rfind("midi_", 0) == 0) ||
           (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
-      if (line.rfind("meter ", 0) == 0) {
+      if (version < 5 && line.rfind("meter ", 0) == 0) {
         line = "meter " + std::to_string(original.time_signature.numerator) + " " +
                std::to_string(original.time_signature.denominator);
       }

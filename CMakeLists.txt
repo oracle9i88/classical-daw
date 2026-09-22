@@ -105,6 +105,14 @@ add_executable(daw_project_meter_tests tests/project_meter_tests.cpp)
 target_link_libraries(daw_project_meter_tests PRIVATE daw_engine)
 add_test(NAME daw_project_meter_tests COMMAND daw_project_meter_tests)
 
+add_executable(daw_musicxml_meter_tests tests/musicxml_meter_tests.cpp)
+target_link_libraries(daw_musicxml_meter_tests PRIVATE daw_engine)
+add_test(NAME daw_musicxml_meter_tests COMMAND daw_musicxml_meter_tests)
+
+add_executable(daw_project_measure_tests tests/project_measure_tests.cpp)
+target_link_libraries(daw_project_measure_tests PRIVATE daw_engine)
+add_test(NAME daw_project_measure_tests COMMAND daw_project_measure_tests)
+
 # Local import diagnostics; requires no audio device, UI, or network access.
 add_executable(daw_midi_inspect tools/midi_inspect.cpp)
 target_link_libraries(daw_midi_inspect PRIVATE daw_engine)

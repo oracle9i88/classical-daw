@@ -250,6 +250,147 @@ Tick measureLength(const TimeSignature& signature) {
   return numerator * kTicksPerQuarter * 4 / denominator;
 }
 
+bool sameNotationMeter(const TimeSignature& a, const TimeSignature& b) {
+  return a.numerator == b.numerator && a.denominator == b.denominator;
+}
+
+using NotationMeters = std::vector<TimeSignatureChange>;  // Includes tick zero.
+
+TimeSignature notationMeterAt(const NotationMeters& meters, Tick tick) {
+  const auto after = std::upper_bound(meters.begin(), meters.end(), tick,
+      [](Tick position, const TimeSignatureChange& change) { return position < change.tick; });
+  return (after - 1)->signature;
+}
+
+NotationMeters notationMeters(const Score& score, MusicXmlExportReport& report) {
+  validateMeterMap(score.time_signature, score.meter_changes);
+  if (score.time_signature.notated_32nds_per_quarter != 8) {
+    throw std::invalid_argument("MusicXML export does not support nonstandard notation ratios");
+  }
+  NotationMeters result{{0, {score.time_signature.numerator, score.time_signature.denominator}}};
+  report.omitted_meter_playback_metadata = score.time_signature.clocks_per_click != 24 ? 1 : 0;
+  auto previous = score.time_signature;
+  for (const auto& change : score.meter_changes) {
+    if (change.signature.notated_32nds_per_quarter != 8) {
+      throw std::invalid_argument("MusicXML export does not support nonstandard notation ratios");
+    }
+    const bool repeated = sameNotationMeter(previous, change.signature);
+    if (repeated || change.signature.clocks_per_click != 24) ++report.omitted_meter_playback_metadata;
+    if (!repeated) result.push_back({change.tick, {change.signature.numerator, change.signature.denominator}});
+    previous = change.signature;
+  }
+  return result;
+}
+
+// Score has one global meter map. Independent or conflicting part timelines
+// cannot be folded into it without guessing. A shorter part may be a prefix.
+std::size_t synchronousReference(const std::vector<ScorePart>& parts, const std::vector<Tick>& ends) {
+  const auto longest = static_cast<std::size_t>(std::max_element(ends.begin(), ends.end()) - ends.begin());
+  const auto& reference = parts[longest].measures;
+  for (std::size_t p = 0; p < parts.size(); ++p) {
+    const auto& measures = parts[p].measures;
+    for (std::size_t m = 0; m < measures.size(); ++m) {
+      if (m >= reference.size() || measures[m].start != reference[m].start) {
+        throw std::invalid_argument("MusicXML parts require synchronized measure starts in this score model");
+      }
+    }
+    if (measures.size() < reference.size() && reference[measures.size()].start < ends[p]) {
+      throw std::invalid_argument("MusicXML parts have conflicting measure spans");
+    }
+  }
+  return longest;
+}
+
+std::vector<std::vector<Tick>> exportMeasureSpans(const Score& score, const NotationMeters& meters) {
+  std::vector<std::vector<Tick>> all_spans;
+  std::vector<Tick> ends;
+  const auto& reference_bars = std::max_element(score.parts.begin(), score.parts.end(),
+      [](const ScorePart& a, const ScorePart& b) { return a.measures.size() < b.measures.size(); })->measures;
+  for (const auto& part : score.parts) {
+    if (part.measures.empty() || part.measures.front().start != 0) {
+      throw std::invalid_argument("MusicXML parts require a first measure at tick zero");
+    }
+    std::vector<Tick> spans;
+    for (std::size_t m = 0; m < part.measures.size(); ++m) {
+      const auto& measure = part.measures[m];
+      if (measure.number <= 0 || measure.start < 0 || measure.duration < 0 ||
+          measure.start > std::numeric_limits<Tick>::max() - measure.duration) {
+        throw std::invalid_argument("MusicXML measure number, start or duration is invalid");
+      }
+      Tick furthest = 0;
+      for (const auto& note : measure.notes) {
+        if (note.start < measure.start || note.duration <= 0 ||
+            note.start > std::numeric_limits<Tick>::max() - note.duration) {
+          throw std::invalid_argument("invalid MusicXML score note timing");
+        }
+        furthest = std::max(furthest, note.start + note.duration - measure.start);
+      }
+      Tick span = measure.duration > 0 ? measure.duration
+                                      : std::max(measureLength(notationMeterAt(meters, measure.start)), furthest);
+      if (furthest > span) throw std::invalid_argument("MusicXML note exceeds the explicit measure duration");
+      if (m + 1 < part.measures.size()) {
+        const Tick next = part.measures[m + 1].start;
+        if (next <= measure.start) throw std::invalid_argument("MusicXML measure starts must strictly increase");
+        if (measure.duration > 0 && measure.duration != next - measure.start) {
+          throw std::invalid_argument("MusicXML explicit measure duration conflicts with its next boundary");
+        }
+        span = next - measure.start;
+        if (furthest > span) throw std::invalid_argument("MusicXML note crosses its stored measure boundary; split it into ties first");
+      } else if (measure.duration == 0 && m + 1 < reference_bars.size()) {
+        // A short or event-only part still shares the other parts' barline.
+        // Its final partial bar has no stored end; recover that boundary
+        // from the existing longer bar sequence rather than padding to an
+        // unrelated nominal length through the following meter change.
+        const Tick next = reference_bars[m + 1].start;
+        if (next <= measure.start || furthest > next - measure.start) {
+          throw std::invalid_argument("MusicXML shorter part crosses a shared measure boundary");
+        }
+        span = next - measure.start;
+      }
+      if (measure.start > std::numeric_limits<Tick>::max() - span) {
+        throw std::invalid_argument("MusicXML measure timing overflow");
+      }
+      const auto next_meter = std::upper_bound(meters.begin(), meters.end(), measure.start,
+          [](Tick tick, const TimeSignatureChange& change) { return tick < change.tick; });
+      if (next_meter != meters.end() && next_meter->tick < measure.start + span) {
+        throw std::invalid_argument("MusicXML meter change must fall on a stored measure boundary; rebar the score first");
+      }
+      spans.push_back(span);
+    }
+    ends.push_back(part.measures.back().start + spans.back());
+    all_spans.push_back(std::move(spans));
+  }
+  const auto reference = synchronousReference(score.parts, ends);
+  const auto& measures = score.parts[reference].measures;
+  for (const auto& change : meters) {
+    const auto found = std::lower_bound(measures.begin(), measures.end(), change.tick,
+        [](const ScoreMeasure& measure, Tick tick) { return measure.start < tick; });
+    if (found == measures.end() || found->start != change.tick) {
+      throw std::invalid_argument("MusicXML meter change is outside the stored measure boundaries");
+    }
+  }
+  return all_spans;
+}
+
+void requireSharedMeters(const std::vector<NotationMeters>& maps, const std::vector<Tick>& ends,
+                         std::size_t reference) {
+  const auto& expected = maps[reference];
+  for (std::size_t p = 0; p < maps.size(); ++p) {
+    std::size_t a = 0, b = 0;
+    for (;;) {
+      if (!sameNotationMeter(maps[p][a].signature, expected[b].signature)) {
+        throw std::runtime_error("conflicting MusicXML part time signatures; polymeter is unsupported");
+      }
+      const Tick next_a = a + 1 < maps[p].size() ? maps[p][a + 1].tick : std::numeric_limits<Tick>::max();
+      const Tick next_b = b + 1 < expected.size() ? expected[b + 1].tick : std::numeric_limits<Tick>::max();
+      const Tick next = std::min(next_a, next_b);
+      if (next >= ends[p]) break;
+      if (next == next_a) ++a;
+      if (next == next_b) ++b;
+    }
+  }
+}
+
 char validStep(const std::string& value) {
   if (value.size() != 1 || std::string("ABCDEFG").find(value[0]) == std::string::npos) {
     throw std::runtime_error("invalid MusicXML pitch step");
@@ -315,16 +456,11 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
     if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
     (void)scoreTempoMap(score);
-    validateMeterMap(score.time_signature, score.meter_changes);
-    if (!score.meter_changes.empty() || score.time_signature.notated_32nds_per_quarter != 8) {
-      throw std::invalid_argument("MusicXML export does not yet support meter changes or nonstandard notation ratios; use MIDI or native project export");
-    }
-    (void)measureLength(score.time_signature);
-
-    std::map<std::string, bool> part_ids;
     MusicXmlExportReport omissions;
+    const auto meters = notationMeters(score, omissions);
+    const auto measure_spans = exportMeasureSpans(score, meters);
+    std::map<std::string, bool> part_ids;
     omissions.omitted_tempo_changes = score.tempo_changes.size();
-    omissions.omitted_meter_playback_metadata = score.time_signature.clocks_per_click != 24 ? 1 : 0;
     for (const ScorePart& part : score.parts) {
       if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
       if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");
@@ -346,17 +482,28 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
              << "</part-name></score-part>\n";
     }
     output << "  </part-list>\n";
-    for (const ScorePart& part : score.parts) {
+    for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
+      const ScorePart& part = score.parts[part_index];
       output << "  <part id=\"" << escape(part.id) << "\">\n";
       for (std::size_t measure_index = 0; measure_index < part.measures.size(); ++measure_index) {
         const ScoreMeasure& measure = part.measures[measure_index];
-        if (measure.start < 0) throw std::invalid_argument("score measure start cannot be negative");
-        output << "    <measure number=\"" << measure.number << "\">\n";
+        const auto meter = notationMeterAt(meters, measure.start);
+        const Tick span = measure_spans[part_index][measure_index];
+        output << "    <measure number=\"" << measure.number << '\"';
+        if (span < measureLength(meter)) output << " implicit=\"yes\"";
+        output << ">\n";
+        const auto at_start = std::lower_bound(meters.begin(), meters.end(), measure.start,
+            [](const TimeSignatureChange& change, Tick tick) { return change.tick < tick; });
+        if (measure_index == 0 || (at_start != meters.end() && at_start->tick == measure.start)) {
+          output << "      <attributes>";
+          if (measure_index == 0) output << "<divisions>" << score.divisions << "</divisions>";
+          output << "<time><beats>" << static_cast<int>(meter.numerator) << "</beats><beat-type>"
+                 << static_cast<int>(meter.denominator) << "</beat-type></time></attributes>\n";
+        }
         if (measure_index == 0) {
-          output << "      <attributes><divisions>" << score.divisions << "</divisions><time><beats>"
-                 << static_cast<int>(score.time_signature.numerator) << "</beats><beat-type>"
-                 << static_cast<int>(score.time_signature.denominator) << "</beat-type></time></attributes>\n"
-                 << "      <direction><sound tempo=\"" << tempoDecimal(score.bpm) << "\"/></direction>\n";
+          output << "      <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>"
+                 << tempoDecimal(score.bpm) << "</per-minute></metronome></direction-type><sound tempo=\""
+                 << tempoDecimal(score.bpm) << "\"/></direction>\n";
         }
         using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
         std::map<VoiceKey, std::vector<ScoreNote>> streams;
@@ -403,6 +550,12 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
             last_start = note.start;
           }
           stream_cursor = cursor;
+        }
+        // A partial/empty measure has no duration attribute. Advance to the
+        // stored boundary explicitly, including silence after its last voice.
+        const Tick measure_end = measure.start + span;
+        if (stream_cursor < measure_end) {
+          output << "      <forward><duration>" << (measure_end - stream_cursor) << "</duration></forward>\n";
         }
         output << "    </measure>\n";
       }
@@ -484,42 +637,37 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
     if (parts.empty()) throw std::runtime_error("MusicXML has no part elements");
     if (parts.size() != part_names.size()) throw std::runtime_error("MusicXML part and part-list counts differ");
     bool have_divisions = false;
-    bool have_meter = false;
     bool have_tempo = false;
+    std::vector<NotationMeters> part_meters;
+    std::vector<Tick> part_ends;
 
     auto parse_part = [&](const XmlBlock& part_block, const std::string& part_name) -> ScorePart {
       ScorePart parsed_part;
       parsed_part.id = attribute(part_block.opening, "id");
       parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
       Tick measure_start = 0;
+      TimeSignature active_meter{};
+      NotationMeters local_meters{{0, active_meter}};
       const auto measures = findBlocks(xml, "measure", part_block.content_start, part_block.content_end);
       if (measures.empty()) throw std::runtime_error("MusicXML part has no measures");
       for (const XmlBlock& measure_block : measures) {
       ScoreMeasure measure;
       const std::string number = attribute(measure_block.opening, "number");
-      measure.number = number.empty() ? static_cast<int>(parsed_part.measures.size() + 1) : static_cast<int>(integerText(number, "measure number"));
+      const auto numeric_number = number.empty() ? static_cast<std::int64_t>(parsed_part.measures.size() + 1)
+                                                  : integerText(number, "measure number");
+      if (numeric_number <= 0 || numeric_number > std::numeric_limits<int>::max()) {
+        throw std::runtime_error("MusicXML measure numbers must be positive integers in this score model");
+      }
+      measure.number = static_cast<int>(numeric_number);
       measure.start = measure_start;
-      const auto attributes = findBlocks(xml, "attributes", measure_block.content_start, measure_block.content_end);
-      for (const XmlBlock& attribute_block : attributes) {
-        const std::string divisions = textIn(xml, "divisions", attribute_block.content_start, attribute_block.content_end);
-        if (!divisions.empty()) {
-          if (integerText(divisions, "divisions") != kTicksPerQuarter) throw std::runtime_error("MusicXML divisions must be 960 in Alpha");
-          if (have_divisions && parsed.divisions != kTicksPerQuarter) throw std::runtime_error("conflicting MusicXML divisions");
-          have_divisions = true;
-          parsed.divisions = kTicksPerQuarter;
-        }
-        const auto times = findBlocks(xml, "time", attribute_block.content_start, attribute_block.content_end);
-        for (const XmlBlock& time : times) {
-          const auto beats = integerText(textIn(xml, "beats", time.content_start, time.content_end, true), "beats");
-          const auto beat_type = integerText(textIn(xml, "beat-type", time.content_start, time.content_end, true), "beat-type");
-          if (beats < 1 || beats > 255 || beat_type < 1 || beat_type > 255) throw std::runtime_error("invalid MusicXML time signature");
-          const TimeSignature meter{static_cast<std::uint8_t>(beats), static_cast<std::uint8_t>(beat_type)};
-          if (have_meter && (parsed.time_signature.numerator != meter.numerator || parsed.time_signature.denominator != meter.denominator)) {
-            throw std::runtime_error("conflicting MusicXML time signatures");
-          }
-          have_meter = true;
-          parsed.time_signature = meter;
-        }
+      bool implicit_present = false, noncontrolling_present = false;
+      const auto implicit = attribute(measure_block.opening, "implicit", &implicit_present);
+      const auto noncontrolling = attribute(measure_block.opening, "non-controlling", &noncontrolling_present);
+      if (implicit_present && implicit != "yes" && implicit != "no") {
+        throw std::runtime_error("invalid MusicXML implicit measure flag");
+      }
+      if (noncontrolling_present && noncontrolling != "no") {
+        throw std::runtime_error("MusicXML non-controlling measures are unsupported by the global score timeline");
       }
       const auto directions = findBlocks(xml, "direction", measure_block.content_start, measure_block.content_end);
       for (const XmlBlock& direction : directions) {
@@ -553,6 +701,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         XmlBlock block;
       };
       std::vector<TimedBlock> events;
+      for (const auto& block : findBlocks(xml, "attributes", measure_block.content_start, measure_block.content_end)) events.push_back({block.start, "attributes", block});
       for (const auto& note : findBlocks(xml, "note", measure_block.content_start, measure_block.content_end)) events.push_back({note.start, "note", note});
       for (const auto& backup : findBlocks(xml, "backup", measure_block.content_start, measure_block.content_end)) events.push_back({backup.start, "backup", backup});
       for (const auto& forward : findBlocks(xml, "forward", measure_block.content_start, measure_block.content_end)) events.push_back({forward.start, "forward", forward});
@@ -562,7 +711,59 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
       std::map<VoiceKey, Tick> last_note_starts;
       std::map<VoiceKey, bool> have_notes;
+      bool have_timed_event = false;
+      bool have_measure_meter = false;
       for (const TimedBlock& event : events) {
+        if (event.tag == "attributes") {
+          const auto& block = event.block;
+          const auto divisions = textIn(xml, "divisions", block.content_start, block.content_end);
+          if (!divisions.empty()) {
+            if (integerText(divisions, "divisions") != kTicksPerQuarter) {
+              throw std::runtime_error("MusicXML divisions must be 960 in Alpha");
+            }
+            if (have_divisions && parsed.divisions != kTicksPerQuarter) {
+              throw std::runtime_error("conflicting MusicXML divisions");
+            }
+            have_divisions = true;
+            parsed.divisions = kTicksPerQuarter;
+          }
+          const auto times = findBlocks(xml, "time", block.content_start, block.content_end);
+          if (hasSelfClosingTag(xml, "time", block.content_start, block.content_end) || times.size() > 1) {
+            throw std::runtime_error("unsupported MusicXML time signature structure");
+          }
+          if (!times.empty()) {
+            // MusicXML allows later attributes, including after a backup.
+            // This slice supports leading time declarations only, and must
+            // not retroactively apply a later declaration to earlier notes.
+            if (have_timed_event || cursor != 0) {
+              throw std::runtime_error("MusicXML mid-measure time declarations are unsupported; start a new measure");
+            }
+            const auto& time = times.front();
+            bool numbered = false;
+            (void)attribute(time.opening, "number", &numbered);
+            if (numbered || findBlocks(xml, "beats", time.content_start, time.content_end).size() != 1 ||
+                findBlocks(xml, "beat-type", time.content_start, time.content_end).size() != 1 ||
+                hasElement(xml, "interchangeable", time.content_start, time.content_end)) {
+              throw std::runtime_error("MusicXML staff-specific or composite time signatures are unsupported");
+            }
+            const auto beats = integerText(textIn(xml, "beats", time.content_start, time.content_end, true), "beats");
+            const auto beat_type = integerText(textIn(xml, "beat-type", time.content_start, time.content_end, true), "beat-type");
+            if (beats < 1 || beats > 255 || beat_type < 1 || beat_type > 128) {
+              throw std::runtime_error("invalid MusicXML time signature");
+            }
+            const TimeSignature meter{static_cast<std::uint8_t>(beats), static_cast<std::uint8_t>(beat_type)};
+            (void)measureLength(meter);
+            if (have_measure_meter && !sameNotationMeter(active_meter, meter)) {
+              throw std::runtime_error("conflicting MusicXML time signatures at one measure start");
+            }
+            have_measure_meter = true;
+            if (measure_start == 0) local_meters.front().signature = meter;
+            else if (!sameNotationMeter(active_meter, meter)) local_meters.push_back({measure_start, meter});
+            active_meter = meter;
+          }
+          continue;
+        }
+        have_timed_event = true;
         const Tick duration = integerText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
         if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
         if (event.tag == "backup") {
@@ -644,14 +845,20 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           cursor += duration;
         }
       }
-      parsed_part.measures.push_back(std::move(measure));
-      const Tick nominal_length = measureLength(parsed.time_signature);
-      const Tick measure_span = std::max(nominal_length, furthest_position);
+      const Tick nominal_length = measureLength(active_meter);
+      // implicit means an unnumbered measure, commonly a pickup. It carries
+      // no duration itself: infer actual extent from notes and forwards.
+      const Tick measure_span = implicit == "yes" ? furthest_position : std::max(nominal_length, furthest_position);
+      if (measure_span == 0) throw std::runtime_error("MusicXML empty implicit measure has no explicit duration");
       if (measure_span < 0 || measure_start > std::numeric_limits<Tick>::max() - measure_span) {
         throw std::runtime_error("MusicXML measure timing overflow");
       }
+      measure.duration = measure_span;
+      parsed_part.measures.push_back(std::move(measure));
       measure_start += measure_span;
       }
+      part_meters.push_back(std::move(local_meters));
+      part_ends.push_back(measure_start);
       return parsed_part;
     };
 
@@ -665,6 +872,11 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       parsed.parts.push_back(parse_part(part_block, name->second));
     }
     if (seen_parts.size() != part_names.size()) throw std::runtime_error("MusicXML part-list contains an unreferenced score-part");
+    const auto reference = synchronousReference(parsed.parts, part_ends);
+    requireSharedMeters(part_meters, part_ends, reference);
+    parsed.time_signature = part_meters[reference].front().signature;
+    parsed.meter_changes.assign(part_meters[reference].begin() + 1, part_meters[reference].end());
+    validateMeterMap(parsed.time_signature, parsed.meter_changes);
     (void)scoreTempoMap(parsed);
     *score = std::move(parsed);
     return true;

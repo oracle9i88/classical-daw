@@ -146,12 +146,40 @@ The SMF tempo and meter maps survive file import, Score conversion and
 native persistence. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
 MusicXML currently omits raw performance metadata and later tempo changes,
-exposing the omissions in `MusicXmlExportReport`. It rejects export of later
-meter changes or an initial `bb != 8` before writing, so unsupported measure
-semantics cannot silently shift the notation. Initial `cc != 24` may be
-exported because it does not move barlines, but the lost click setting increments
-`omitted_meter_playback_metadata`. Native project/SMF paths retain these fields;
+exposing the omissions in `MusicXmlExportReport`. Canonical n/d changes at stored
+measure boundaries are now retained. `bb != 8`, a change inside an unrebared
+measure, or a change beyond every part's stored boundaries fails before writing.
+The initial nondefault cc setting counts once in `omitted_meter_playback_metadata`;
+each later event with nondefault cc or unchanged n/d counts once more. XML carries
+the canonical notation map with default cc/bb, not the raw MIDI event sequence.
+Native project/SMF paths retain the raw fields;
 the independent web model and realtime CoreAudio path do not inherit this support.
+
+MusicXML attributes are parsed in document-event order with the note/backup/forward
+cursor. Only leading time declarations are accepted, so a later declaration cannot
+silently be applied to earlier notes. Every part has its own initial/default meter
+and subsequent map. Shared spans must have matching barlines and effective meters;
+a shorter part can be a prefix. Staff-specific time, polymeter, composite signatures
+and non-controlling measures are unsupported. The native measure number remains a
+positive integer, a narrower range than MusicXML's arbitrary token labels.
+
+`ScoreMeasure::duration` adds an explicit extent including silence; zero means
+legacy unspecified. Project v6 writes a `duration` row after each measure `start`
+(note durations remain separate). Versions 1–5 load with zero, without inventing
+lost extents. Positive durations must contain notes, avoid tick overflow and meet
+the following measure start if one exists. MIDI-to-Score stores computed grid spans;
+MusicXML import stores actual parsed spans. History and recovery copy/persist them.
+
+XML export uses an explicit duration when present, otherwise the next start or
+active nominal length and furthest note. An unspecified final bar of a shorter
+part may use the next known shared boundary. Shorter-than-nominal spans are written
+with `implicit="yes"` and positive forward moves to preserve silence after the last
+voice. On input, implicit measures use their actual note/forward extent; ordinary
+measures retain the existing max(nominal, furthest) behavior. Empty implicit input
+with no duration-bearing content fails. A final partial bar retains its duration
+through project saving, even with no following start to infer it from. Notated
+extent does not change the renderer's existing last-performance-event/tail policy.
+See the [MusicXML meter record](research/2026-09-23-musicxml-meter-interchange.md).
 
 The offline `renderMidiFile` merges note edges and channel events across tracks,
 with tick → track index → source/fallback order, then schedules each boundary

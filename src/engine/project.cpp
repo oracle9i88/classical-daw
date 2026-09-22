@@ -144,15 +144,27 @@ bool validateScore(const Score& score, std::string* error) {
     for (const MidiChannelEvent& event : part.midi_events) {
       if (!validMidiChannelEvent(event)) return fail(error, "project MIDI event out of range");
     }
-    for (const ScoreMeasure& measure : part.measures) {
+    for (std::size_t measure_index = 0; measure_index < part.measures.size(); ++measure_index) {
+      const ScoreMeasure& measure = part.measures[measure_index];
       if (measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes ||
           measure.notes.size() > kMaxTotalNotes - total_notes) {
         return fail(error, "project measure out of range");
+      }
+      if (measure.duration < 0 || measure.duration > std::numeric_limits<Tick>::max() - measure.start) {
+        return fail(error, "project measure duration out of range");
+      }
+      const Tick measure_end = measure.start + measure.duration;
+      if (measure.duration > 0 && measure_index + 1U < part.measures.size() &&
+          part.measures[measure_index + 1U].start != measure_end) {
+        return fail(error, "explicit project measure duration must reach the next measure start");
       }
       total_notes += static_cast<std::uint64_t>(measure.notes.size());
       for (const ScoreNote& note : measure.notes) {
         if (note.start < 0 || note.duration <= 0 || note.duration > std::numeric_limits<Tick>::max() - note.start) {
           return fail(error, "project note timing out of range");
+        }
+        if (measure.duration > 0 && (note.start < measure.start || note.start + note.duration > measure_end)) {
+          return fail(error, "project note lies outside explicit measure duration");
         }
         if (!validStep(note.pitch.step)) return fail(error, "project note pitch step is invalid");
         if (note.pitch.alter < -128 || note.pitch.alter > 127 || note.pitch.octave < -128 || note.pitch.octave > 127) {
@@ -238,9 +250,9 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
 
     std::ostringstream output;
     output.precision(17);
-    // Version 5 retains all four MIDI meter fields and later meter changes.
-    // Earlier versions keep their default meter metadata and empty meter map.
-    output << "CLASSICAL_DAW_PROJECT 5\n";
+    // Version 6 retains explicit measure extents, including terminal silence.
+    // Earlier versions leave those durations unspecified (zero).
+    output << "CLASSICAL_DAW_PROJECT 6\n";
     output << "divisions " << score.divisions << "\n";
     output << "bpm " << score.bpm << "\n";
     output << "tempo_changes " << score.tempo_changes.size() << "\n";
@@ -271,6 +283,7 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
         output << "measure " << measure_index << "\n";
         output << "number " << measure.number << "\n";
         output << "start " << measure.start << "\n";
+        output << "duration " << measure.duration << "\n";
         output << "notes " << measure.notes.size() << "\n";
         for (std::size_t note_index = 0; note_index < measure.notes.size(); ++note_index) {
           const ScoreNote& note = measure.notes[note_index];
@@ -349,7 +362,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
     std::uint64_t project_version = 0;
-    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 5) {
+    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 6) {
       return fail(error, "unsupported project version: " + arguments[0]);
     }
 
@@ -442,6 +455,10 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
         }
         if (!expectLine(&reader, "start", 1, &arguments, error) || !parseSigned(arguments[0], &measure.start)) {
           return fail(error, "invalid project measure start");
+        }
+        if (project_version >= 6 &&
+            (!expectLine(&reader, "duration", 1, &arguments, error) || !parseSigned(arguments[0], &measure.duration))) {
+          return fail(error, "invalid project measure duration");
         }
         if (!expectLine(&reader, "notes", 1, &arguments, error)) return false;
         std::size_t note_count = 0;

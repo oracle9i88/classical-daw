@@ -91,9 +91,9 @@ void run() {
       {1440, {3, 4, 0, 8}}, {2880, {5, 16, 255, 255}}, {3000, {255, 128, 1, 1}},
   };
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v5: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v6: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 5\n", 0) == 0, "v5 header");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 6\n", 0) == 0, "v6 header");
   require(serialized.find("meter 7 8 36 12\nmeter_changes 3\nmeter_change 1440 3 4 0 8\n") != std::string::npos,
           "four-field initial meter followed by later meter section");
   require(serialized.find("meter_change 3000 255 128 1 1\nparts 0\n") != std::string::npos,
@@ -103,23 +103,29 @@ void run() {
           "raw meter bytes, off-barline positions and tempos round trip: " + error);
   require(!std::filesystem::exists(path.string() + ".tmp"), "successful save left temporary file");
 
-  // Older files use two-field meter rows. Clear a pre-existing destination
-  // map and restore 24/8 defaults, while v4 must retain its later tempos.
-  for (const int version : {1, 2, 3, 4}) {
+  // Pre-v5 files use two-field meter rows and 24/8 defaults. Version 5 must
+  // retain the meter map, while versions 4/5 retain later tempos.
+  for (const int version : {1, 2, 3, 4, 5}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
+    bool in_note = false;
     while (std::getline(input, line)) {
-      if (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0 ||
+      if (line.rfind("note ", 0) == 0) in_note = true;
+      if (line == "end_note") in_note = false;
+      if ((!in_note && line.rfind("duration ", 0) == 0) ||
+          (version < 5 && (line.rfind("meter_changes ", 0) == 0 || line.rfind("meter_change ", 0) == 0)) ||
           (version < 4 && (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0))) continue;
-      if (line.rfind("meter ", 0) == 0) line = "meter 7 8";
+      if (version < 5 && line.rfind("meter ", 0) == 0) line = "meter 7 8";
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }
     writeText(invalid_path, legacy.str());
     Score expected = original;
-    expected.time_signature = {7, 8};
-    expected.meter_changes.clear();
+    if (version < 5) {
+      expected.time_signature = {7, 8};
+      expected.meter_changes.clear();
+    }
     if (version < 4) expected.tempo_changes.clear();
     loaded = original;
     require(readProjectFile(invalid_path.string(), &loaded, &error) && equal(loaded, expected),

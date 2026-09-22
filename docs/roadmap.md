@@ -6,8 +6,15 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Support MusicXML n/d changes at stored measure starts, synchronized part maps,
+  partial/empty bars and trailing silence. Persist explicit measure extents in
+  project v6, including final partial bars; read v1–5 with legacy unspecified extents.
+  Reject unsupported mid-measure, staff-specific and conflicting part meters.
+  Add an independent optional W3C XSD validation tool and compare both meter maps
+  and measure starts/durations in the local interchange probe. See the
+  [MusicXML meter record](research/2026-09-23-musicxml-meter-interchange.md).
 - Preserve all four initial and later meter fields through MIDI ↔ Score ↔
-  project v5, history and recovery. Allow up to one million strictly increasing
+  project v6, history and recovery. Allow up to one million strictly increasing
   positive-tick changes, with a separate 1,000,001-message raw SMF import cap.
   Read v1–4 meters with the original numerator/denominator, default click/notation
   metadata 24/8, and no later meter map; retain v4 tempo changes.
@@ -15,12 +22,12 @@ not count as completion.
   structural changes start a new bar at their exact tick and truncate a partial
   old bar; repeated and click-only changes do not restart it. Score import
   requires exact integer 960-PPQ measure lengths, including the notation ratio.
-- Fail MusicXML export for later meter changes or an initial notation ratio
-  other than 8. Allow nondefault initial clocks per click, reporting the omitted
-  value in `omitted_meter_playback_metadata`. Extend mido comparisons to check
+- Fail MusicXML export for notation ratios other than 8 or changes not aligned
+  to stored bars. Report omitted clock settings and redundant n/d events in
+  `omitted_meter_playback_metadata`. Extend mido comparisons to check
   all four meter fields and their positions. See the
   [meter persistence record](research/2026-09-23-score-meter-persistence.md).
-- Preserve initial and later step tempos through MIDI ↔ Score ↔ project v5,
+- Preserve initial and later step tempos through MIDI ↔ Score ↔ project v6,
   history and recovery; use them for offline rendering. Read v1–3 projects as
   constant-tempo scores and report later-tempo omissions on MusicXML export.
 - Add one offline, tempo-aware MIDI event timeline with shared channel state,
@@ -104,7 +111,8 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize MusicXML meter changes, notation-ratio handling and tempo directions, then
+Prioritize MusicXML tempo directions, broader divisions/measure-label support and
+editing commands for re-barring after a meter change, then
 extend the offline controller support to realtime playback and add an instrument/port routing layer
 (including GM percussion and orchestras spanning multiple MIDI ports).
 Channel-event data now survives native interchange and the offline sine

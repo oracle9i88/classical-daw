@@ -248,7 +248,14 @@ void xmlSafety(const std::filesystem::path& directory) {
   score.meter_changes = {{1920, {3, 4, 24, 8}}};
   protected_export(score);
   score.meter_changes = {{960, {4, 4, 36, 8}}};
-  protected_export(score);  // Even a click-only later event is explicitly unsupported by this XML slice.
+  daw::MusicXmlExportReport click_report{11, 22, 33, 44};
+  require(daw::writeMusicXmlFile(score, path.string(), &error, &click_report) &&
+              click_report.omitted_meter_playback_metadata == 1 && click_report.omitted_midi_events == 0 &&
+              click_report.omitted_note_midi_metadata == 0 && click_report.omitted_tempo_changes == 0,
+          "click-only later event must be omitted explicitly without blocking the notation export");
+  daw::Score click_restored;
+  require(daw::readMusicXmlFile(path.string(), &click_restored, &error) && click_restored.meter_changes.empty(),
+          "click-only later event must not become a structural XML meter change");
   score.meter_changes.clear();
   score.time_signature = {4, 4, 24, 4};
   protected_export(score);
