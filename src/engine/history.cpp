@@ -92,6 +92,36 @@ bool ScoreHistory::redo(Score* score, std::string* error) {
   }
 }
 
+bool ScoreHistory::snapshot(Score* score, std::string* error) const {
+  clearError(error);
+  if (score == nullptr) return fail(error, "snapshot output score is null");
+  try {
+    // Copy before touching the destination so allocation failure leaves both
+    // the caller's output and this history unchanged.
+    Score copy = states_[cursor_];
+    replaceScore(score, std::move(copy));
+    return true;
+  } catch (...) {
+    return reportException(error, "snapshot failed");
+  }
+}
+
+bool ScoreHistory::reset(const Score& score, std::string* error) {
+  clearError(error);
+  try {
+    // Build a replacement vector first.  Swapping only after the copy has
+    // succeeded gives reset a strong exception guarantee.
+    std::vector<Score> next;
+    next.reserve(1U);
+    next.push_back(score);
+    states_.swap(next);
+    cursor_ = 0U;
+    return true;
+  } catch (...) {
+    return reportException(error, "reset failed");
+  }
+}
+
 bool ScoreHistory::canUndo() const noexcept { return cursor_ > 0U; }
 
 bool ScoreHistory::canRedo() const noexcept { return cursor_ + 1U < states_.size(); }

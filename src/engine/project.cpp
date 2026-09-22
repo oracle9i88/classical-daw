@@ -1,5 +1,7 @@
 #include "daw/project.hpp"
 
+#include "daw/history.hpp"
+
 #include <charconv>
 #include <cerrno>
 #include <cmath>
@@ -457,6 +459,15 @@ bool writeProjectRecoveryFile(const Score& score, const std::string& path, std::
     return false;
   }
   return true;
+}
+
+bool writeProjectRecoveryFile(const ScoreHistory& history, const std::string& path, std::string* error) {
+  Score current;
+  if (!history.snapshot(&current, error)) {
+    if (error != nullptr && !error->empty()) *error = "recovery snapshot failed: " + *error;
+    return false;
+  }
+  return writeProjectRecoveryFile(current, path, error);
 }
 
 bool readProjectFileWithRecovery(const std::string& path, Score* score, ProjectLoadSource* source,

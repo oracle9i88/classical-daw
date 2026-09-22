@@ -28,6 +28,17 @@ class ScoreHistory {
   bool undo(Score* score, std::string* error = nullptr);
   bool redo(Score* score, std::string* error = nullptr);
 
+  // Copy the current editable state for persistence or UI inspection.  The
+  // history itself is unchanged; this method is control-thread only and must
+  // never be called from a realtime callback.
+  bool snapshot(Score* score, std::string* error = nullptr) const;
+
+  // Replace the history with one current state while retaining its configured
+  // bound.  This is used after opening a project or recovery sidecar: the
+  // loaded document becomes the new clean baseline and no stale undo/redo
+  // branch survives the load.
+  bool reset(const Score& score, std::string* error = nullptr);
+
   bool canUndo() const noexcept;
   bool canRedo() const noexcept;
   std::size_t size() const noexcept;

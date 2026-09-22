@@ -6,6 +6,8 @@
 
 namespace daw {
 
+class ScoreHistory;
+
 // Identifies which on-disk candidate supplied a successfully loaded score.
 // A recovery load never replaces the primary file; the caller can inspect the
 // source and explicitly save the recovered score when it is ready.
@@ -32,6 +34,12 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error =
 // project is never touched by this operation; the sidecar itself uses the
 // same atomic temporary-file replacement as writeProjectFile.
 bool writeProjectRecoveryFile(const Score& score, const std::string& path, std::string* error = nullptr);
+
+// Persist the current state of an editable history to the recovery sidecar.
+// Only the current Score is written; the in-memory undo/redo stack remains a
+// control-thread concern and is rebuilt by constructing or resetting a
+// ScoreHistory after a successful recovery load.
+bool writeProjectRecoveryFile(const ScoreHistory& history, const std::string& path, std::string* error = nullptr);
 
 // Load the primary project first, then a valid recovery sidecar, then a valid
 // interrupted-write temporary file (`.tmp`).  The output score and source
