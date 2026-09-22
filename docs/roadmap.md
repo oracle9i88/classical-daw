@@ -20,6 +20,11 @@ not count as completion.
   deterministic Type 1 MIDI tracks, assigns stable channels 0–15, rejects more
   than 16 parts, and does not damage an existing destination on conversion
   failure.
+- Add the inverse MIDI-to-Score bridge: non-empty 960-PPQ tracks become ordered
+  score parts with track names, note timing, pitch, velocity, and channel-backed
+  voices. The importer supplies a default 4/4 measure grid and first-valid-tempo
+  mapping, and its multi-track round-trip is covered by normal and sanitizer
+  tests.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
 - Add the macOS CoreAudio default-output adapter with explicit start/stop and
@@ -29,6 +34,9 @@ not count as completion.
   still pending.
 - Add a versioned score project file with strict validation, atomic replacement,
   and round-trip tests under normal and sanitizer builds.
+- Add a bounded control-thread ScoreHistory with undo/redo, redo-branch
+  invalidation, capacity enforcement, and failure-preserving tests. The history
+  is currently in memory and explicitly outside the realtime callback.
 - Run the normal CTest suite and an AddressSanitizer/UndefinedBehaviorSanitizer
   build on every local iteration.
 
@@ -47,7 +55,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 Extend the current Score/Part/Measure slice into Staff/Voice/TimedEvent, then
 implement MusicXML import/export with tempo, meter, dynamics, ties, tuplets,
 and exact tick accounting. Extend the current versioned score file with
-autosave, recovery, and persisted undo history. The first user-facing vertical
+autosave, recovery, and persisted snapshots for the existing undo history. The first user-facing vertical
 slice is MusicXML import → timeline edit → deterministic WAV export.
 
 ### M2: production workflow

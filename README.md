@@ -21,6 +21,11 @@ validating score timing and audio rendering before platform integration.
   events, and BPM. Parts receive stable channels 0–15; export rejects more than
   16 parts instead of colliding channels. Tuplet spelling is represented by its
   resolved tick durations.
+- A matching MIDI-to-Score bridge for importing non-empty 960-PPQ tracks as
+  ordered score parts, retaining track names, note timing, pitch, velocity, and
+  MIDI channels as score voices. It supplies a default 4/4 meter and uses the
+  first valid MIDI tempo, so an imported file can continue through MusicXML or
+  project persistence.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
   ring, block scheduler, and xrun counter.
 - On macOS, an optional `daw_coreaudio` target owns the default-output
@@ -28,6 +33,9 @@ validating score timing and audio rendering before platform integration.
   a fixed polyphonic sine diagnostic voice.
 - A versioned, line-oriented project file format with strict validation and
   atomic replacement, preserving the current score model for save/reload.
+- A bounded UI/control-thread `ScoreHistory` with undo/redo, redo-branch
+  invalidation, and failure-preserving operations. It is an in-memory edit
+  history; it is not used by the realtime callback and is not persisted yet.
 - Deterministic offline mono sine rendering and 16-bit PCM WAV export.
 - CTest coverage for tempo conversion, MIDI/MusicXML round-trips, Score-to-MIDI
   export, project persistence, realtime primitives, and render smoke tests.
@@ -38,10 +46,12 @@ key changes, dynamics, multiple lyric verses/syllabic metadata, or full XML
 validation.
 The MIDI bridge currently rejects scores with more than 16 parts because the
 existing MIDI model does not yet carry a channel-allocation map. It also does
-not yet carry meter, lyrics, or instrument programs.
+not yet carry meter, lyrics, or instrument programs. MIDI import uses canonical
+sharp pitch spellings and a default 4/4 meter; key-aware enharmonic spelling,
+MIDI meter maps, and program metadata remain future fields.
 There is no production instrument library, score engraving, automation, mixer,
-plugin hosting, undo stack, autosave/recovery workflow, or multi-part project
-package yet.
+plugin hosting, autosave/recovery workflow, persisted undo history, or multi-part
+project package yet.
 
 ## Build and test
 
@@ -54,8 +64,8 @@ ctest --test-dir build --output-on-failure
 ## Planned macOS slices
 
 1. Add CoreMIDI input/output and timestamped event scheduling.
-2. Add autosave/recovery and persisted undo history around the versioned project
-   file format.
+2. Add autosave/recovery and persistence for the in-memory undo history around
+   the versioned project file format.
 3. Add bar/beat and time-signature maps plus a piano roll/score UI (SwiftUI or
    Qt front end over the C++ engine).
 4. Replace the diagnostic oscillator with instrument voices, mixer buses,

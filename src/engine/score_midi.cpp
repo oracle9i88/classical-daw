@@ -1,6 +1,7 @@
 #include "daw/score_midi.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <limits>
@@ -42,6 +43,23 @@ void validateNoteTiming(const ScoreNote& note) {
   if (note.velocity > 127) throw std::invalid_argument("score note velocity is outside MIDI 0..127");
   if (note.voice == 0 || note.staff == 0) throw std::invalid_argument("score voice/staff numbers must be positive");
 }
+
+ScorePitch fromMidiPitch(std::uint8_t midi_pitch) {
+  // Prefer a deterministic sharp spelling.  Enharmonic spelling can be
+  // restored by a later notation/key-signature layer without changing the
+  // MIDI-to-score timing contract.
+  static constexpr std::array<char, 12> kSteps = {
+      'C', 'C', 'D', 'D', 'E', 'F', 'F', 'G', 'G', 'A', 'A', 'B'};
+  static constexpr std::array<int, 12> kAlter = {
+      0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+  const int pitch = static_cast<int>(midi_pitch);
+  const int pitch_class = pitch % 12;
+  return ScorePitch{kSteps[static_cast<std::size_t>(pitch_class)],
+                    kAlter[static_cast<std::size_t>(pitch_class)], pitch / 12 - 1};
+}
+
+constexpr Tick kMeasureTicks = static_cast<Tick>(4) * kTicksPerQuarter;
+constexpr std::size_t kMaximumImportedMeasures = 1000000;
 
 std::filesystem::path temporaryPath(const std::string& destination) {
   // A sibling path keeps the final rename on one filesystem. This is not used
@@ -133,6 +151,132 @@ bool writeScoreMidiFile(const Score& score, const std::string& path, std::string
     return false;
   }
   return true;
+}
+
+bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
+  if (score == nullptr) {
+    if (error) *error = "score output pointer is null";
+    return false;
+  }
+  try {
+    if (midi.format != 0 && midi.format != 1) {
+      throw std::invalid_argument("MIDI format must be 0 or 1");
+    }
+    if (midi.format == 0 && midi.tracks.size() > 1) {
+      throw std::invalid_argument("MIDI format 0 can contain only one track");
+    }
+    if (midi.ticks_per_quarter != kTicksPerQuarter) {
+      throw std::invalid_argument("MIDI import requires 960 ticks per quarter note");
+    }
+    if (midi.tracks.empty()) {
+      throw std::invalid_argument("MIDI import requires at least one non-empty track");
+    }
+
+    double first_bpm = 0.0;
+    for (const TempoChange& change : midi.tempo.changes()) {
+      if (std::isfinite(change.bpm) && change.bpm > 0.0) {
+        first_bpm = change.bpm;
+        break;
+      }
+    }
+    if (!(first_bpm > 0.0)) {
+      throw std::invalid_argument("MIDI import requires a valid tempo");
+    }
+
+    Score converted;
+    converted.divisions = kTicksPerQuarter;
+    converted.time_signature = {4, 4};
+    converted.bpm = first_bpm;
+    converted.parts.reserve(midi.tracks.size());
+
+    for (std::size_t track_index = 0; track_index < midi.tracks.size(); ++track_index) {
+      const MidiTrack& track = midi.tracks[track_index];
+      if (track.notes.empty()) {
+        throw std::invalid_argument("MIDI import rejects empty tracks");
+      }
+      std::vector<ScoreNote> notes;
+      notes.reserve(track.notes.size());
+      Tick max_end = 0;
+      for (const MidiNote& midi_note : track.notes) {
+        if (midi_note.start < 0 || midi_note.duration <= 0 ||
+            midi_note.start > std::numeric_limits<Tick>::max() - midi_note.duration) {
+          throw std::invalid_argument("MIDI note timing is negative, empty, or overflowing");
+        }
+        if (midi_note.pitch > 127 || midi_note.velocity > 127 || midi_note.channel > 15) {
+          throw std::invalid_argument("MIDI note has an out-of-range field");
+        }
+        const Tick end = midi_note.start + midi_note.duration;
+        max_end = std::max(max_end, end);
+        ScoreNote note;
+        note.start = midi_note.start;
+        note.duration = midi_note.duration;
+        note.pitch = fromMidiPitch(midi_note.pitch);
+        note.velocity = midi_note.velocity;
+        note.voice = static_cast<std::uint16_t>(static_cast<std::uint16_t>(midi_note.channel) + 1U);
+        note.staff = 1;
+        notes.push_back(std::move(note));
+      }
+      std::stable_sort(notes.begin(), notes.end(), [](const ScoreNote& left, const ScoreNote& right) {
+        if (left.start != right.start) return left.start < right.start;
+        if (left.voice != right.voice) return left.voice < right.voice;
+        return left.pitch.octave < right.pitch.octave;
+      });
+      for (std::size_t note_index = 1; note_index < notes.size(); ++note_index) {
+        if (notes[note_index].start == notes[note_index - 1].start &&
+            notes[note_index].voice == notes[note_index - 1].voice) {
+          notes[note_index].chord = true;
+        }
+      }
+
+      const Tick measure_count_tick = max_end / kMeasureTicks;
+      const Tick measure_count_remainder = max_end % kMeasureTicks;
+      const Tick measure_count_with_remainder =
+          measure_count_tick + (measure_count_remainder == 0 ? 0 : 1);
+      if (measure_count_with_remainder <= 0 ||
+          static_cast<std::uint64_t>(measure_count_with_remainder) > kMaximumImportedMeasures) {
+        throw std::invalid_argument("MIDI import requires a bounded measure count");
+      }
+      const std::size_t measure_count = static_cast<std::size_t>(measure_count_with_remainder);
+
+      ScorePart part;
+      part.id = "P" + std::to_string(track_index + 1);
+      part.name = track.name.empty() ? "Part " + std::to_string(track_index + 1) : track.name;
+      part.measures.resize(measure_count);
+      for (std::size_t measure_index = 0; measure_index < measure_count; ++measure_index) {
+        part.measures[measure_index].number = static_cast<int>(measure_index + 1);
+        part.measures[measure_index].start =
+            static_cast<Tick>(measure_index) * kMeasureTicks;
+      }
+      for (ScoreNote& note : notes) {
+        const Tick measure_index_tick = note.start / kMeasureTicks;
+        if (measure_index_tick < 0 ||
+            static_cast<std::uint64_t>(measure_index_tick) >= measure_count) {
+          throw std::invalid_argument("MIDI note cannot be assigned to a score measure");
+        }
+        part.measures[static_cast<std::size_t>(measure_index_tick)].notes.push_back(std::move(note));
+      }
+      converted.parts.push_back(std::move(part));
+    }
+    *score = std::move(converted);
+    return true;
+  } catch (const std::exception& exception) {
+    if (error) *error = exception.what();
+    return false;
+  }
+}
+
+bool readMidiScoreFile(const std::string& path, Score* score, std::string* error) {
+  if (path.empty()) {
+    if (error) *error = "MIDI input path is empty";
+    return false;
+  }
+  MidiFile midi;
+  std::string read_error;
+  if (!readMidiFile(path, &midi, &read_error)) {
+    if (error) *error = read_error;
+    return false;
+  }
+  return midiToScore(midi, score, error);
 }
 
 }  // namespace daw

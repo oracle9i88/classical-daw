@@ -29,6 +29,12 @@ serializer provides a versioned score save/reload boundary; a full project
 package will eventually add MIDI data, media, peak caches, autosave snapshots,
 and plugin state.
 
+`ScoreHistory` is the UI/control-thread edit-history boundary around this score
+state. It owns bounded copies, retains the initial state, clears the redo
+branch after a successful commit, and leaves the history unchanged on a failed
+operation. It must never be called from the realtime callback; persisted
+undo/autosave snapshots remain a later project-package concern.
+
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
 ScoreNote` keeps written pitch spelling, tick onset/duration, rests, chords,
 ties, and one optional lyric syllable. The MusicXML adapter runs outside the
@@ -44,6 +50,14 @@ the current bridge has no channel-allocation map and must not silently collide
 parts. Tuplet metadata is represented by the already-resolved tick durations;
 MIDI meter, lyric text, and instrument programs remain future fields in the MIDI
 model.
+
+The inverse MIDI-to-Score adapter follows the ordered SMF tracks and creates one
+score part per non-empty track. It retains track names, note timing, pitch,
+velocity, and channel (as `voice = channel + 1`), then assigns notes to a fixed
+4/4 measure grid. It accepts only the engine's 960-PPQ domain and carries the
+first valid tempo into `Score::bpm`; canonical sharp spellings are used until a
+key-aware notation layer is available. Both directions remain worker-thread
+operations and never run in the realtime callback.
 
 The platform-neutral M0 transport now has a bounded SPSC command ring and a
 block scheduler. It is deliberately separate from CoreAudio: device callbacks

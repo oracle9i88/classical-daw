@@ -274,6 +274,60 @@ int main() {
       exported_multi_part_score_midi.tracks[1].notes[0].channel != 1) {
     return fail("multi-part score MIDI file round-trip: " + error);
   }
+
+  Score imported_midi_score;
+  if (!midiToScore(exported_multi_part_score_midi, &imported_midi_score, &error)) {
+    return fail("MIDI to score conversion: " + error);
+  }
+  Score imported_file_score;
+  if (!readMidiScoreFile(multi_part_score_midi_path.string(), &imported_file_score, &error) ||
+      imported_file_score.parts.size() != 2) {
+    return fail("MIDI file to score conversion: " + error);
+  }
+  if (imported_midi_score.divisions != kTicksPerQuarter ||
+      imported_midi_score.time_signature.numerator != 4 ||
+      imported_midi_score.time_signature.denominator != 4 ||
+      !closeEnough(imported_midi_score.bpm, 96.0) ||
+      imported_midi_score.parts.size() != 2 ||
+      imported_midi_score.parts[0].id != "P1" || imported_midi_score.parts[0].name != "Piano" ||
+      imported_midi_score.parts[1].id != "P2" || imported_midi_score.parts[1].name != "Cello" ||
+      imported_midi_score.parts[0].measures.size() != 1 ||
+      imported_midi_score.parts[1].measures.size() != 1 ||
+      imported_midi_score.parts[0].measures[0].notes.size() != 5 ||
+      imported_midi_score.parts[1].measures[0].notes.size() != 1 ||
+      imported_midi_score.parts[0].measures[0].notes[0].pitch.step != 'C' ||
+      imported_midi_score.parts[0].measures[0].notes[0].pitch.octave != 4 ||
+      imported_midi_score.parts[0].measures[0].notes[0].voice != 1 ||
+      imported_midi_score.parts[1].measures[0].notes[0].pitch.octave != 3 ||
+      imported_midi_score.parts[1].measures[0].notes[0].duration != 1920) {
+    return fail("multi-track MIDI to score round-trip");
+  }
+  const auto imported_musicxml_path = temp / "classical_daw_midi_import.musicxml";
+  if (!writeMusicXmlFile(imported_midi_score, imported_musicxml_path.string(), &error)) {
+    return fail("MIDI-imported score MusicXML write: " + error);
+  }
+
+  MidiFile empty_midi;
+  if (midiToScore(empty_midi, &imported_midi_score, &error)) {
+    return fail("empty MIDI input was accepted");
+  }
+  MidiFile empty_track_midi;
+  empty_track_midi.tracks = {MidiTrack{"Empty", {}}};
+  if (midiToScore(empty_track_midi, &imported_midi_score, &error)) {
+    return fail("empty MIDI track was accepted");
+  }
+  MidiFile invalid_timing_midi;
+  invalid_timing_midi.tracks = {
+      MidiTrack{"Bad", {MidiNote{0, 0, 60, 80, 0}}},
+  };
+  if (midiToScore(invalid_timing_midi, &imported_midi_score, &error)) {
+    return fail("zero-duration MIDI note was accepted by score import");
+  }
+  MidiFile invalid_ppq_midi = original;
+  invalid_ppq_midi.ticks_per_quarter = 480;
+  if (midiToScore(invalid_ppq_midi, &imported_midi_score, &error)) {
+    return fail("non-960-PPQ MIDI input was accepted by score import");
+  }
   const auto protected_midi_path = temp / "classical_daw_score_export_protected.mid";
   if (!writeText(protected_midi_path, "keep-existing-file")) return fail("protected MIDI fixture write");
   Score too_many_parts = score;

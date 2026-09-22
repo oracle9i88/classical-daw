@@ -19,6 +19,18 @@ namespace daw {
 // serialized by this bridge.
 bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);
 
+// Convert a Standard MIDI File model into the score interchange model. Each
+// ordered MIDI track becomes one ScorePart. Track names are retained; unnamed
+// tracks receive deterministic "Part N" names. MIDI channels become score
+// voices (channel + 1) and notes use canonical sharp spellings. The import
+// bridge deliberately accepts the engine's fixed 960-PPQ domain, uses the
+// first valid tempo as Score::bpm, and supplies a default 4/4 meter.
+bool midiToScore(const MidiFile& midi, Score* score, std::string* error = nullptr);
+
+// Read an SMF and then convert it to the score model without exposing a
+// partially parsed score when either operation fails.
+bool readMidiScoreFile(const std::string& path, Score* score, std::string* error = nullptr);
+
 // Convert first and then write through the existing SMF writer. Conversion is
 // completed before touching the destination, and writing uses a temporary
 // sibling file so conversion/write failures do not leave a partial result at
