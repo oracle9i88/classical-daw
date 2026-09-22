@@ -19,7 +19,7 @@ python3 -m http.server 8080 --directory web
 
 ## GitHub Pages
 
-仓库自带 `.github/workflows/pages.yml`：推送到 `main` 后，GitHub Actions 会把 `web/` 作为静态产物发布到 GitHub Pages。第一次使用时，在仓库 Settings → Pages → Build and deployment 中选择 **GitHub Actions**；工作流不需要配置密钥。
+仓库自带 `.github/workflows/pages.yml`：推送到 `main` 后，GitHub Actions 会把 `web/` 作为静态产物发布到 GitHub Pages。工作流会在首次运行时请求启用 Pages；如果仓库策略禁止 workflow 自动启用，请在 Settings → Pages → Build and deployment 中选择 **GitHub Actions** 后再推送一次。工作流不需要配置密钥。
 
 ## 当前限制
 

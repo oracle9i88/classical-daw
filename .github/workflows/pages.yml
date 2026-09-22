@@ -26,6 +26,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Enable Pages on the first run when the repository has not been
+          # configured in Settings yet. Later runs simply read the site.
+          enablement: true
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
