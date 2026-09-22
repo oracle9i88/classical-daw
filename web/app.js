@@ -26,6 +26,8 @@
     status: document.querySelector("#transport-status"),
     play: document.querySelector("#play"),
     stop: document.querySelector("#stop"),
+    undo: document.querySelector("#undo"),
+    redo: document.querySelector("#redo"),
     tempo: document.querySelector("#tempo"),
     add: document.querySelector("#add-note"),
     clear: document.querySelector("#clear"),
@@ -51,6 +53,10 @@
   let playStartedAt = 0;
   let playDuration = 0;
   let playhead = null;
+  const historyLimit = 100;
+  const history = { past: [], future: [] };
+  let pendingLiveHistory = null;
+  let pendingLiveTimer = null;
 
   function noteName(midi) {
     const octave = Math.floor(midi / 12) - 1;
@@ -60,6 +66,114 @@
   function midiToRow(midi) { return LOWEST_MIDI + ROWS - 1 - midi; }
 
   function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+
+  function cloneNotes(source) {
+    return source.map((note) => ({ ...note }));
+  }
+
+  function snapshot() {
+    return {
+      notes: cloneNotes(notes),
+      nextId,
+      selectedId,
+      tempo: String(dom.tempo.value)
+    };
+  }
+
+  function snapshotKey(state) {
+    return JSON.stringify(state);
+  }
+
+  function updateHistoryButtons() {
+    if (dom.undo) dom.undo.disabled = history.past.length === 0;
+    if (dom.redo) dom.redo.disabled = history.future.length === 0;
+  }
+
+  function pushHistory(before, after = snapshot()) {
+    if (snapshotKey(before) === snapshotKey(after)) return false;
+    history.past.push(before);
+    if (history.past.length > historyLimit) history.past.shift();
+    history.future = [];
+    updateHistoryButtons();
+    return true;
+  }
+
+  function finishLiveHistory() {
+    if (pendingLiveTimer !== null) {
+      window.clearTimeout(pendingLiveTimer);
+      pendingLiveTimer = null;
+    }
+    if (!pendingLiveHistory) return;
+    const before = pendingLiveHistory;
+    pendingLiveHistory = null;
+    pushHistory(before);
+  }
+
+  function beginLiveHistory() {
+    if (!pendingLiveHistory) pendingLiveHistory = snapshot();
+    if (pendingLiveTimer !== null) window.clearTimeout(pendingLiveTimer);
+    pendingLiveTimer = window.setTimeout(finishLiveHistory, 450);
+  }
+
+  function commitMutation(mutator) {
+    finishLiveHistory();
+    const before = snapshot();
+    mutator();
+    pushHistory(before);
+  }
+
+  function restoreState(state) {
+    notes = cloneNotes(state.notes);
+    nextId = state.nextId;
+    selectedId = state.selectedId;
+    dom.tempo.value = state.tempo;
+    const selected = notes.find((note) => note.id === selectedId);
+    if (selected) {
+      dom.noteForm.hidden = false;
+      dom.hint.hidden = true;
+      dom.pitch.value = String(selected.midi);
+      dom.start.value = String(selected.start);
+      dom.duration.value = String(selected.duration);
+      dom.velocity.value = String(selected.velocity);
+      dom.velocityValue.value = String(selected.velocity);
+      dom.velocityValue.textContent = String(selected.velocity);
+      dom.lyric.value = selected.lyric || "";
+    } else {
+      dom.noteForm.hidden = true;
+      dom.hint.hidden = false;
+      dom.lyric.value = "";
+    }
+    renderRoll();
+  }
+
+  function undo() {
+    finishLiveHistory();
+    if (!history.past.length) {
+      setStatus("没有可撤销的操作");
+      return;
+    }
+    const current = snapshot();
+    const previous = history.past.pop();
+    history.future.push(current);
+    restoreState(previous);
+    updateHistoryButtons();
+    setStatus("已撤销");
+  }
+
+  function redo() {
+    finishLiveHistory();
+    if (!history.future.length) {
+      setStatus("没有可重做的操作");
+      return;
+    }
+    const current = snapshot();
+    const next = history.future.pop();
+    history.past.push(current);
+    if (history.past.length > historyLimit) history.past.shift();
+    restoreState(next);
+    updateHistoryButtons();
+    setStatus("已重做");
+  }
 
   function renderPitchLabels() {
     dom.pitchLabels.replaceChildren();
@@ -144,11 +258,13 @@
   }
 
   function addNote(midi = 72, start = null, duration = 1) {
-    const occupied = notes.map((note) => note.start + note.duration);
-    const suggestedStart = Math.min(BEATS - duration, Math.max(0, Math.ceil(Math.max(0, ...occupied) * 4) / 4));
-    const note = { id: nextId++, midi, start: Number(start === null ? suggestedStart : start), duration, velocity: 90 };
-    notes.push(note);
-    selectNote(note.id);
+    commitMutation(() => {
+      const occupied = notes.map((note) => note.start + note.duration);
+      const suggestedStart = Math.min(BEATS - duration, Math.max(0, Math.ceil(Math.max(0, ...occupied) * 4) / 4));
+      const note = { id: nextId++, midi, start: Number(start === null ? suggestedStart : start), duration, velocity: 90 };
+      notes.push(note);
+      selectNote(note.id);
+    });
     setStatus("已添加音符");
   }
 
@@ -167,11 +283,13 @@
 
   function deleteSelected() {
     if (selectedId === null) return;
-    notes = notes.filter((note) => note.id !== selectedId);
-    selectedId = null;
-    dom.noteForm.hidden = true;
-    dom.hint.hidden = false;
-    renderRoll();
+    commitMutation(() => {
+      notes = notes.filter((note) => note.id !== selectedId);
+      selectedId = null;
+      dom.noteForm.hidden = true;
+      dom.hint.hidden = false;
+      renderRoll();
+    });
     setStatus("已删除所选音符");
   }
 
@@ -315,12 +433,14 @@
     stopPlayback();
     try {
       const result = parseMusicXml(await file.text());
-      notes = result.notes.map((note) => ({ ...note, id: nextId++ }));
-      selectedId = null;
-      dom.noteForm.hidden = true;
-      dom.hint.hidden = false;
-      dom.tempo.value = String(result.tempo);
-      renderRoll();
+      commitMutation(() => {
+        notes = result.notes.map((note) => ({ ...note, id: nextId++ }));
+        selectedId = null;
+        dom.noteForm.hidden = true;
+        dom.hint.hidden = false;
+        dom.tempo.value = String(result.tempo);
+        renderRoll();
+      });
       const suffix = result.skipped ? `，忽略 ${result.skipped} 个超出当前范围的事件` : "";
       setStatus(`已导入 ${notes.length} 个音符${suffix}`);
     } catch (error) {
@@ -459,14 +579,19 @@ ${lines.join("\n")}
   dom.add.addEventListener("click", () => addNote());
   dom.remove.addEventListener("click", deleteSelected);
   dom.clear.addEventListener("click", () => {
-    stopPlayback();
-    notes = [];
-    selectedId = null;
-    dom.noteForm.hidden = true;
-    dom.hint.hidden = false;
-    renderRoll();
+    if (!notes.length) return;
+    commitMutation(() => {
+      stopPlayback();
+      notes = [];
+      selectedId = null;
+      dom.noteForm.hidden = true;
+      dom.hint.hidden = false;
+      renderRoll();
+    });
     setStatus("已清空音符");
   });
+  dom.undo.addEventListener("click", undo);
+  dom.redo.addEventListener("click", redo);
   dom.play.addEventListener("click", () => { startPlayback().catch(() => setStatus("浏览器音频未能启动，请再次点击播放")); });
   dom.stop.addEventListener("click", stopPlayback);
   dom.importButton.addEventListener("click", () => dom.musicXmlFile.click());
@@ -475,10 +600,11 @@ ${lines.join("\n")}
     if (file) importMusicXmlFile(file);
   });
   dom.exportButton.addEventListener("click", downloadMusicXml);
-  dom.pitch.addEventListener("change", () => updateSelected({ midi: Number(dom.pitch.value) }));
-  dom.start.addEventListener("change", () => updateSelected({ start: Number(dom.start.value) }));
-  dom.duration.addEventListener("change", () => updateSelected({ duration: Number(dom.duration.value) }));
+  dom.pitch.addEventListener("change", () => commitMutation(() => updateSelected({ midi: Number(dom.pitch.value) })));
+  dom.start.addEventListener("change", () => commitMutation(() => updateSelected({ start: Number(dom.start.value) })));
+  dom.duration.addEventListener("change", () => commitMutation(() => updateSelected({ duration: Number(dom.duration.value) })));
   dom.velocity.addEventListener("input", () => {
+    beginLiveHistory();
     dom.velocityValue.value = dom.velocity.value;
     dom.velocityValue.textContent = dom.velocity.value;
     updateSelected({ velocity: Number(dom.velocity.value) });
@@ -486,14 +612,24 @@ ${lines.join("\n")}
   dom.lyric.addEventListener("input", () => {
     const note = notes.find((item) => item.id === selectedId);
     if (!note) return;
+    beginLiveHistory();
     note.lyric = dom.lyric.value;
     renderRoll();
   });
+  dom.velocity.addEventListener("change", finishLiveHistory);
+  dom.lyric.addEventListener("change", finishLiveHistory);
   dom.roll.addEventListener("keydown", (event) => {
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); }
     if (event.key === " ") { event.preventDefault(); dom.play.click(); }
   });
   document.addEventListener("keydown", (event) => {
+    const modifier = event.metaKey || event.ctrlKey;
+    if (modifier && !event.altKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+      return;
+    }
     if (event.target.matches("input, select, textarea")) return;
     if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
     if (event.key === " ") { event.preventDefault(); dom.play.click(); }
@@ -503,4 +639,5 @@ ${lines.join("\n")}
   renderBeatLabels();
   populatePitchOptions();
   renderRoll();
+  updateHistoryButtons();
 })();

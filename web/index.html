@@ -23,6 +23,8 @@
         </label>
         <button id="play" class="button button-primary" type="button">▶ 播放</button>
         <button id="stop" class="button" type="button" disabled>■ 停止</button>
+        <button id="undo" class="button" type="button" disabled title="撤销（⌘/Ctrl+Z）">↶ 撤销</button>
+        <button id="redo" class="button" type="button" disabled title="重做（⌘/Ctrl+Shift+Z）">↷ 重做</button>
         <button id="clear" class="button button-quiet" type="button">清空</button>
         <button id="import" class="button" type="button">导入 MusicXML</button>
         <button id="export" class="button button-export" type="button">导出 MusicXML</button>
@@ -89,7 +91,7 @@
         </div>
         <div class="editor-footer">
           <span id="transport-status" role="status">准备就绪</span>
-          <span>快捷键：空格播放 / Delete 删除所选音符</span>
+          <span>快捷键：空格播放 / Delete 删除 / ⌘/Ctrl+Z 撤销</span>
         </div>
       </section>
     </main>
