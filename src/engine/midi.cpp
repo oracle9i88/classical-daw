@@ -141,7 +141,8 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
       if (track != nullptr) {
         std::vector<MidiEvent> note_events;
         for (const MidiNote& note : track->notes) {
-          if (note.start < 0 || note.duration < 0 || note.start > std::numeric_limits<Tick>::max() - note.duration ||
+          if (note.start < 0 || note.duration <= 0 ||
+              note.start > std::numeric_limits<Tick>::max() - note.duration ||
               note.pitch > 127 || note.velocity > 127 || note.channel > 15) {
             throw std::invalid_argument("MIDI note has an out-of-range field");
           }

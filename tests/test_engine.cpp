@@ -147,6 +147,13 @@ int main() {
     return fail("overflowing MIDI note duration was accepted");
   }
 
+  const auto zero_duration_midi_path = temp / "classical_daw_zero_duration.mid";
+  MidiFile zero_duration_midi;
+  zero_duration_midi.tracks = {MidiTrack{"Piano", {{0, 0, 60, 80, 0}}}};
+  if (writeMidiFile(zero_duration_midi, zero_duration_midi_path.string(), &error)) {
+    return fail("zero-duration MIDI note was accepted by file writer");
+  }
+
   const auto musicxml_path = temp / "classical_daw_score_roundtrip.musicxml";
   Score score;
   score.time_signature = {4, 4};
@@ -443,6 +450,7 @@ int main() {
   std::filesystem::remove(format_zero_path);
   std::filesystem::remove(invalid_tempo_path);
   std::filesystem::remove(overflow_path);
+  std::filesystem::remove(zero_duration_midi_path);
   std::filesystem::remove(musicxml_path);
   std::filesystem::remove(multi_voice_musicxml_path);
   std::filesystem::remove(multi_part_musicxml_path);
