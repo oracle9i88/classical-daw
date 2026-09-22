@@ -20,7 +20,7 @@ namespace {
 constexpr std::uint64_t kMaxParts = 1024;
 constexpr std::uint64_t kMaxMeasures = 1'000'000;
 constexpr std::uint64_t kMaxNotes = 1'000'000;
-constexpr std::size_t kMaxLineBytes = 2U * 1024U * 1024U;
+constexpr std::size_t kMaxLineBytes = 4U * 1024U * 1024U;
 constexpr std::size_t kMaxStringBytes = 1U * 1024U * 1024U;
 
 bool fail(std::string* error, const std::string& message) {
