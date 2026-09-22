@@ -7,7 +7,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -18,6 +20,13 @@ bool closeEnough(double a, double b, double epsilon = 1e-9) {
 int fail(const std::string& message) {
   std::cerr << "FAIL: " << message << '\n';
   return 1;
+}
+
+bool writeBytes(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
+  std::ofstream output(path, std::ios::binary);
+  if (!output) return false;
+  output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+  return static_cast<bool>(output);
 }
 
 }  // namespace
@@ -59,6 +68,63 @@ int main() {
   }
   if (!closeEnough(parsed.tempo.tickToSeconds(1920), 1.5)) return fail("MIDI tempo round-trip");
 
+  // Regression fixture: one-byte channel messages must not consume the next
+  // event's first byte. It also exercises running status and an ignored SysEx
+  // plus text-meta event before the note.
+  const auto boundary_path = temp / "classical_daw_midi_boundaries.mid";
+  const std::vector<std::uint8_t> boundary_midi = {
+      'M', 'T', 'h', 'd', 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x03, 0xc0,
+      'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x20,
+      0x00, 0xc0, 0x05,             // Program Change (one data byte)
+      0x00, 0x07,                   // running Program Change
+      0x00, 0xd0, 0x40,             // Channel Pressure (one data byte)
+      0x00, 0xf0, 0x03, 0x01, 0x02, 0xf7,  // ignored SysEx
+      0x00, 0xff, 0x01, 0x01, 0x41,        // ignored text meta
+      0x00, 0x90, 0x3c, 0x64,       // note on
+      0x87, 0x40, 0x80, 0x3c, 0x00, // 960-tick note off
+      0x00, 0xff, 0x2f, 0x00};
+  if (!writeBytes(boundary_path, boundary_midi)) return fail("MIDI boundary fixture write");
+  MidiFile boundary_file;
+  if (!readMidiFile(boundary_path.string(), &boundary_file, &error)) {
+    return fail("MIDI channel-message boundary read: " + error);
+  }
+  if (boundary_file.tracks.size() != 1 || boundary_file.tracks[0].notes.size() != 1 ||
+      boundary_file.tracks[0].notes[0].start != 0 || boundary_file.tracks[0].notes[0].duration != 960) {
+    return fail("MIDI channel-message boundary parsing");
+  }
+
+  const auto truncated_path = temp / "classical_daw_truncated_program_change.mid";
+  const std::vector<std::uint8_t> truncated_midi = {
+      'M', 'T', 'h', 'd', 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x03, 0xc0,
+      'M', 'T', 'r', 'k', 0x00, 0x00, 0x00, 0x02, 0x00, 0xc0};
+  if (!writeBytes(truncated_path, truncated_midi)) return fail("MIDI truncated fixture write");
+  if (readMidiFile(truncated_path.string(), &boundary_file, &error)) {
+    return fail("truncated MIDI channel event was accepted");
+  }
+
+  const auto format_zero_path = temp / "classical_daw_format_zero.mid";
+  MidiFile invalid_format_zero;
+  invalid_format_zero.format = 0;
+  invalid_format_zero.tracks = original.tracks;
+  if (writeMidiFile(invalid_format_zero, format_zero_path.string(), &error)) {
+    return fail("format 0 accepted multiple tracks");
+  }
+
+  const auto invalid_tempo_path = temp / "classical_daw_invalid_tempo.mid";
+  MidiFile invalid_tempo;
+  invalid_tempo.tempo = TempoMap(1.0);  // 60,000,000 microseconds does not fit 24 bits.
+  invalid_tempo.tracks = {MidiTrack{"Piano", {}}};
+  if (writeMidiFile(invalid_tempo, invalid_tempo_path.string(), &error)) {
+    return fail("out-of-range MIDI tempo was accepted");
+  }
+
+  const auto overflow_path = temp / "classical_daw_overflow_note.mid";
+  MidiFile overflow_note;
+  overflow_note.tracks = {MidiTrack{"Piano", {{std::numeric_limits<Tick>::max(), 1, 60, 80, 0}}}};
+  if (writeMidiFile(overflow_note, overflow_path.string(), &error)) {
+    return fail("overflowing MIDI note duration was accepted");
+  }
+
   const AudioBuffer rendered = renderNotes(original.tracks[0], tempo, 48000.0, 0.05);
   if (rendered.sample_rate != 48000 || rendered.channels != 1 || rendered.frameCount() < 48000) {
     return fail("offline render shape");
@@ -68,6 +134,11 @@ int main() {
   if (!wav || wav.tellg() <= 44) return fail("WAV file missing");
 
   std::filesystem::remove(midi_path);
+  std::filesystem::remove(boundary_path);
+  std::filesystem::remove(truncated_path);
+  std::filesystem::remove(format_zero_path);
+  std::filesystem::remove(invalid_tempo_path);
+  std::filesystem::remove(overflow_path);
   std::filesystem::remove(wav_path);
   std::cout << "classical-daw Alpha engine tests passed\n";
   return 0;

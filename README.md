@@ -41,3 +41,7 @@ The project is released under **AGPL-3.0-or-later**; see `LICENSE`. The Alpha
 contains only original project code and the C++ standard library. Any future
 audio backend, plugin SDK, instrument, or UI dependency must be recorded in a
 third-party notices file and checked separately before distribution.
+
+The current study notes and acceptance gates are in
+[`docs/research/2026-09-22-daw-architecture.md`](docs/research/2026-09-22-daw-architecture.md)
+and [`docs/roadmap.md`](docs/roadmap.md).

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -93,6 +94,9 @@ struct TimedEvent {
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error) {
   try {
     if (file.format != 0 && file.format != 1) throw std::invalid_argument("MIDI format must be 0 or 1");
+    if (file.format == 0 && file.tracks.size() > 1) {
+      throw std::invalid_argument("MIDI format 0 can contain only one track");
+    }
     if (file.ticks_per_quarter != kTicksPerQuarter) {
       throw std::invalid_argument("Alpha MIDI support requires 960 ticks per quarter note");
     }
@@ -123,7 +127,11 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
       if (track_index == 0) {
         for (const TempoChange& change : file.tempo.changes()) {
           Bytes payload{0xff, 0x51, 0x03};
-          const auto micros = static_cast<std::uint32_t>(std::llround(60000000.0 / change.bpm));
+          const double micros_value = 60000000.0 / change.bpm;
+          if (!std::isfinite(micros_value) || micros_value < 1.0 || micros_value > 0xFFFFFFu) {
+            throw std::invalid_argument("tempo cannot be represented by a 24-bit MIDI tempo event");
+          }
+          const auto micros = static_cast<std::uint32_t>(std::llround(micros_value));
           payload.push_back(static_cast<std::uint8_t>((micros >> 16) & 0xff));
           payload.push_back(static_cast<std::uint8_t>((micros >> 8) & 0xff));
           payload.push_back(static_cast<std::uint8_t>(micros & 0xff));
@@ -133,7 +141,8 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
       if (track != nullptr) {
         std::vector<MidiEvent> note_events;
         for (const MidiNote& note : track->notes) {
-          if (note.start < 0 || note.duration < 0 || note.pitch > 127 || note.velocity > 127 || note.channel > 15) {
+          if (note.start < 0 || note.duration < 0 || note.start > std::numeric_limits<Tick>::max() - note.duration ||
+              note.pitch > 127 || note.velocity > 127 || note.channel > 15) {
             throw std::invalid_argument("MIDI note has an out-of-range field");
           }
           note_events.push_back({note.start, false, note.channel, note.pitch, note.velocity});
@@ -211,14 +220,18 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
       }
       pos += 4;
       const std::uint32_t track_length = readU32(data, pos);
-      if (pos + track_length > data.size()) throw std::runtime_error("truncated MIDI track");
+      if (track_length > data.size() - pos) throw std::runtime_error("truncated MIDI track");
       const std::size_t track_end = pos + track_length;
       MidiTrack track;
       Tick tick = 0;
       std::uint8_t running_status = 0;
       std::map<std::pair<std::uint8_t, std::uint8_t>, std::vector<std::pair<Tick, std::uint8_t>>> active;
       while (pos < track_end) {
-        tick += static_cast<Tick>(getVlq(data, pos));
+        const Tick delta = static_cast<Tick>(getVlq(data, pos));
+        if (delta > std::numeric_limits<Tick>::max() - tick) {
+          throw std::runtime_error("MIDI event tick overflow");
+        }
+        tick += delta;
         if (pos >= track_end) throw std::runtime_error("truncated MIDI event");
         std::uint8_t status = data[pos++];
         if ((status & 0x80) == 0) {
@@ -232,7 +245,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
           if (pos >= track_end) throw std::runtime_error("truncated MIDI meta event");
           const std::uint8_t type = data[pos++];
           const std::uint32_t length = getVlq(data, pos);
-          if (pos + length > track_end) throw std::runtime_error("truncated MIDI meta payload");
+          if (length > track_end - pos) throw std::runtime_error("truncated MIDI meta payload");
           if (type == 0x2f) {
             pos += length;
             break;
@@ -249,20 +262,26 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error) {
         }
         if (status == 0xf0 || status == 0xf7) {
           const std::uint32_t length = getVlq(data, pos);
-          if (pos + length > track_end) throw std::runtime_error("truncated MIDI sysex payload");
+          if (length > track_end - pos) throw std::runtime_error("truncated MIDI sysex payload");
           pos += length;
           continue;
         }
         if (status < 0x80 || status >= 0xf0) throw std::runtime_error("unsupported MIDI event");
         const std::uint8_t command = status & 0xf0;
         const std::uint8_t channel = status & 0x0f;
-        if (pos >= track_end) throw std::runtime_error("truncated MIDI channel event");
-        const std::uint8_t pitch = data[pos++];
         if (command == 0xc0 || command == 0xd0) {
-          if (pos >= track_end) throw std::runtime_error("truncated MIDI channel event");
-          ++pos;
+          if (pos >= track_end || (data[pos] & 0x80) != 0) {
+            throw std::runtime_error("truncated MIDI channel event");
+          }
+          ++pos;  // Program Change and Channel Pressure each carry one data byte.
         } else {
-          if (pos >= track_end) throw std::runtime_error("truncated MIDI channel event");
+          if (pos >= track_end || (data[pos] & 0x80) != 0) {
+            throw std::runtime_error("truncated MIDI channel event");
+          }
+          const std::uint8_t pitch = data[pos++];
+          if (pos >= track_end || (data[pos] & 0x80) != 0) {
+            throw std::runtime_error("truncated MIDI channel event");
+          }
           const std::uint8_t value = data[pos++];
           if (command == 0x90 && value != 0) {
             active[{channel, pitch}].push_back({tick, value});
