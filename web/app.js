@@ -51,8 +51,11 @@
     projectFile: document.querySelector("#project-file"),
     importButton: document.querySelector("#import"),
     musicXmlFile: document.querySelector("#musicxml-file"),
+    importMidiButton: document.querySelector("#import-midi"),
+    midiFile: document.querySelector("#midi-file"),
     remove: document.querySelector("#delete-note"),
     exportButton: document.querySelector("#export"),
+    exportMidiButton: document.querySelector("#export-midi"),
     recoveryBanner: document.querySelector("#recovery-banner"),
     recoveryMessage: document.querySelector("#recovery-message"),
     restoreRecovery: document.querySelector("#restore-recovery"),
@@ -682,6 +685,259 @@
     playTimer = window.setTimeout(stopPlayback, (playDuration + 0.2) * 1000);
   }
 
+  // The MIDI bridge deliberately stays small and dependency-free.  It accepts
+  // standard format 0 and 1 files, validates the complete event stream before
+  // returning, and only then lets the caller replace the current document.
+  function readMidiVlq(bytes, cursor, end) {
+    let value = 0;
+    for (let count = 0; count < 4; count += 1) {
+      if (cursor.position >= end) throw new Error("MIDI 变长数值不完整");
+      const byte = bytes[cursor.position++];
+      value = (value * 128) + (byte & 0x7f);
+      if (!(byte & 0x80)) return value;
+    }
+    throw new Error("MIDI 变长数值超过 4 字节");
+  }
+
+  function readMidiU16(bytes, offset) {
+    return (bytes[offset] << 8) | bytes[offset + 1];
+  }
+
+  function readMidiU32(bytes, offset) {
+    return bytes[offset] * 0x1000000 + (bytes[offset + 1] << 16)
+      + (bytes[offset + 2] << 8) + bytes[offset + 3];
+  }
+
+  function midiChunkText(bytes, offset) {
+    return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+  }
+
+  function parseMidiFile(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 14 || midiChunkText(bytes, 0) !== "MThd") {
+      throw new Error("MIDI 文件头无效");
+    }
+    const headerLength = readMidiU32(bytes, 4);
+    if (headerLength < 6 || headerLength > bytes.length - 8) throw new Error("MIDI 文件头长度无效");
+    const format = readMidiU16(bytes, 8);
+    const trackCount = readMidiU16(bytes, 10);
+    const division = readMidiU16(bytes, 12);
+    if (format !== 0 && format !== 1) throw new Error("只支持 MIDI Type 0 或 Type 1");
+    if (!trackCount || (format === 0 && trackCount !== 1)) throw new Error("MIDI 轨道数量与文件类型不匹配");
+    if (!division || (division & 0x8000)) throw new Error("只支持 PPQ 格式的 MIDI（不支持 SMPTE）");
+
+    let offset = 8 + headerLength;
+    const allNotes = [];
+    let firstTempo = null;
+    let firstMeter = null;
+    let skipped = 0;
+    for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+      if (offset + 8 > bytes.length || midiChunkText(bytes, offset) !== "MTrk") {
+        throw new Error(`第 ${trackIndex + 1} 条 MIDI 轨道头无效`);
+      }
+      const trackLength = readMidiU32(bytes, offset + 4);
+      const trackStart = offset + 8;
+      const trackEnd = trackStart + trackLength;
+      if (trackEnd > bytes.length) throw new Error(`第 ${trackIndex + 1} 条 MIDI 轨道超出文件范围`);
+      offset = trackEnd;
+      const cursor = { position: trackStart };
+      let absoluteTick = 0;
+      let runningStatus = 0;
+      let reachedEnd = false;
+      const active = new Map();
+      while (cursor.position < trackEnd) {
+        const delta = readMidiVlq(bytes, cursor, trackEnd);
+        absoluteTick += delta;
+        if (!Number.isSafeInteger(absoluteTick)) throw new Error("MIDI 时间位置溢出");
+        let status = bytes[cursor.position++];
+        if (status < 0x80) {
+          if (runningStatus < 0x80 || runningStatus >= 0xf0) throw new Error("MIDI running status 无效");
+          cursor.position -= 1;
+          status = runningStatus;
+        } else if (status >= 0x80 && status < 0xf0) {
+          runningStatus = status;
+        }
+        if (status === 0xff) {
+          runningStatus = 0;
+          if (cursor.position >= trackEnd) throw new Error("MIDI meta 事件缺少类型");
+          const metaType = bytes[cursor.position++];
+          const length = readMidiVlq(bytes, cursor, trackEnd);
+          if (length > trackEnd - cursor.position) throw new Error("MIDI meta 事件超出轨道范围");
+          if (metaType === 0x2f) {
+            if (length !== 0) throw new Error("MIDI EOT 事件长度必须为 0");
+            reachedEnd = true;
+            cursor.position += length;
+            if (cursor.position !== trackEnd) throw new Error("MIDI EOT 后存在额外事件");
+            continue;
+          }
+          if (metaType === 0x51) {
+            if (length !== 3) throw new Error("MIDI tempo 事件长度必须为 3");
+            const micros = bytes[cursor.position] * 0x10000 + (bytes[cursor.position + 1] << 8) + bytes[cursor.position + 2];
+            if (!micros) throw new Error("MIDI tempo 事件值无效");
+            if (!firstTempo || absoluteTick < firstTempo.tick) firstTempo = { tick: absoluteTick, micros };
+          }
+          if (metaType === 0x58) {
+            if (length !== 4) throw new Error("MIDI 拍号事件长度必须为 4");
+            const numerator = bytes[cursor.position];
+            const exponent = bytes[cursor.position + 1];
+            if (!numerator || exponent > 7) throw new Error("MIDI 拍号事件值无效");
+            const denominator = 2 ** exponent;
+            if (!isAllowedMeter(numerator, denominator)) {
+              throw new Error("MIDI 首个拍号不受支持（仅支持 2/4、3/4、4/4、6/8）");
+            }
+            if (!firstMeter || absoluteTick < firstMeter.tick) firstMeter = { tick: absoluteTick, numerator, denominator };
+          }
+          cursor.position += length;
+          continue;
+        }
+        if (status === 0xf0 || status === 0xf7) {
+          runningStatus = 0;
+          const length = readMidiVlq(bytes, cursor, trackEnd);
+          if (length > trackEnd - cursor.position) throw new Error("MIDI SysEx 事件超出轨道范围");
+          cursor.position += length;
+          continue;
+        }
+        if (status < 0x80 || status >= 0xf0) throw new Error("MIDI 事件状态字节无效");
+        const eventType = status & 0xf0;
+        const channel = status & 0x0f;
+        const dataLength = eventType === 0xc0 || eventType === 0xd0 ? 1 : 2;
+        if (cursor.position + dataLength > trackEnd) throw new Error("MIDI 通道事件数据不完整");
+        const data1 = bytes[cursor.position++];
+        const data2 = dataLength === 2 ? bytes[cursor.position++] : 0;
+        if (data1 >= 0x80 || data2 >= 0x80) throw new Error("MIDI 通道事件数据字节无效");
+        if (eventType === 0x90 && data2 > 0) {
+          const key = `${channel}:${data1}`;
+          const stack = active.get(key) || [];
+          stack.push({ tick: absoluteTick, midi: data1, velocity: data2 });
+          active.set(key, stack);
+        } else if (eventType === 0x80 || (eventType === 0x90 && data2 === 0)) {
+          const key = `${channel}:${data1}`;
+          const stack = active.get(key);
+          if (!stack || !stack.length) throw new Error("MIDI 音符关闭事件没有对应的开启事件");
+          const note = stack.pop();
+          if (absoluteTick <= note.tick) throw new Error("MIDI 音符时值必须为正数");
+          allNotes.push({ startTick: note.tick, endTick: absoluteTick, midi: note.midi, velocity: note.velocity });
+        }
+      }
+      if (!reachedEnd) throw new Error(`第 ${trackIndex + 1} 条 MIDI 轨道缺少 EOT 事件`);
+      if (active.size && Array.from(active.values()).some((stack) => stack.length)) {
+        throw new Error(`第 ${trackIndex + 1} 条 MIDI 轨道存在未关闭的音符`);
+      }
+    }
+    if (offset !== bytes.length) throw new Error("MIDI 文件末尾存在额外数据");
+    if (!allNotes.length) throw new Error("MIDI 中没有音符事件");
+
+    const meter = firstMeter ? { numerator: firstMeter.numerator, denominator: firstMeter.denominator } : { ...DEFAULT_METER };
+    const totalBeats = visibleBeats(meter);
+    const imported = [];
+    allNotes.sort((a, b) => a.startTick - b.startTick || a.midi - b.midi);
+    allNotes.forEach((source) => {
+      const rawStart = source.startTick / division;
+      const rawDuration = (source.endTick - source.startTick) / division;
+      const start = Math.round(rawStart * 4) / 4;
+      const duration = Math.round(rawDuration * 4) / 4;
+      if (source.midi < LOWEST_MIDI || source.midi >= LOWEST_MIDI + ROWS || start < 0 || start >= totalBeats || duration < 0.25) {
+        skipped += 1;
+        return;
+      }
+      const clippedDuration = Math.min(duration, totalBeats - start);
+      if (clippedDuration < 0.25) {
+        skipped += 1;
+        return;
+      }
+      imported.push({ midi: source.midi, start, duration: clippedDuration, velocity: source.velocity });
+    });
+    if (!imported.length) throw new Error("没有找到当前卷帘可显示的音符（范围为 C4–B5、前 4 小节）");
+    const tempo = firstTempo ? clamp(60000000 / firstTempo.micros, 30, 240) : clamp(Number(dom.tempo.value) || 96, 30, 240);
+    return { notes: imported, tempo, skipped, timeSignature: meter, format };
+  }
+
+  function midiVlq(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0x0fffffff) throw new Error("MIDI delta 超出范围");
+    let buffer = value & 0x7f;
+    const bytes = [];
+    while ((value >>= 7)) {
+      buffer = (value & 0x7f) | 0x80;
+      bytes.unshift(buffer);
+    }
+    bytes.push(buffer & 0x7f);
+    return bytes;
+  }
+
+  function midiU32(value) {
+    return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+  }
+
+  function midiTrackChunk(content) {
+    return [0x4d, 0x54, 0x72, 0x6b, ...midiU32(content.length), ...content];
+  }
+
+  function midiFile() {
+    const tempo = clamp(Number(dom.tempo.value) || 96, 30, 240);
+    const micros = Math.round(60000000 / tempo);
+    const denominatorExponent = Math.round(Math.log2(timeSignature.denominator));
+    const conductor = [
+      0x00, 0xff, 0x51, 0x03, (micros >> 16) & 0xff, (micros >> 8) & 0xff, micros & 0xff,
+      0x00, 0xff, 0x58, 0x04, timeSignature.numerator, denominatorExponent, 0x18, 0x08,
+      0x00, 0xff, 0x2f, 0x00
+    ];
+    const events = [];
+    notes.forEach((note) => {
+      const start = Math.max(0, Math.round(Number(note.start) * PPQ));
+      const end = Math.max(start + 1, Math.round((Number(note.start) + Number(note.duration)) * PPQ));
+      events.push({ tick: start, kind: 1, midi: note.midi, velocity: note.velocity });
+      events.push({ tick: end, kind: 0, midi: note.midi, velocity: 0 });
+    });
+    events.sort((a, b) => a.tick - b.tick || a.kind - b.kind || a.midi - b.midi);
+    const noteTrack = [];
+    let cursor = 0;
+    events.forEach((event) => {
+      noteTrack.push(...midiVlq(event.tick - cursor));
+      noteTrack.push(event.kind ? 0x90 : 0x80, event.midi & 0x7f, event.velocity & 0x7f);
+      cursor = event.tick;
+    });
+    noteTrack.push(0x00, 0xff, 0x2f, 0x00);
+    const header = [0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, (PPQ >> 8) & 0x7f, PPQ & 0xff];
+    return new Uint8Array([...header, ...midiTrackChunk(conductor), ...midiTrackChunk(noteTrack)]);
+  }
+
+  async function importMidiFile(file) {
+    stopPlayback();
+    try {
+      const result = parseMidiFile(await file.arrayBuffer());
+      // Parsing completed before this mutation, so malformed files leave the
+      // current document, selection, undo stack and recovery copy untouched.
+      commitMutation(() => {
+        notes = result.notes.map((note) => ({ ...note, id: nextId++ }));
+        selectedId = null;
+        dom.noteForm.hidden = true;
+        dom.hint.hidden = false;
+        dom.tempo.value = String(result.tempo);
+        timeSignature = { ...result.timeSignature };
+        syncMeterControls();
+        renderBeatLabels();
+        renderRoll();
+      });
+      const suffix = result.skipped ? `，忽略 ${result.skipped} 个超出当前范围的事件` : "";
+      setStatus(`已导入 MIDI Type ${result.format}（${notes.length} 个音符）${suffix}`);
+    } catch (error) {
+      setStatus(`MIDI 导入失败：${error.message}`);
+    } finally {
+      dom.midiFile.value = "";
+    }
+  }
+
+  function downloadMidi() {
+    const blob = new Blob([midiFile()], { type: "audio/midi" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "classical-daw-sketch.mid";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
+    setStatus("已导出 MIDI Type 1（960 PPQ）");
+  }
+
   function xmlEscape(value) {
     return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   }
@@ -925,6 +1181,12 @@ ${lines.join("\n")}
     if (file) importMusicXmlFile(file);
   });
   dom.exportButton.addEventListener("click", downloadMusicXml);
+  dom.importMidiButton.addEventListener("click", () => dom.midiFile.click());
+  dom.midiFile.addEventListener("change", () => {
+    const [file] = dom.midiFile.files || [];
+    if (file) importMidiFile(file);
+  });
+  dom.exportMidiButton.addEventListener("click", downloadMidi);
   dom.saveProject.addEventListener("click", downloadProject);
   dom.openProject.addEventListener("click", () => dom.projectFile.click());
   dom.projectFile.addEventListener("change", () => {
