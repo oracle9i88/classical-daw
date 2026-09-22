@@ -16,7 +16,9 @@ bool checkStatus(OSStatus status, const char* operation, std::string* error) {
 
 }  // namespace
 
-CoreAudioOutput::CoreAudioOutput(CoreAudioOutputConfig config) : config_(config) {}
+CoreAudioOutput::CoreAudioOutput(CoreAudioOutputConfig config) : config_(config) {
+  scheduler_.setInstrumentRenderer(&synth_);
+}
 
 CoreAudioOutput::~CoreAudioOutput() { stop(); }
 
