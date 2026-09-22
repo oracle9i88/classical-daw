@@ -6,13 +6,16 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Preserve initial and later step tempos through MIDI ↔ Score ↔ project v4,
+  history and recovery; use them for offline rendering. Read v1–3 projects as
+  constant-tempo scores and report later-tempo omissions on MusicXML export.
 - Add one offline, tempo-aware MIDI event timeline with shared channel state,
   sustain/volume/expression/bend and all-notes/sound/reset controls; apply it
   to Score rendering and expose a local MIDI-to-WAV diagnostic CLI. Cover
   audible controller behavior, ordering, note identity, and failure guarantees.
 - Preserve CC, Program Change, Pitch Bend, poly/channel pressure, original
   note channels, release velocity, and same-tick order through SMF → Score →
-  native project v3 → SMF. Keep event-only tracks and v1/v2 read compatibility.
+  native project → SMF. Keep event-only tracks and legacy read compatibility.
 - Expose omitted performance metadata in MusicXML export reports; realtime
   controller playback and equivalent browser support remain pending.
 - Import positive SMF PPQ 1–32767 into the 960-PPQ core using absolute boundary
@@ -43,7 +46,7 @@ not count as completion.
 - Add the inverse MIDI-to-Score bridge: non-empty 960-PPQ tracks become ordered
   score parts with track names, note timing, pitch, velocity, and channel-backed
   voices. The importer carries the first MIDI meter event (defaulting to 4/4)
-  and first-valid-tempo mapping, and its multi-track round-trip is covered by
+  and the complete step-tempo map, and its multi-track round-trip is covered by
   normal and sanitizer tests.
 - Add the platform-neutral M0 transport skeleton: bounded SPSC command ring,
   block scheduler, and xrun counter with no callback allocation or locks.
@@ -88,7 +91,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize full tempo and meter maps through Score/project persistence, then
+Prioritize meter maps through Score/project persistence and MusicXML tempo directions, then
 extend the offline controller support to realtime playback and add an instrument/port routing layer
 (including GM percussion and orchestras spanning multiple MIDI ports).
 Channel-event data now survives native interchange and the offline sine

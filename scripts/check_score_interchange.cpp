@@ -2,7 +2,7 @@
 // The output directory must not exist; generated MusicXML stays there for review.
 // Build from the repository root:
 // c++ -std=c++17 -Isrc/engine/include scripts/check_score_interchange.cpp \
-//   src/engine/{midi,score,score_midi,tempo_map}.cpp -o /tmp/check_score_interchange
+//   src/engine/{midi,score,score_midi,score_tempo,tempo_map}.cpp -o /tmp/check_score_interchange
 // Usage: check_score_interchange NEW_OUTPUT_DIRECTORY INPUT_MIDI [INPUT_MIDI ...]
 
 #include "daw/score_midi.hpp"
@@ -67,7 +67,8 @@ bool checkFile(const std::string& input_path, const std::filesystem::path& xml_p
   daw::MusicXmlExportReport omissions;
   if (!daw::writeMusicXmlFile(score, xml_path.string(), &error, &omissions)) return failure("writeMusicXmlFile");
   std::cout << "  MusicXML omitted_channel_events=" << omissions.omitted_midi_events
-            << " omitted_note_playback_metadata=" << omissions.omitted_note_midi_metadata << '\n';
+            << " omitted_note_playback_metadata=" << omissions.omitted_note_midi_metadata
+            << " omitted_tempo_changes=" << omissions.omitted_tempo_changes << '\n';
   if (!daw::readMusicXmlFile(xml_path.string(), &restored, &error)) return failure("readMusicXmlFile");
   if (!daw::scoreToMidiFile(restored, &exported, &error)) return failure("scoreToMidiFile");
 

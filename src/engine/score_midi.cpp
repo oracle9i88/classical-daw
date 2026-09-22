@@ -107,7 +107,7 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     converted.format = 1;
     converted.ticks_per_quarter = kTicksPerQuarter;
     converted.time_signature = score.time_signature;
-    converted.tempo = TempoMap(score.bpm);
+    converted.tempo = scoreTempoMap(score);
     converted.tracks.reserve(score.parts.size());
     bool has_playback_content = false;
     for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
@@ -260,21 +260,16 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
                                kTicksPerQuarter * 4 / midi.time_signature.denominator;
     if (measure_ticks <= 0) throw std::invalid_argument("MIDI time signature produces an empty measure");
 
-    double first_bpm = 0.0;
-    for (const TempoChange& change : midi.tempo.changes()) {
-      if (std::isfinite(change.bpm) && change.bpm > 0.0) {
-        first_bpm = change.bpm;
-        break;
-      }
-    }
-    if (!(first_bpm > 0.0)) {
-      throw std::invalid_argument("MIDI import requires a valid tempo");
-    }
-
     Score converted;
     converted.divisions = kTicksPerQuarter;
     converted.time_signature = midi.time_signature;
-    converted.bpm = first_bpm;
+    const auto& tempos = midi.tempo.changes();
+    if (tempos.empty() || tempos.front().tick != 0 || tempos.size() - 1 > kMaxScoreTempoChanges) {
+      throw std::invalid_argument("MIDI import requires an initial tempo and a bounded tempo map");
+    }
+    converted.bpm = tempos.front().bpm;
+    converted.tempo_changes.assign(tempos.begin() + 1, tempos.end());
+    (void)scoreTempoMap(converted);
     converted.parts.reserve(midi.tracks.size());
 
     for (std::size_t track_index = 0; track_index < midi.tracks.size(); ++track_index) {

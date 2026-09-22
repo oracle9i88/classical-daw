@@ -127,9 +127,7 @@ bool validStep(char step) {
 
 bool validateScore(const Score& score, std::string* error) {
   if (score.divisions <= 0 || score.divisions > 1'000'000) return fail(error, "project divisions out of range");
-  if (!std::isfinite(score.bpm) || score.bpm <= 0.0 || score.bpm > 1'000'000.0) {
-    return fail(error, "project bpm out of range");
-  }
+  (void)scoreTempoMap(score);
   if (!validMeter(score.time_signature)) return fail(error, "project time signature out of range");
   if (score.parts.size() > kMaxParts) return fail(error, "project has too many parts");
   std::uint64_t total_measures = 0;
@@ -244,11 +242,15 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
 
     std::ostringstream output;
     output.precision(17);
-    // Version 3 retains note playback identity and per-part channel events.
-    // Legacy versions default those fields; version 1 also defaults lyrics.
-    output << "CLASSICAL_DAW_PROJECT 3\n";
+    // Version 4 retains later tempo changes; earlier versions remain constant
+    // tempo. Version 3 added MIDI metadata, and version 2 added lyrics.
+    output << "CLASSICAL_DAW_PROJECT 4\n";
     output << "divisions " << score.divisions << "\n";
     output << "bpm " << score.bpm << "\n";
+    output << "tempo_changes " << score.tempo_changes.size() << "\n";
+    for (const TempoChange& change : score.tempo_changes) {
+      output << "tempo " << change.tick << ' ' << change.bpm << "\n";
+    }
     output << "meter " << static_cast<unsigned int>(score.time_signature.numerator) << ' '
            << static_cast<unsigned int>(score.time_signature.denominator) << "\n";
     output << "parts " << score.parts.size() << "\n";
@@ -341,7 +343,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
     std::uint64_t project_version = 0;
-    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 3) {
+    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 4) {
       return fail(error, "unsupported project version: " + arguments[0]);
     }
 
@@ -351,6 +353,20 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     }
     if (!expectLine(&reader, "bpm", 1, &arguments, error) || !parseDouble(arguments[0], &parsed.bpm)) {
       return fail(error, "invalid project bpm");
+    }
+    if (project_version >= 4) {
+      if (!expectLine(&reader, "tempo_changes", 1, &arguments, error)) return false;
+      std::size_t tempo_count = 0;
+      if (!parseCount(arguments[0], kMaxScoreTempoChanges, &tempo_count, error, "tempo change")) return false;
+      parsed.tempo_changes.reserve(tempo_count);
+      for (std::size_t index = 0; index < tempo_count; ++index) {
+        TempoChange change;
+        if (!expectLine(&reader, "tempo", 2, &arguments, error) ||
+            !parseSigned(arguments[0], &change.tick) || !parseDouble(arguments[1], &change.bpm)) {
+          return fail(error, "invalid project tempo change");
+        }
+        parsed.tempo_changes.push_back(change);
+      }
     }
     if (!expectLine(&reader, "meter", 2, &arguments, error) || !parseUnsigned(arguments[0], &parsed.time_signature.numerator) ||
         !parseUnsigned(arguments[1], &parsed.time_signature.denominator) || !validMeter(parsed.time_signature)) {

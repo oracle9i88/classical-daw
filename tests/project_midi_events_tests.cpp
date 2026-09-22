@@ -57,7 +57,12 @@ std::string replace(const std::string& text, const std::string& from, const std:
 bool equal(const Score& a, const Score& b) {
   if (a.divisions != b.divisions || a.bpm != b.bpm ||
       a.time_signature.numerator != b.time_signature.numerator ||
-      a.time_signature.denominator != b.time_signature.denominator || a.parts.size() != b.parts.size()) return false;
+      a.time_signature.denominator != b.time_signature.denominator || a.parts.size() != b.parts.size() ||
+      a.tempo_changes.size() != b.tempo_changes.size()) return false;
+  for (std::size_t index = 0; index < a.tempo_changes.size(); ++index) {
+    if (a.tempo_changes[index].tick != b.tempo_changes[index].tick ||
+        a.tempo_changes[index].bpm != b.tempo_changes[index].bpm) return false;
+  }
   for (std::size_t p = 0; p < a.parts.size(); ++p) {
     const auto& x = a.parts[p];
     const auto& y = b.parts[p];
@@ -120,26 +125,29 @@ void run() {
   const auto invalid_path = files.directory / "invalid.cdaw";
   const Score original = fixture();
   std::string error;
-  require(writeProjectFile(original, path.string(), &error), "write v3: " + error);
+  require(writeProjectFile(original, path.string(), &error), "write v4: " + error);
   const std::string serialized = readText(path);
-  require(serialized.rfind("CLASSICAL_DAW_PROJECT 3\n", 0) == 0, "v3 header");
+  require(serialized.rfind("CLASSICAL_DAW_PROJECT 4\n", 0) == 0, "v4 header");
   Score loaded;
   require(readProjectFile(path.string(), &loaded, &error) && equal(loaded, original),
           "all MIDI event types, full uint64 orders and event-only part round trip: " + error);
 
-  // Real legacy layouts omit every new field, rather than accepting v3 data
-  // under an old header. Existing note data and v2 lyrics remain intact.
-  for (const int version : {1, 2}) {
+  // Real legacy layouts omit later tempo changes and any fields not yet
+  // introduced in that version. Note data and supported metadata stay intact.
+  for (const int version : {1, 2, 3}) {
     std::istringstream input(serialized);
     std::ostringstream legacy;
     std::string line;
     while (std::getline(input, line)) {
-      if (line.rfind("midi_", 0) == 0 || (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
+      if (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0 ||
+          (version < 3 && line.rfind("midi_", 0) == 0) ||
+          (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }
     Score expected = original;
     for (auto& part : expected.parts) {
+      if (version >= 3) continue;
       part.midi_events.clear();
       for (auto& measure : part.measures) {
         for (auto& note : measure.notes) {

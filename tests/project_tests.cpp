@@ -17,8 +17,12 @@ int fail(const std::string& message) {
 bool equalScore(const daw::Score& left, const daw::Score& right) {
   if (left.divisions != right.divisions || left.time_signature.numerator != right.time_signature.numerator ||
       left.time_signature.denominator != right.time_signature.denominator || left.bpm != right.bpm ||
-      left.parts.size() != right.parts.size()) {
+      left.parts.size() != right.parts.size() || left.tempo_changes.size() != right.tempo_changes.size()) {
     return false;
+  }
+  for (std::size_t index = 0; index < left.tempo_changes.size(); ++index) {
+    if (left.tempo_changes[index].tick != right.tempo_changes[index].tick ||
+        left.tempo_changes[index].bpm != right.tempo_changes[index].bpm) return false;
   }
   for (std::size_t part_index = 0; part_index < left.parts.size(); ++part_index) {
     const daw::ScorePart& a = left.parts[part_index];
@@ -100,20 +104,23 @@ int main() {
 
   std::string serialized;
   if (!readText(path, &serialized)) return fail("project fixture read");
-  if (serialized.rfind("CLASSICAL_DAW_PROJECT 3\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
+  if (serialized.rfind("CLASSICAL_DAW_PROJECT 4\n", 0) != 0 || serialized.find("end_project\n") == std::string::npos ||
       serialized.find("lyric ") == std::string::npos) {
     return fail("project format header/footer");
   }
 
-  // Legacy files lack MIDI fields, and version 1 also predates lyrics.
-  for (const int version : {1, 2}) {
+  // Legacy files lack later tempos; versions 1/2 lack MIDI fields, and
+  // version 1 also predates lyrics.
+  for (const int version : {1, 2, 3}) {
     Score legacy_expected = source;
     if (version == 1) legacy_expected.parts[0].measures[0].notes[0].lyric.clear();
     std::istringstream current(serialized);
     std::ostringstream legacy;
     std::string line;
     while (std::getline(current, line)) {
-      if (line.rfind("midi_", 0) == 0 || (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
+      if (line.rfind("tempo_changes ", 0) == 0 || line.rfind("tempo ", 0) == 0 ||
+          (version < 3 && line.rfind("midi_", 0) == 0) ||
+          (version == 1 && line.rfind("lyric ", 0) == 0)) continue;
       if (line.rfind("CLASSICAL_DAW_PROJECT ", 0) == 0) line = "CLASSICAL_DAW_PROJECT " + std::to_string(version);
       legacy << line << '\n';
     }
@@ -127,7 +134,7 @@ int main() {
   loaded = source;
   const Score sentinel = loaded;
   std::string unknown_version = serialized;
-  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 3").size(), "CLASSICAL_DAW_PROJECT 99");
+  unknown_version.replace(0, std::string("CLASSICAL_DAW_PROJECT 4").size(), "CLASSICAL_DAW_PROJECT 99");
   if (!writeText(path, unknown_version)) return fail("unknown-version fixture write");
   if (readProjectFile(path.string(), &loaded, &error)) return fail("unknown project version accepted");
   if (!equalScore(loaded, sentinel)) return fail("unknown-version read mutated score");

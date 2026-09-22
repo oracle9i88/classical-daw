@@ -2,6 +2,7 @@
 
 #include "daw/types.hpp"
 #include "daw/midi_event.hpp"
+#include "daw/tempo_map.hpp"
 
 #include <cstdint>
 #include <string>
@@ -62,7 +63,20 @@ struct Score {
   TimeSignature time_signature{};
   double bpm = 120.0;
   std::vector<ScorePart> parts;
+  // bpm is the authoritative tempo at tick zero. These later changes use
+  // absolute 960-PPQ ticks, strictly increasing and greater than zero.
+  // Empty preserves the legacy constant-tempo behavior. Values are steps,
+  // not continuous ramps; changing bpm does not scale the later tempos.
+  std::vector<TempoChange> tempo_changes{};
 };
+
+inline constexpr std::size_t kMaxScoreTempoChanges = 1'000'000;
+
+// Validate and construct the complete playback map. All BPM values must be
+// finite, positive and <= 1,000,000; at most kMaxScoreTempoChanges later
+// entries are accepted. Invalid/duplicate/unsorted entries throw rather than
+// being silently reordered or replacing the initial bpm.
+TempoMap scoreTempoMap(const Score& score);
 
 // This first vertical slice supports ordered parts with multiple voices/staves.
 // It preserves pitch, integer duration, rests, chords, ties, tuplets, meter,
@@ -73,6 +87,9 @@ struct MusicXmlExportReport {
   // MusicXML notation slice omits them. Unchanged on failed export.
   std::uint64_t omitted_midi_events = 0;
   std::uint64_t omitted_note_midi_metadata = 0;
+  // The current MusicXML slice writes only the initial tempo. Native project
+  // v4 and SMF retain all tempo changes; this counter makes XML loss visible.
+  std::uint64_t omitted_tempo_changes = 0;
 };
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr,
                        MusicXmlExportReport* report = nullptr);

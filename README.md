@@ -21,7 +21,7 @@ validating score timing and audio rendering before platform integration.
   import/export.
 - A deterministic Score-to-SMF bridge for exporting ordered score parts as a
   Type 1 MIDI track per part, retaining note timing, pitch, velocity, voices as
-  events, and BPM. Imported notes retain their original MIDI channels and
+  events, and the complete step-tempo map. Imported notes retain their original MIDI channels and
   same-tick event order, including bank/program/CC/pressure/bend messages and
   event-only tracks. Newly authored notes use their part's default channel;
   more than 16 parts require explicit note channels. Tuplet spelling is represented by its
@@ -37,8 +37,8 @@ validating score timing and audio rendering before platform integration.
   ordered score parts for each non-empty track, retaining track names, note
   timing, pitch, velocity, and MIDI channels as score voices and playback metadata. Empty tempo-only
   tracks are skipped. It carries the first MIDI meter event, or defaults to 4/4
-  when the file has none, and uses the first valid MIDI tempo, so an imported
-  file can continue through MusicXML or project persistence. Long notes are
+  when the file has none, and retains the initial tempo plus all later tempo
+  changes through native project persistence. Long notes are
   split into tied notation segments at barlines. The file reader normalizes
   other source PPQs before this bridge runs.
 - A platform-neutral realtime transport skeleton with a bounded SPSC command
@@ -48,9 +48,9 @@ validating score timing and audio rendering before platform integration.
   selection before start, and connects that scheduler to a silence-safe
   callback with a fixed polyphonic sine diagnostic voice.
 - A versioned, line-oriented project file format with strict validation and
-  atomic replacement. Version 3 preserves note routing, message order, release
+  atomic replacement. Version 4 adds the complete tempo map; version 3 added note routing, message order, release
   velocity, and per-part MIDI events through save/reload, undo/redo, and recovery;
-  the reader still accepts version 1 and 2 projects.
+  the reader still accepts version 1, 2 and 3 projects as constant-tempo scores.
 - A crash-recovery sidecar writer and loader that tries the primary project,
   `.recovery`, then interrupted `.tmp` data without overwriting the primary
   file or mutating the output on total failure.
@@ -89,8 +89,9 @@ enharmonic spelling and meter changes remain future fields.
 SysEx and subsequent meter events are counted but not retained. The offline
 sine renderer interprets the controls listed above; program changes, pressure,
 pan, effects, RPN/bend-range changes and other controls remain unsupported and
-are counted. This does not extend the realtime CoreAudio synth. The MIDI model retains tempo changes,
-but conversion into the current single-BPM Score discards subsequent tempos.
+are counted. This does not extend the realtime CoreAudio synth. Tempo changes
+survive MIDI ↔ Score ↔ native project v4 and affect offline rendering. These
+are discrete tempo steps; continuous tempo ramps are not implemented.
 Same-channel/pitch note overlaps use LIFO pairing and are reported as ambiguous;
 orphan note-offs, unclosed notes, and notes collapsed by PPQ rounding are rejected.
 Conversion into Score rejects same-channel/pitch overlaps, which its current
@@ -101,7 +102,7 @@ Channel 9 is not yet reserved for percussion by the score exporter: instrument
 routing for newly authored notes must be implemented before using this bridge
 for a full orchestra. Explicit imported routes are retained.
 The current MusicXML notation export omits raw MIDI channel events, note routing,
-source-message order, and release velocity; `MusicXmlExportReport` counts these
+source-message order, release velocity and later tempo changes; `MusicXmlExportReport` counts these
 omissions. Use native projects and MIDI to retain them. The web prototype has
 its own model and does not yet share these C++ event-preservation features.
 There is no production instrument library, score engraving, automation, mixer,
@@ -156,11 +157,13 @@ remaining interchange gaps, plus the commands for the MIDI→MusicXML→MIDI
 comparison tool `scripts/check_score_interchange.cpp`, are recorded in
 [`docs/research/2026-09-23-lilypond-midi.md`](docs/research/2026-09-23-lilypond-midi.md).
 The performance comparator independently checks channel-message data and
-relative order through direct SMF and native-project round-trips (normalizing
-zero-velocity note-on to its equivalent note-off); it
-excludes tempo/meter/meta/SysEx semantics.
+relative order plus canonical tempo maps through direct SMF and native-project
+round-trips (normalizing zero-velocity note-on to its equivalent note-off).
+Meter, non-tempo metadata and SysEx remain outside the comparison.
 See [the MIDI performance preservation record](docs/research/2026-09-23-midi-performance-events.md)
 for the native-project format change, message ordering rules, and remaining playback limits.
+The [tempo persistence record](docs/research/2026-09-23-score-tempo-persistence.md)
+documents project v4, legacy compatibility and the multi-tempo corpus checks.
 
 ## Planned macOS slices
 

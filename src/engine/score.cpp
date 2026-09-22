@@ -31,6 +31,29 @@ std::string trim(std::string value) {
   return std::string(first, last);
 }
 
+// MusicXML's tempo is an XML Schema decimal, which has no exponent notation.
+// Expand the round-trippable double spelling instead of fixed precision that
+// could turn a small, positive tempo into zero.
+std::string tempoDecimal(double bpm) {
+  std::ostringstream output;
+  output.imbue(std::locale::classic());
+  output << std::setprecision(std::numeric_limits<double>::max_digits10) << bpm;
+  std::string value = output.str();
+  const auto exponent_at = value.find_first_of("eE");
+  if (exponent_at == std::string::npos) return value;
+  const int exponent = std::stoi(value.substr(exponent_at + 1));
+  std::string digits = value.substr(0, exponent_at);
+  const auto dot = digits.find('.');
+  int decimal_position = static_cast<int>(dot == std::string::npos ? digits.size() : dot);
+  if (dot != std::string::npos) digits.erase(dot, 1);
+  decimal_position += exponent;
+  if (decimal_position <= 0) return "0." + std::string(static_cast<std::size_t>(-decimal_position), '0') + digits;
+  const auto position = static_cast<std::size_t>(decimal_position);
+  if (position >= digits.size()) return digits + std::string(position - digits.size(), '0');
+  digits.insert(position, 1, '.');
+  return digits;
+}
+
 bool tagBoundary(char c) {
   return std::isspace(static_cast<unsigned char>(c)) != 0 || c == '>' || c == '/';
 }
@@ -290,11 +313,12 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
   try {
     if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
-    if (!std::isfinite(score.bpm) || score.bpm <= 0.0) throw std::invalid_argument("score tempo must be finite and positive");
+    (void)scoreTempoMap(score);
     (void)measureLength(score.time_signature);
 
     std::map<std::string, bool> part_ids;
     MusicXmlExportReport omissions;
+    omissions.omitted_tempo_changes = score.tempo_changes.size();
     for (const ScorePart& part : score.parts) {
       if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
       if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");
@@ -307,6 +331,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
     }
     std::ostringstream output;
     output.imbue(std::locale::classic());
+    output.precision(std::numeric_limits<double>::max_digits10);
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
            << "<score-partwise version=\"4.0\">\n"
            << "  <part-list>\n";
@@ -325,7 +350,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
           output << "      <attributes><divisions>" << score.divisions << "</divisions><time><beats>"
                  << static_cast<int>(score.time_signature.numerator) << "</beats><beat-type>"
                  << static_cast<int>(score.time_signature.denominator) << "</beat-type></time></attributes>\n"
-                 << "      <direction><sound tempo=\"" << score.bpm << "\"/></direction>\n";
+                 << "      <direction><sound tempo=\"" << tempoDecimal(score.bpm) << "\"/></direction>\n";
         }
         using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
         std::map<VoiceKey, std::vector<ScoreNote>> streams;
@@ -634,6 +659,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       parsed.parts.push_back(parse_part(part_block, name->second));
     }
     if (seen_parts.size() != part_names.size()) throw std::runtime_error("MusicXML part-list contains an unreferenced score-part");
+    (void)scoreTempoMap(parsed);
     *score = std::move(parsed);
     return true;
   } catch (const std::exception& exception) {

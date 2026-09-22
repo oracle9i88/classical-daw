@@ -1,5 +1,9 @@
 # Offline MIDI performance rendering — 2026-09-23
 
+Subsequent update: [project v4 tempo persistence](2026-09-23-score-tempo-persistence.md)
+removes the single-BPM Score limitation recorded below. This document retains
+the original controller-rendering acceptance baseline.
+
 This slice makes retained performance events affect a diagnostic audio signal.
 It is original C++ code, uses no external sound library, and does not implement
 a production piano/orchestral instrument or connect this renderer to CoreAudio.

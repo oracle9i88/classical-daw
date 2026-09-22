@@ -29,5 +29,5 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::cout << "Wrote direct.mid, roundtrip.dawproj, project.mid for independent comparison.\n"
-            << "Score still carries only one tempo/meter; this tool does not assert lossless notation.\n";
+            << "Score retains the tempo map, but only one meter; this tool does not assert lossless notation.\n";
 }

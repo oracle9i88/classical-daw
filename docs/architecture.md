@@ -77,8 +77,8 @@ The inverse MIDI-to-Score adapter follows the ordered SMF tracks and creates one
 score part per track containing notes or channel events; metadata-only tracks are skipped. It retains track
 names, note timing, pitch, velocity, and channel (as `voice = channel + 1`),
 then assigns notes to a measure grid using the first MIDI meter event, defaulting
-to 4/4. It accepts only the engine's 960-PPQ domain and carries the first valid
-tempo into `Score::bpm`; canonical sharp spellings are used until a key-aware
+to 4/4. It accepts only the engine's 960-PPQ domain and carries tick-zero
+tempo into `Score::bpm`, with later entries in `Score::tempo_changes`; canonical sharp spellings are used until a key-aware
 notation layer is available. The SMF file reader normalizes source PPQ before
 invoking this adapter. Notes crossing barlines are split into notation segments
 with ties, and simultaneous segments in a voice receive chord markers. Both directions remain worker-thread operations
@@ -95,16 +95,26 @@ relative order within imported events is unchanged. Tie splitting
 keeps the attack ordinal only on the first segment and the release ordinal/
 velocity only on the last segment. Project v3 persists these fields and all
 part events; v1/v2 load with their original defaults. Copy-based history and
-recovery retain them without touching the realtime callback.
+recovery retain them without touching the realtime callback. Project v4 adds
+`tempo_changes N` and `tempo tick bpm` rows after the initial `bpm` field.
+Versions 1–3 retain their existing fields and load with an empty later-tempo
+vector. `Score::bpm` is the only tick-zero authority; changing it does not
+rescale later entries. `scoreTempoMap` validates positive, strictly increasing
+absolute ticks and finite BPM values in (0, 1,000,000], with at most one million
+later changes. Duplicate or unsorted entries fail rather than being rewritten.
+Undo/redo/snapshot swap this vector along with the rest of the score, and
+project/recovery snapshots persist it. The in-memory undo stack is not itself
+serialized. Tempo changes during a tied note change elapsed time without
+splitting the sounding voice or changing its tick duration.
 Editors must clear source ordinals on moved/repitched notes or edited endpoints.
 The SMF writer rejects stale explicit ordinals that would put a same-pitch
 retrigger before the preceding release, preserving an existing destination.
 
 This is not yet an orchestral interchange model. SysEx and later meter events
-are not retained. The SMF tempo map survives file import, but the single-BPM Score cannot
-retain its later changes. Keep the import report available to callers rather
+are not retained. The SMF tempo map survives file import, Score conversion and
+native persistence. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
-MusicXML currently omits raw performance metadata and exposes the omissions in
+MusicXML currently omits raw performance metadata and later tempo changes, exposing the omissions in
 `MusicXmlExportReport`; only native project/SMF paths retain it.
 
 The offline `renderMidiFile` merges note edges and channel events across tracks,
@@ -115,8 +125,8 @@ prevent same-pitch retriggers and cross-track unisons from terminating each
 other. All tracks share 16 channel states: CC7/11 gain, CC64 sustain, fixed
 two-semitone pitch bend, and CC120/121/123 are interpreted. Frequency changes
 preserve oscillator phase. The final mix is clamped once, with clipping counted.
-`renderNotes` and `renderScore` delegate to this path; the latter remains
-limited by Score's single BPM. The renderer uses dynamic storage, runs only
+`renderNotes` and `renderScore` delegate to this path with their complete tempo
+maps. The renderer uses dynamic storage, runs only
 offline, and has no connection to the realtime CoreAudio callback.
 
 The sine envelope has an 8 ms attack and 35 ms release after a key/pedal

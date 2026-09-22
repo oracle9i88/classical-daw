@@ -22,7 +22,8 @@ namespace daw {
 // and source order, and the last segment's release velocity and source order.
 // Dangling, discontinuous, ambiguous, or rest-attached ties fail without changing the
 // caller's MIDI model; they are never silently exported as repeated attacks.
-// The score's BPM becomes the tick-zero TempoMap entry.
+// The score's BPM becomes the tick-zero TempoMap entry; all later absolute
+// tempo_changes are validated and retained, including changes during ties.
 // The score's single time signature is serialized as the first MIDI meter
 // event; meter changes and other notation maps remain outside this bridge.
 bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);
@@ -35,8 +36,9 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nu
 // voices (channel + 1), their playback routes remain explicit, and notes use
 // canonical sharp spellings. Channel event bytes and source order are retained.
 // The import bridge deliberately accepts the engine's fixed 960-PPQ domain, carries the
-// first MIDI meter event (defaulting to 4/4), and uses the first valid tempo as
-// Score::bpm. Notes crossing barlines are split into tied score segments while
+// first MIDI meter event (defaulting to 4/4), and retains the initial tempo as
+// Score::bpm plus every later entry in Score::tempo_changes. Notes crossing
+// barlines are split into tied score segments while
 // preserving their total sounding duration and velocity. The first segment
 // carries the source note-on order, the last carries the note-off order and
 // release velocity, and all segments retain their original MIDI channel.
