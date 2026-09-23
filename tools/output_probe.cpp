@@ -107,6 +107,23 @@ int main(int argc, char** argv) {
     until([&] { return player.status().frame == 96000; }, "paused seek not applied");
     send(A::Play); level(.025);
     require(player.status().frame > 96000, "resume failed");
+    if (!output.checkHealth(&error)) throw std::runtime_error(error);
+    const auto selected_device = output.currentDeviceId();
+    output.stop();
+    player.suspendAfterOutputStopped();
+    const auto disconnected_at = player.status().frame;
+    require(!player.status().playing && disconnected_at > 96000, "device stop lost position");
+    require(!output.checkHealth(&error), "stopped output reported healthy");
+    // A mix edit accepted while there is no callback must survive restart.
+    require(mix.apply({P::Master, "", 0}, &player), "disconnected mix edit rejected");
+    player.suspendAfterOutputStopped();
+    if (!output.setOutputDevice(selected_device, &error)) throw std::runtime_error(error);
+    if (!output.start(&error)) throw std::runtime_error(error);
+    level(0);
+    require(player.status().frame == disconnected_at && !player.status().playing, "reconnect resumed without play");
+    if (!output.checkHealth(&error)) throw std::runtime_error(error);
+    send(A::Play); level(.05);
+    require(mix.undo(&player), "history lost across output restart"); level(.025);
     send(A::Stop);
     until([&] { return !player.status().playing && player.status().frame == 0; }, "stop failed"); level(0);
     require(!player.status().stream_failed, "stream disk error during hardware probe");
@@ -124,7 +141,7 @@ int main(int argc, char** argv) {
     require(output.xrunCount() == 0 && player.status().clipped_samples == 0 &&
         player.status().rejected_commands == 0, "errors during restart");
     require(output.setAudioSource(nullptr, &error), "stopped source detach failed");
-    std::cout << "PASS: actual hardware callbacks, play/pause/seek/stop, gain, master, mute/solo, undo/redo, restart; speaker output silenced\n";
+    std::cout << "PASS: actual hardware callbacks, play/pause/seek/stop, gain, master, mute/solo, undo/redo, health polling, paused reconnect and retained edits; speaker output silenced\n";
     return 0;
   } catch (const std::exception& e) { std::cerr << "Output probe failed: " << e.what() << '\n'; return 1; }
 }

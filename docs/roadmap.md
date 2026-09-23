@@ -6,6 +6,13 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add control-thread output health polling and explicit paused reconnect. Device,
+  format and callback faults latch; stop/join before draining accepted commands,
+  keeping position/mix/history and clearing stale transition audio. Verify
+  injected faults and actual silent CoreAudio restarts in both playback modes.
+  Physical unplug, sleep/wake and notification-based handover remain unverified.
+  See [output recovery](output-recovery.md).
+
 - Connect continuous AU chunk rendering to incremental frozen/PCM16 stem writers
   and a second bounded pass for the master. `--stream` and `--stream-frozen`
   use the two-hour plan; old buffered modes retain their limits. Verify
@@ -182,7 +189,8 @@ defines acceptance conditions; adding a UI shell does not close them.
 
 ### M0: realtime audio
 
-CoreAudio device-change notifications and reconnect remain, then extend the
+CoreAudio now has polled health detection and explicit paused reconnect. Add
+device-change notifications and physical unplug/sleep-wake checks, then extend the
 existing fixed block scheduler, bounded lock-free command/event queue, and xrun counter. The
 CoreMIDI adapter still needs a control-thread timestamp bridge into the new
 sample-event queue. The test harness must prove

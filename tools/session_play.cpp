@@ -19,6 +19,11 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <cerrno>
+#include <functional>
+#include <limits>
+#include <poll.h>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 namespace {
@@ -45,8 +50,38 @@ void help() {
   std::cout << "play | pause | stop | seek SECONDS | master DB\n"
                "gain PART DB | balance PART -1..1 | mute PART 0|1 | solo PART 0|1\n"
                "undo | redo | mix | save NEW_FILENAME | recovery | status | help | quit\n"
+               "devices | disconnect | reconnect [DEVICE_ID, 0=system default]\n"
                "Starts paused. Save writes a new sibling session; originals are never overwritten.\n";
 }
+// Keep health polling alive even with a partial command in a pipe/terminal.
+// std::getline would block indefinitely and its read-ahead cannot be mixed with poll.
+class CommandInput {
+ public:
+  bool next(std::string& line, const std::function<void()>& service) {
+    for (;;) {
+      service();
+      const auto newline = pending_.find('\n');
+      if (newline != std::string::npos) {
+        line = pending_.substr(0, newline); pending_.erase(0, newline+1); return true;
+      }
+      if (eof_) { line = std::move(pending_); pending_.clear(); return !line.empty(); }
+      pollfd descriptor{STDIN_FILENO, POLLIN, 0};
+      const int ready = ::poll(&descriptor, 1, 100);
+      if (ready < 0) { if (errno == EINTR) continue; throw std::runtime_error("command input poll failed"); }
+      if (!ready) continue;
+      if (descriptor.revents & (POLLERR | POLLNVAL)) throw std::runtime_error("command input unavailable");
+      char bytes[4096];
+      const auto count = ::read(STDIN_FILENO, bytes, sizeof(bytes));
+      if (count < 0) { if (errno == EINTR || errno == EAGAIN) continue; throw std::runtime_error("command input read failed"); }
+      if (!count) { eof_ = true; continue; }
+      pending_.append(bytes, static_cast<std::size_t>(count));
+      if (pending_.size() > 65536) throw std::runtime_error("command exceeds 64 KiB input limit");
+    }
+  }
+ private:
+  std::string pending_;
+  bool eof_ = false;
+};
 }
 int main(int argc, char** argv) {
   try {
@@ -123,7 +158,13 @@ int main(int argc, char** argv) {
       return status.clipped_samples ? 1 : 0;
     }
     daw::CoreAudioOutput output;
-    if (!output.setAudioSource(&player, &error) || !output.start(&error)) throw std::runtime_error(error);
+    if (!output.setAudioSource(&player, &error)) throw std::runtime_error(error);
+    std::string output_problem;
+    if (!output.start(&output_problem)) {
+      if (device_check) throw std::runtime_error(output_problem);
+      player.suspendAfterOutputStopped();
+      std::cerr << "Output unavailable: " << output_problem << "; use devices and reconnect\n";
+    }
     if (device_check) {
       // Deliberately paused: exercise real output lifecycle without sounding notes.
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -167,13 +208,53 @@ int main(int argc, char** argv) {
     };
     help();
     std::string line;
-    while (std::cout << "> " && std::getline(std::cin, line)) {
+    CommandInput commands;
+    auto service_output = [&] {
+      if (output.running() && !output.checkHealth(&output_problem)) {
+        output.stop(); player.suspendAfterOutputStopped();
+        std::cerr << "\nOutput suspended: " << output_problem << "; position and mix retained. Use reconnect, then play.\n";
+      }
+      // With no audio consumer, accept edits/seek/stop without advancing time.
+      if (!output.running()) player.suspendAfterOutputStopped();
+    };
+    while (std::cout << "> " << std::flush && commands.next(line, service_output)) {
       try {
         std::istringstream input(line); input.imbue(std::locale::classic());
         std::string word; input >> word;
         if (word.empty()) continue;
         if (word == "quit") { end(input); break; }
         if (word == "help") { end(input); help(); continue; }
+        if (word == "devices") {
+          end(input); error.clear();
+          const auto devices = output.enumerateOutputDevices(&error);
+          if (!error.empty()) throw std::runtime_error(error);
+          for (const auto& device : devices) std::cout << device.id << " " << std::quoted(device.name)
+              << (device.is_default ? " (default)" : "") << '\n';
+          continue;
+        }
+        if (word == "disconnect" || word == "reconnect") {
+          std::string id; input >> id;
+          if (word == "disconnect" && !id.empty()) throw std::runtime_error("disconnect takes no arguments");
+          input.clear(); end(input);
+          std::uint32_t device_id = 0;
+          if (!id.empty()) {
+            if (id.find_first_not_of("0123456789") != std::string::npos) throw std::runtime_error("device ID must be an unsigned integer");
+            const auto parsed = std::stoull(id);
+            if (parsed > std::numeric_limits<std::uint32_t>::max()) throw std::runtime_error("device ID out of range");
+            device_id = static_cast<std::uint32_t>(parsed);
+          }
+          output.stop(); player.suspendAfterOutputStopped();
+          output_problem = "output disconnected";
+          if (word == "reconnect") {
+            if ((!id.empty() && !output.setOutputDevice(device_id, &error)) || !output.start(&error)) {
+              output_problem = error; throw std::runtime_error("Reconnect failed; playback remains paused: " + error);
+            }
+            output_problem.clear();
+            std::cout << "Output reconnected, playback remains paused at " << static_cast<double>(player.status().frame)/48000
+                      << "s; enter play to resume. " << output.diagnostics() << '\n';
+          } else std::cout << "Output disconnected; position and mix retained.\n";
+          continue;
+        }
         if (word == "recovery") {
           end(input); checkpoint();
           std::cout << "Recovery saved revision=" << (recovery ? recovery->savedRevision() : 0)
@@ -213,12 +294,17 @@ int main(int argc, char** argv) {
                     << ", rejected commands=" << s.rejected_commands << ", callback errors=" << output.xrunCount()
                     << ", buffering frames=" << s.buffering_frames << ", buffering=" << s.buffering
                     << ", stream failed=" << s.stream_failed
+                    << ", output running=" << output.running() << ", output device=" << output.currentDeviceId()
+                    << ", output state=" << std::quoted(output_problem.empty() ? "healthy" : output_problem)
                     << ", recovery saved revision=" << (recovery ? recovery->savedRevision() : 0)
                     << ", mix revision=" << mix.revision() << ", undo=" << mix.canUndo() << ", redo=" << mix.canRedo() << '\n';
           continue;
         }
         daw::PlaybackCommand command;
-        if (word == "play") command.action = daw::PlaybackAction::Play;
+        if (word == "play") {
+          if (!output.running()) throw std::runtime_error("output is disconnected; use reconnect before play");
+          command.action = daw::PlaybackAction::Play;
+        }
         else if (word == "pause") command.action = daw::PlaybackAction::Pause;
         else if (word == "stop") command.action = daw::PlaybackAction::Stop;
         else if (word == "seek") {

@@ -149,6 +149,17 @@ void SessionPlayer::render(float* stereo, std::uint32_t frames) noexcept {
   visible_clipped_.store(clipped_, std::memory_order_relaxed);
   visible_peak_.store(peak, std::memory_order_relaxed);
 }
+void SessionPlayer::suspendAfterOutputStopped() noexcept {
+  PlaybackCommand command;
+  for (std::size_t i = 0; i < kCapacity && commands_.pop(&command); ++i) apply(command);
+  playing_ = false; buffering_ = false;
+  transition_left_ = 0; transition_from_ = {}; last_ = {};
+  targets(true); master_.current = master_.target; master_.remaining = 0;
+  visible_position_.store(position_, std::memory_order_relaxed);
+  visible_playing_.store(false, std::memory_order_relaxed);
+  visible_buffering_.store(false, std::memory_order_relaxed);
+  visible_peak_.store(0, std::memory_order_relaxed);
+}
 PlaybackStatus SessionPlayer::status() const noexcept {
   return {visible_position_.load(std::memory_order_relaxed), visible_clipped_.load(std::memory_order_relaxed),
           rejected_.load(std::memory_order_relaxed), visible_playing_.load(std::memory_order_relaxed),

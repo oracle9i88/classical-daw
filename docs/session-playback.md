@@ -39,6 +39,10 @@ quit
 ```
 
 Use the stable part IDs printed at startup; IDs with spaces can be quoted.
+For output interruptions, use `devices`, `disconnect`, and `reconnect [DEVICE_ID]`.
+The CLI polls device health while waiting for input; on detected failure it stops
+output and retains position/mix/history. Reconnect stays paused until `play`.
+See [recovery commands, polling limits and verification](output-recovery.md).
 Gain/master are bounded to -60..+12 dB; balance is -1..1; mute/solo require 0/1.
 Any solo selects solo tracks only; mute always wins, even on a soloed track.
 `pause` retains position, `stop` returns to frame zero. Seek takes seconds in
@@ -358,5 +362,6 @@ ASAN_OPTIONS=detect_leaks=0 build-sanitize/daw_frozen_stream_writer_tests --long
 The producer connection is now implemented by `daw_session_render --stream`
 and `--stream-frozen`: [commands, checks and remaining limits](streaming-export.md).
 Next work is real long performances and sustained storage validation, alongside
-live instrument input and device recovery. Short real export and synthetic
+live instrument input and deeper device recovery validation. The initial polled,
+paused reconnect is documented [here](output-recovery.md). Short real export and synthetic
 duration checks are not a substitute for that endurance test.

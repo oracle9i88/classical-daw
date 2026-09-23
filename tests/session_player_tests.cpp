@@ -152,6 +152,28 @@ int main() {
     command(parity, A::Play); block(parity); b = block(parity);
     for (std::size_t i = 0; i < b.size(); ++i) near(b[i], mix.samples[512 + i], "offline/realtime mix mismatch");
 
+    // Stop/join the output before moving its sole consumer to the control thread.
+    // Pending accepted edits survive a lost device even when the queue is full.
+    daw::SessionPlayer disconnected(settings(), sources());
+    command(disconnected, A::Play); block(disconnected);
+    const auto device_position = disconnected.status().frame;
+    command(disconnected, A::Gain, 0, -6);
+    command(disconnected, A::Mute, 1, 1);
+    command(disconnected, A::Master, 0, -3);
+    for (std::size_t i = 3; i < daw::SessionPlayer::kCapacity; ++i) command(disconnected, A::Play);
+    disconnected.suspendAfterOutputStopped();
+    require(!disconnected.status().playing && disconnected.status().frame == device_position &&
+            disconnected.status().block_peak == 0, "device suspension lost position or pause");
+    b = block(disconnected);
+    require(std::all_of(b.begin(), b.end(), [](float value) { return value == 0; }), "old transition leaked after device restart");
+    require(disconnected.status().frame == device_position, "paused restart advanced clock");
+    command(disconnected, A::Play); b = block(disconnected);
+    near(b[510], .1 * std::pow(10., -9./20.), "pending mix edit lost across device interruption");
+    command(disconnected, A::Seek, 0, 0, 1234); disconnected.suspendAfterOutputStopped();
+    require(disconnected.status().frame == 1234 && !disconnected.status().playing, "disconnected seek lost");
+    command(disconnected, A::Stop); disconnected.suspendAfterOutputStopped();
+    require(disconnected.status().frame == 0, "disconnected stop lost");
+
     // Clamping is a counted monitoring safety guard, never hidden normalization.
     auto hot = sources(); for (auto& a : hot) std::fill(a.samples.begin(), a.samples.end(), 10.F);
     daw::SessionPlayer overload(settings(), std::move(hot)); command(overload, A::Play); block(overload); b = block(overload);

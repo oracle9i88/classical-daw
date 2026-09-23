@@ -12,6 +12,10 @@
 
 namespace daw {
 namespace {
+std::uint64_t milliseconds() noexcept {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+}
 
 bool checkStatus(OSStatus status, const char* operation, std::string* error) {
   if (status == noErr) return true;
@@ -28,8 +32,13 @@ bool readDefaultOutputDevice(AudioDeviceID* device, std::string* error) {
                                     kAudioObjectPropertyScopeGlobal,
                                     kAudioObjectPropertyElementMain};
   UInt32 size = sizeof(*device);
-  return checkStatus(AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, device),
-                     "default output device", error) && *device != kAudioObjectUnknown;
+  if (!checkStatus(AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, device),
+                     "default output device", error)) return false;
+  if (*device == kAudioObjectUnknown) {
+    if (error) *error = "no default CoreAudio output device is available";
+    return false;
+  }
+  return true;
 }
 
 bool hasOutputChannels(AudioDeviceID device) {
@@ -193,8 +202,46 @@ bool CoreAudioOutput::start(std::string* error) {
     if (error) *error = "output failed callback readiness: " + diagnostics();
     stop(); return false;
   }
+  auto initial = healthSnapshot();
+  // Compare against the device/format actually used to prepare this AU, not a
+  // possibly changed route observed after startup. checkHealth takes a fresh
+  // snapshot and rejects a change during the readiness wait as well.
+  initial.device = current_device_id_;
+  initial.sample_rate = device_rate; initial.buffer_frames = device_frames;
+  health_.arm(initial, config_.device_id == 0, milliseconds());
+  if (!checkHealth(error)) { stop(); return false; }
   if (error) error->clear();
   return true;
+}
+
+OutputHealthSnapshot CoreAudioOutput::healthSnapshot() const noexcept {
+  OutputHealthSnapshot s;
+  s.device = current_device_id_; s.rendered_frames = renderedFrames(); s.callback_errors = xrunCount();
+  AudioDeviceID active = 0; UInt32 size = sizeof(active);
+  if (!audio_unit_ || AudioUnitGetProperty(audio_unit_, kAudioOutputUnitProperty_CurrentDevice,
+      kAudioUnitScope_Global, 0, &active, &size) != noErr) return s;
+  s.device = active;
+  AudioObjectPropertyAddress address{kAudioDevicePropertyDeviceIsAlive,
+      kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  UInt32 alive = 0; size = sizeof(alive);
+  if (AudioObjectGetPropertyData(current_device_id_, &address, 0, nullptr, &size, &alive) != noErr) return s;
+  s.alive = alive != 0;
+  address.mSelector = kAudioDevicePropertyBufferFrameSize; size = sizeof(s.buffer_frames);
+  if (AudioObjectGetPropertyData(current_device_id_, &address, 0, nullptr, &size, &s.buffer_frames) != noErr) return s;
+  address.mSelector = kAudioDevicePropertyNominalSampleRate; size = sizeof(s.sample_rate);
+  if (AudioObjectGetPropertyData(current_device_id_, &address, 0, nullptr, &size, &s.sample_rate) != noErr) return s;
+  if (config_.device_id == 0) {
+    address.mSelector = kAudioHardwarePropertyDefaultOutputDevice; size = sizeof(s.default_device);
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, nullptr, &size, &s.default_device) != noErr) return s;
+  }
+  s.readable = true;
+  return s;
+}
+
+bool CoreAudioOutput::checkHealth(std::string* error) {
+  const auto fault = running() ? health_.observe(healthSnapshot(), milliseconds()) : OutputFault::Stopped;
+  if (error) *error = fault == OutputFault::None ? "" : outputFaultText(fault);
+  return fault == OutputFault::None;
 }
 
 void CoreAudioOutput::stop() noexcept {
@@ -212,7 +259,9 @@ void CoreAudioOutput::stop() noexcept {
 std::vector<CoreAudioOutputDeviceInfo> CoreAudioOutput::enumerateOutputDevices(std::string* error) const {
   std::vector<CoreAudioOutputDeviceInfo> devices;
   AudioDeviceID default_device = kAudioObjectUnknown;
-  if (!readDefaultOutputDevice(&default_device, error)) return devices;
+  // A missing default must not prevent choosing another available output.
+  (void)readDefaultOutputDevice(&default_device, nullptr);
+  if (error) error->clear();
 
   AudioObjectPropertyAddress address{kAudioHardwarePropertyDevices,
                                     kAudioObjectPropertyScopeGlobal,

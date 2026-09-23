@@ -2,6 +2,7 @@
 
 #include "daw/realtime.hpp"
 #include "daw/audio_output_source.hpp"
+#include "daw/output_health.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
 
@@ -52,6 +53,10 @@ class CoreAudioOutput {
   // Control thread only, with output stopped. nullptr restores the diagnostic
   // synth path. The source must outlive this output's active callback.
   bool setAudioSource(AudioOutputSource* source, std::string* error = nullptr);
+  // Control-thread polling, recommended every 100 ms, including while paused.
+  // Latched faults require stop, source suspension, then explicit restart.
+  // Does not stop/restart the AU or alter the source on the caller's behalf.
+  bool checkHealth(std::string* error = nullptr);
   // Control-thread diagnostic only; reads AU/device properties, never called
   // by renderCallback. Does not change the system sample rate or buffer size.
   std::string diagnostics() const;
@@ -63,6 +68,8 @@ class CoreAudioOutput {
   [[nodiscard]] SineVoiceBank& synth() noexcept { return synth_; }
 
  private:
+  OutputHealthSnapshot healthSnapshot() const noexcept;
+  OutputHealthMonitor health_;
   static OSStatus renderCallback(void* reference,
                                  AudioUnitRenderActionFlags* action_flags,
                                  const AudioTimeStamp* timestamp,

@@ -36,6 +36,10 @@ class SessionPlayer final : public AudioOutputSource {
   bool acceptsFormat(double rate, std::uint32_t channels) const noexcept override;
   bool enqueue(const PlaybackCommand& command) noexcept;
   void render(float* stereo, std::uint32_t frames) noexcept override;
+  // Control thread ONLY after the output has stopped and callbacks have joined.
+  // Drains accepted commands without advancing time, forces pause and clears
+  // old transition audio. Keeps mix targets, seeks and the current position.
+  void suspendAfterOutputStopped() noexcept;
   PlaybackStatus status() const noexcept;
   std::size_t frameCount() const noexcept { return frames_; }
   std::size_t trackCount() const noexcept { return part_ids_.size(); }

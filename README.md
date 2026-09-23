@@ -41,6 +41,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   AU chunks to frozen audio, WAV stems and a streamed master; `--stream-frozen`
   remixes without plugins. Two-hour synthetic WAV writing and short real
   piano/cello export are verified. See [export usage and limits](docs/streaming-export.md).
+- Native output health polling detects device/format changes and stalled callbacks,
+  pauses with position and mix edits retained, and supports explicit `reconnect`.
+  Reconnection stays paused until `play`; physical unplug/sleep-wake testing
+  remains outstanding. See [output recovery and test evidence](docs/output-recovery.md).
 - Shared mix-edit state for offline and native playback controls. Inspect accepted
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state
@@ -261,8 +265,8 @@ extends the source units to bounded, exactly parsed decimals.
 
 ## Planned macOS slices
 
-1. Add timestamped CoreMIDI event scheduling and CoreAudio device-change
-   notifications with automatic reconnect.
+1. Add timestamped CoreMIDI event scheduling; extend the new polled CoreAudio
+   paused reconnect with notifications and real unplug/sleep-wake validation.
 2. Add engine-level scheduled autosave and persistence for the full undo history
    around the versioned project file and recovery sidecar.
 3. Expose the existing tempo/meter maps in a bar/beat timeline and piano
