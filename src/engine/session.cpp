@@ -4,6 +4,7 @@
 #include "daw/score_midi.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -62,13 +63,19 @@ std::vector<bool> audibleSessionRoutes(const Session& session) {
   return result;
 }
 
+void requireExecutableSession(const Session& session) {
+  validateSession(session);
+  for (const auto& route : session.routes)
+    require(route.track_delay_us == 0, "nonzero musical track_delay_us playback/export is not implemented");
+}
+
 Session parseSession(const std::string& text) {
   require(text.size() <= 1024U * 1024U, "session exceeds 1 MiB");
   std::istringstream input(text);
   input.imbue(std::locale::classic());
   token(input, "CLASSICAL_DAW_SESSION");
   int version = 0;
-  require(static_cast<bool>(input >> version) && (version == 1 || version == 2), "unsupported session version");
+  require(static_cast<bool>(input >> version) && (version >= 1 && version <= 3), "unsupported session version");
   Session result;
   token(input, "score"); input >> std::quoted(result.score_file);
   token(input, "master_gain_db"); input >> result.master_gain_db;
@@ -80,11 +87,17 @@ Session parseSession(const std::string& text) {
     InstrumentRoute route;
     require(static_cast<bool>(input >> std::quoted(route.part_id) >> std::quoted(route.instrument) >>
         route.gain_db >> route.balance >> std::quoted(route.preset) >> std::quoted(route.state_file)), "truncated route");
-    if (version == 2) {
+    if (version >= 2) {
       int mute = -1, solo = -1;
       require(static_cast<bool>(input >> mute >> solo >> std::quoted(route.frozen_file)) &&
           (mute == 0 || mute == 1) && (solo == 0 || solo == 1), "invalid mute/solo/frozen fields");
       route.mute = mute == 1; route.solo = solo == 1;
+    }
+    if (version >= 3) {
+      std::string delay;
+      require(static_cast<bool>(input >> delay), "missing track_delay_us");
+      const auto parsed = std::from_chars(delay.data(), delay.data()+delay.size(), route.track_delay_us);
+      require(parsed.ec == std::errc{} && parsed.ptr == delay.data()+delay.size(), "invalid signed track_delay_us");
     }
     result.routes.push_back(std::move(route));
   }
@@ -99,13 +112,13 @@ std::string serializeSession(const Session& session) {
   validateSession(session);
   std::ostringstream output;
   output.imbue(std::locale::classic());
-  output << std::setprecision(17) << "CLASSICAL_DAW_SESSION 2\nscore " << std::quoted(session.score_file)
+  output << std::setprecision(17) << "CLASSICAL_DAW_SESSION 3\nscore " << std::quoted(session.score_file)
          << "\nmaster_gain_db " << session.master_gain_db << "\nroutes " << session.routes.size() << '\n';
   for (const auto& route : session.routes) {
     output << "route " << std::quoted(route.part_id) << ' ' << std::quoted(route.instrument) << ' '
            << route.gain_db << ' ' << route.balance << ' ' << std::quoted(route.preset) << ' '
            << std::quoted(route.state_file) << ' ' << static_cast<int>(route.mute) << ' '
-           << static_cast<int>(route.solo) << ' ' << std::quoted(route.frozen_file) << '\n';
+           << static_cast<int>(route.solo) << ' ' << std::quoted(route.frozen_file) << ' ' << route.track_delay_us << '\n';
   }
   output << "end\n";
   return output.str();
@@ -114,7 +127,7 @@ std::string serializeSession(const Session& session) {
 SessionPlan planSession(const Session& session, const Score& score, std::uint32_t rate, double tail, SessionPlanMode mode) {
   require(mode == SessionPlanMode::Buffered || mode == SessionPlanMode::Streaming, "unknown session plan mode");
   require(mode != SessionPlanMode::Streaming || rate == 48000, "streaming sessions require 48000 Hz");
-  validateSession(session);
+  requireExecutableSession(session);
   require(score.parts.size() == session.routes.size(), "every score part must have exactly one instrument route");
   MidiFile full;
   std::string error;
@@ -158,6 +171,7 @@ bool sameSessionPerformance(const SessionPlan& previous, std::size_t previous_tr
   require(previous_track < previous.tracks.size() && current_track < current.tracks.size(),
           "performance track index out of range");
   if (previous.frames != current.frames) return false;
+  if (previous.tracks[previous_track].route.track_delay_us != current.tracks[current_track].route.track_delay_us) return false;
   const auto before = makeMidiSampleSequence(previous.tracks[previous_track].midi, 48000, 5,
                                              kMaxStreamAudioFrames, previous.end_tick);
   const auto after = makeMidiSampleSequence(current.tracks[current_track].midi, 48000, 5,

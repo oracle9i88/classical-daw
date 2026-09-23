@@ -50,6 +50,20 @@ int main() {
         saved_settings.routes[0].frozen_file == "cello.dawfreeze", "mute/solo/freeze reference not saved");
     const auto legacy = daw::parseSession("CLASSICAL_DAW_SESSION 1\nscore \"s.dawproj\"\nmaster_gain_db -6\nroutes 1\nroute \"p\" \"pianoteq\" 0 0 \"\" \"\"\nend\n");
     require(!legacy.routes[0].mute && !legacy.routes[0].solo && legacy.routes[0].frozen_file.empty(), "v1 defaults wrong");
+    require(legacy.routes[0].track_delay_us == 0, "v1 delay default wrong");
+    const std::string v2 = "CLASSICAL_DAW_SESSION 2\nscore \"s\"\nmaster_gain_db 0\nroutes 1\nroute \"p\" \"pianoteq\" 0 0 \"\" \"\" 0 0 \"\"\nend\n";
+    require(daw::parseSession(v2).routes[0].track_delay_us == 0, "v2 delay default wrong");
+    for (const auto delay : {std::int64_t{-25000},std::int64_t{17000},std::numeric_limits<std::int64_t>::min(),std::numeric_limits<std::int64_t>::max()}) {
+      auto offset = original; offset.routes[0].track_delay_us = delay;
+      require(daw::parseSession(daw::serializeSession(offset)).routes[0].track_delay_us == delay, "signed delay lost precision");
+      rejects([&] { daw::planSession(offset,score()); });
+      rejects([&] { daw::requireExecutableSession(offset); });
+    }
+    for (const std::string bad : {"9223372036854775808","-9223372036854775809","1.0","1e2","nan","--1"}) {
+      auto malformed = v2; malformed[22] = '3';
+      malformed.insert(malformed.find("\nend"), " " + bad);
+      rejects([&] { daw::parseSession(malformed); });
+    }
     rejects([&] { daw::parseSession("CLASSICAL_DAW_SESSION 2\nscore \"s\"\nmaster_gain_db 0\nroutes 1\nroute \"p\" \"pianoteq\" 0 0 \"\" \"\" 2 0 \"\"\nend"); });
     settings.routes[0].frozen_file = "../bad";
     rejects([&] { daw::serializeSession(settings); });

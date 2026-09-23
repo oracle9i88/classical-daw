@@ -5,6 +5,11 @@ The macOS offline AU host now supports **Pianoteq 9** and **SWAM Cello 3**.
 remains a piano-only compatibility command. Both use the same host, MIDI
 timeline, state persistence and stereo WAV writer.
 
+**2026-09-24 latency experiment:** the installed 3.12.2 AU reported 20 ms
+(960 frames at 48 kHz) across 12 factory presets and 27 tested parameter changes,
+in both offline-property modes. See [scope and raw evidence](multi-instrument-progress.md).
+This does not certify realtime multi-instrument playback or acoustic attack time.
+
 **2026-09-23 correction:** the earlier eight-bar duet played only three of its
 eight cello notes. The captured factory state had `transpose=-12`; written
 notes 44, 41, 43, 46 and 43 therefore fell below the stored 36..89 instrument

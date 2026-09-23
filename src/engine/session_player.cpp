@@ -16,7 +16,7 @@ double SessionPlayer::Ramp::next() noexcept {
 }
 SessionPlayer::SessionPlayer(const Session& session, std::vector<AudioBuffer> audio)
     : audio_(std::move(audio)) {
-  validateSession(session);
+  requireExecutableSession(session);
   if (audio_.size() != session.routes.size()) throw std::invalid_argument("playback route/audio count mismatch");
   frames_ = audio_.front().frameCount();
   if (!frames_ || frames_ > kMaxAudioBytes / sizeof(float) / 2 / audio_.size())
@@ -32,7 +32,7 @@ SessionPlayer::SessionPlayer(const Session& session, std::vector<AudioBuffer> au
 }
 SessionPlayer::SessionPlayer(std::unique_ptr<StreamingAudio> audio, const Session& session)
     : stream_(std::move(audio)) {
-  validateSession(session);
+  requireExecutableSession(session);
   if (!stream_ || stream_->trackCount() != session.routes.size())
     throw std::invalid_argument("playback route/stream count mismatch");
   frames_ = stream_->frameCount();
@@ -54,7 +54,8 @@ bool SessionPlayer::acceptsFormat(double rate, std::uint32_t channels) const noe
 bool SessionPlayer::matchesRoutes(const Session& session) const noexcept {
   if (session.routes.size() != part_ids_.size()) return false;
   for (std::size_t i = 0; i < part_ids_.size(); ++i)
-    if (session.routes[i].part_id != part_ids_[i] || session.routes[i].instrument != instruments_[i]) return false;
+    if (session.routes[i].part_id != part_ids_[i] || session.routes[i].instrument != instruments_[i] ||
+        session.routes[i].track_delay_us != 0) return false;
   return true;
 }
 bool SessionPlayer::enqueue(const PlaybackCommand& c) noexcept {

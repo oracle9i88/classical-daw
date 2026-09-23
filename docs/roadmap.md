@@ -4,7 +4,7 @@ The public repository is an Alpha engine, not a commercial-ready DAW. Each
 stage below has a concrete acceptance gate; a feature list or screenshot does
 not count as completion.
 
-## Next: multi-instrument realtime graph (design, not implemented)
+## In progress: multi-instrument realtime graph
 
 Follow the [whole-session/PDC decisions and four gates](multi-instrument-realtime-design.md):
 minimal renderer boundary, then one atomic multi-track plan with synthetic
@@ -14,6 +14,11 @@ serially with at most two live AUs; an over-budget configuration must use fewer
 live instances or explicitly validated frozen tracks. Device presentation is
 labelled estimated/unknown until its clock mapping is established. Returned
 plugin errors are isolated by lane; process crashes/hangs are not isolated yet.
+
+First slice: [SWAM latency experiment and portable PDC kernel](multi-instrument-progress.md).
+The installed SWAM reported 20 ms across tested settings. The standalone kernel
+and v3 route-delay reservation have tests; atomic session adoption, real multi-AU
+output and all four complete gates remain pending.
 
 ## Completed in this iteration
 

@@ -10,6 +10,7 @@ add_library(daw_engine STATIC
   src/engine/note_identity.cpp
   src/engine/performance.cpp
   src/engine/live_performance.cpp
+  src/engine/parallel_render_graph.cpp
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
   src/engine/history.cpp
@@ -45,6 +46,9 @@ add_test(NAME daw_performance_tests COMMAND daw_performance_tests)
 add_executable(daw_live_performance_tests tests/live_performance_tests.cpp)
 target_link_libraries(daw_live_performance_tests PRIVATE daw_engine)
 add_test(NAME daw_live_performance_tests COMMAND daw_live_performance_tests)
+add_executable(daw_parallel_render_graph_tests tests/parallel_render_graph_tests.cpp)
+target_link_libraries(daw_parallel_render_graph_tests PRIVATE daw_engine)
+add_test(NAME daw_parallel_render_graph_tests COMMAND daw_parallel_render_graph_tests)
 add_executable(daw_callback_timing_tests tests/callback_timing_tests.cpp)
 target_link_libraries(daw_callback_timing_tests PRIVATE daw_engine)
 add_test(NAME daw_callback_timing_tests COMMAND daw_callback_timing_tests)
@@ -219,6 +223,8 @@ if(APPLE)
   target_include_directories(daw_au_host PUBLIC src/platform/macos)
   target_link_libraries(daw_au_host PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreFoundation" "-framework AppKit")
   target_compile_options(daw_au_host PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+  add_executable(daw_swam_latency_probe tools/swam_latency_probe.cpp)
+  target_link_libraries(daw_swam_latency_probe PRIVATE daw_au_host)
   add_executable(daw_swam_state_tests tests/swam_state_tests.mm)
   target_link_libraries(daw_swam_state_tests PRIVATE daw_au_host)
   add_test(NAME daw_swam_state_tests COMMAND daw_swam_state_tests)

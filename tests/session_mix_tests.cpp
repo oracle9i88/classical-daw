@@ -45,6 +45,13 @@ int main() {
     const auto source = initial();
     daw::SessionMixState state(source);
     daw::SessionPlayer player(source, audio());
+    auto offset = source; offset.routes[1].track_delay_us = -25000;
+    rejects([&] { daw::SessionPlayer unsupported(offset, audio()); });
+    require(!player.matchesRoutes(offset), "player ignored unsupported track offset");
+    daw::SessionMixState offset_state(offset);
+    require(offset_state.apply({P::Gain, "cello", -2}) && offset_state.undo() && offset_state.redo(), "offset-bearing document mix history failed");
+    require(offset_state.current().routes[1].track_delay_us == -25000, "mix history changed musical delay");
+    rejects([&] { offset_state.apply({P::Gain, "cello", -3}, &player); });
     require(state.apply({P::Solo, "cello", 1}, &player), "solo not submitted");
     require(state.apply({P::Gain, "cello", -2}, &player), "gain not submitted");
     require(state.apply({P::Balance, "cello", -.3}, &player), "balance not submitted");

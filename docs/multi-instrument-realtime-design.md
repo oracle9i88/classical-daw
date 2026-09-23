@@ -1,8 +1,11 @@
 # Multi-instrument realtime: implementation decisions and gates
 
 Date: 2026-09-23. Baseline inspected: `03676e2`.
-**Status: pre-implementation design. Nothing below is a claim that multi-AU
-playback, PDC, device presentation measurement or fault isolation is delivered.**
+**Status: implementation started 2026-09-24.** The standalone SWAM latency
+experiment and portable PDC kernel are implemented; see
+[implementation evidence and remaining gates](multi-instrument-progress.md).
+The complete session stream, AU integration and four end-to-end gates below
+are **not passed**. A tested kernel is not a delivered multi-AU player.
 The preceding [single-instrument gate](live-performance.md) remains the evidence
 for the running implementation. Its human listening sign-off remains separate.
 
@@ -15,7 +18,8 @@ small renderer interface needed to test that contract first.
 
 The current code is narrower: `PerformanceAudition` owns one AU, one stream,
 gain, capture and audit; `prepareRealtime()` only permits Pianoteq; the session
-route format is v2 and has no user track delay. An `InstrumentDescriptor` already
+route format is now v3 with a reserved user track delay (nonzero execution is
+rejected). An `InstrumentDescriptor` already
 exists. `InstrumentKind` is not yet confined to a factory: AU state/range/preset
 handling and session-render selection still branch on it. Confining it to the
 platform adapter/creation boundary is a target, not an accomplished migration.
@@ -73,7 +77,8 @@ Reserve `track_delay_us` in the next route/session schema, with an explicit
 version increment and old v1/v2 default of zero. Store it independently of AU
 state and expose it separately from the read-only PDC display. Include it in
 command history, recovery, collection and frozen-input identity. This document
-reserves the contract; the current struct/serializer have not been changed.
+reserves the execution contract; the v3 struct/serializer now retain the field.
+It has no editing command yet. Legacy mix commands preserve it as data.
 Until all executing paths implement it, a nonzero value must produce an explicit
 unsupported-playback/export error, never be accepted and silently ignored.
 
@@ -105,6 +110,10 @@ are sized before playback. Startup warmup (including SWAM readiness) and a
 bowed instrument's expressive attack envelope are not algorithmic latency.
 Apple defines the AU latency property as processing time from input to output.
 [Apple latency definition](https://developer.apple.com/documentation/audiotoolbox/kaudiounitproperty_latency)
+
+Expose `L` in frames/seconds and the stable IDs of all routes attaining the
+maximum. This is a user-actionable algorithmic-delay report, not total acoustic
+latency. The portable kernel provides it through `statusText()`/`latencyInfo()`.
 
 Acceptance: changing a user/per-note offset must not rewrite reported latency
 or compensation; changing AU latency must not rewrite musical offsets. Roundtrip
@@ -251,6 +260,12 @@ requires stopped reconstruction. A per-lane returned error is not conflated
 with a whole-output/device fault. Already accepted edits remain saved after a
 later DSP failure; there is no retroactive history rollback of played audio.
 
+Quarantine must also be pollable throughout a long take: expose stable track ID,
+latched error category and engine failure frame. Log output alone is insufficient.
+Readers must acquire the latched status before its associated payload; audio
+thread publication must not allocate or print. The kernel's `trackStatus()`
+implements this portion; CLI/whole-session wiring is still required.
+
 Mixed live/frozen PDC needs an explicit cache time-origin policy. Existing
 frozen files do not certify algorithmic-latency removal. Version/bind the new
 cache policy, source/performance/track-delay inputs and removed-latency metadata;
@@ -280,6 +295,21 @@ in-process crash/hang test to pretend isolation has been implemented.
 | 2 | One whole-session stream/mailbox/history, parallel-route PDC and the three-clock receipt model | Atomic all-track rejection/acceptance, the full nonzero-delay matrix, pre-roll/unsupported-offset policy, buffer drain/seek tests, notification and lane-failure injections, allocation/TSan checks |
 | 3 | Actual Pianoteq + SWAM in the same output run | SWAM realtime startup/CC11 readiness, independent MIDI/controllers on equal channel numbers, per-track captures, stable latency reports, total callback <50%, actual device diagnostics, documented freeze refusal/fallback; clock 3 remains labelled estimate/unknown until calibrated |
 | 4 | Descriptor/registry-driven instrument creation | Another registered descriptor requires no scheduler/mixer switch; validation/preset quirks stay in adapters; all previous gates preserved |
+
+Before graph integration, probe the installed SWAM's actual latency reports
+across exposed presets/articulation settings. Preserve requested/read-back
+values, plugin version, render mode and latency notifications. Stable results
+only cover that tested configuration; they do not remove the runtime listener.
+
+Step 3 also requires a real many-part editing turnaround measurement. For a
+12-part fixture, record “select/edit part 7 -> changed ensemble available at
+the output” using one monotonic wall clock, with stop, cache validation,
+offline rendering/freezing, graph construction, seek/pre-roll and first changed
+mixed-frame phases. Record reused/rebuilt track IDs and cache hit counts;
+repeat while moving edit focus to a different part to expose required refreezes.
+Report the device presentation estimate/unknown separately. Do not relabel
+render completion or clock 2 as the instant a human heard the ensemble. This
+metric has not been measured; cached renders make no automatic speed guarantee.
 
 The single-piano `PerformanceAudition` becomes a one-track facade over the shared
 runtime. Its proven identity, held-note and transaction invariants remain tests

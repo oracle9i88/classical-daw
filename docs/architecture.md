@@ -3,7 +3,8 @@
 This document records the boundaries that keep the audio engine safe to extend.
 
 The next multi-instrument iteration is specified in the
-[pre-implementation graph/PDC design](multi-instrument-realtime-design.md).
+[graph/PDC design](multi-instrument-realtime-design.md), with
+[first implementation and remaining work](multi-instrument-progress.md).
 It fixes one whole-session publication/ACK, independent musical track offsets,
 three timing domains, latency-change/seek lifecycle and serial live/frozen
 capacity policy. These are implementation gates, not current capabilities.

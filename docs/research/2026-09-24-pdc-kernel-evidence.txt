@@ -1,0 +1,230 @@
+Portable PDC / reserved musical-delay schema validation, 2026-09-24
+Baseline: 8bd118d plus task changes. Local runs; no CI or hardware timing claims.
+ASan/UBSan: -fsanitize=address,undefined -fno-omit-frame-pointer; leak detection disabled.
+TSan: -fsanitize=thread -fno-omit-frame-pointer -g.
+Debug full suite preceded final matchesRoutes offset check/test; affected player/mix tests were rebuilt and rerun afterward: 2/2, exit 0. Sanitizer full suite includes those changes.
+
+===== Debug full suite =====
+Command: cmake --build build -j 4 && ctest --test-dir build --output-on-failure
+Exit: 0
+Raw output SHA256: efbc03b9e778cd0c7642a7a10bea746b0c4a9da61876d48192082ecf15afe1af
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+      Start  1: daw_performance_tests
+ 1/44 Test  #1: daw_performance_tests .............   Passed    1.70 sec
+      Start  2: daw_live_performance_tests
+ 2/44 Test  #2: daw_live_performance_tests ........   Passed    0.70 sec
+      Start  3: daw_parallel_render_graph_tests
+ 3/44 Test  #3: daw_parallel_render_graph_tests ...   Passed    0.65 sec
+      Start  4: daw_callback_timing_tests
+ 4/44 Test  #4: daw_callback_timing_tests .........   Passed    0.46 sec
+      Start  5: daw_tests
+ 5/44 Test  #5: daw_tests .........................   Passed    0.61 sec
+      Start  6: daw_project_tests
+ 6/44 Test  #6: daw_project_tests .................   Passed    0.62 sec
+      Start  7: daw_project_recovery_tests
+ 7/44 Test  #7: daw_project_recovery_tests ........   Passed    0.59 sec
+      Start  8: daw_history_tests
+ 8/44 Test  #8: daw_history_tests .................   Passed    0.64 sec
+      Start  9: daw_project_history_tests
+ 9/44 Test  #9: daw_project_history_tests .........   Passed    0.73 sec
+      Start 10: daw_realtime_event_tests
+10/44 Test #10: daw_realtime_event_tests ..........   Passed    0.58 sec
+      Start 11: daw_score_render_tests
+11/44 Test #11: daw_score_render_tests ............   Passed    0.66 sec
+      Start 12: daw_midi_import_tests
+12/44 Test #12: daw_midi_import_tests .............   Passed    0.70 sec
+      Start 13: daw_score_tie_tests
+13/44 Test #13: daw_score_tie_tests ...............   Passed    0.70 sec
+      Start 14: daw_musicxml_dynamics_tests
+14/44 Test #14: daw_musicxml_dynamics_tests .......   Passed    0.72 sec
+      Start 15: daw_musicxml_timing_tests
+15/44 Test #15: daw_musicxml_timing_tests .........   Passed    0.67 sec
+      Start 16: daw_midi_channel_events_tests
+16/44 Test #16: daw_midi_channel_events_tests .....   Passed    0.67 sec
+      Start 17: daw_score_midi_events_tests
+17/44 Test #17: daw_score_midi_events_tests .......   Passed    0.65 sec
+      Start 18: daw_project_midi_events_tests
+18/44 Test #18: daw_project_midi_events_tests .....   Passed    1.95 sec
+      Start 19: daw_midi_render_controls_tests
+19/44 Test #19: daw_midi_render_controls_tests ....   Passed    0.63 sec
+      Start 20: daw_score_tempo_tests
+20/44 Test #20: daw_score_tempo_tests .............   Passed    0.69 sec
+      Start 21: daw_project_tempo_tests
+21/44 Test #21: daw_project_tempo_tests ...........   Passed    0.48 sec
+      Start 22: daw_midi_meter_tests
+22/44 Test #22: daw_midi_meter_tests ..............   Passed    1.31 sec
+      Start 23: daw_score_meter_tests
+23/44 Test #23: daw_score_meter_tests .............   Passed    0.76 sec
+      Start 24: daw_project_meter_tests
+24/44 Test #24: daw_project_meter_tests ...........   Passed    0.70 sec
+      Start 25: daw_musicxml_fractional_tests
+25/44 Test #25: daw_musicxml_fractional_tests .....   Passed    0.67 sec
+      Start 26: daw_musicxml_divisions_tests
+26/44 Test #26: daw_musicxml_divisions_tests ......   Passed    0.69 sec
+      Start 27: daw_musicxml_tempo_tests
+27/44 Test #27: daw_musicxml_tempo_tests ..........   Passed    0.71 sec
+      Start 28: daw_musicxml_meter_tests
+28/44 Test #28: daw_musicxml_meter_tests ..........   Passed    0.67 sec
+      Start 29: daw_project_measure_tests
+29/44 Test #29: daw_project_measure_tests .........   Passed    0.62 sec
+      Start 30: daw_midi_sequence_tests
+30/44 Test #30: daw_midi_sequence_tests ...........   Passed    0.66 sec
+      Start 31: daw_session_tests
+31/44 Test #31: daw_session_tests .................   Passed    0.62 sec
+      Start 32: daw_session_routing_tests
+32/44 Test #32: daw_session_routing_tests .........   Passed    0.71 sec
+      Start 33: daw_session_performance_tests
+33/44 Test #33: daw_session_performance_tests .....   Passed    0.62 sec
+      Start 34: daw_session_bundle_tests
+34/44 Test #34: daw_session_bundle_tests ..........   Passed    1.21 sec
+      Start 35: daw_session_player_tests
+35/44 Test #35: daw_session_player_tests ..........   Passed    0.90 sec
+      Start 36: daw_output_health_tests
+36/44 Test #36: daw_output_health_tests ...........   Passed    0.67 sec
+      Start 37: daw_session_mix_tests
+37/44 Test #37: daw_session_mix_tests .............   Passed    0.63 sec
+      Start 38: daw_session_mix_history_tests
+38/44 Test #38: daw_session_mix_history_tests .....   Passed    0.74 sec
+      Start 39: daw_session_recovery_tests
+39/44 Test #39: daw_session_recovery_tests ........   Passed    0.68 sec
+      Start 40: daw_streaming_audio_tests
+40/44 Test #40: daw_streaming_audio_tests .........   Passed    1.02 sec
+      Start 41: daw_frozen_stream_writer_tests
+41/44 Test #41: daw_frozen_stream_writer_tests ....   Passed    0.58 sec
+      Start 42: daw_wav_stream_writer_tests
+42/44 Test #42: daw_wav_stream_writer_tests .......   Passed    0.60 sec
+      Start 43: daw_frozen_track_tests
+43/44 Test #43: daw_frozen_track_tests ............   Passed    0.66 sec
+      Start 44: daw_swam_state_tests
+44/44 Test #44: daw_swam_state_tests ..............   Passed    0.63 sec
+
+100% tests passed out of 44
+
+Total Test time (real) =  32.87 sec
+
+===== ASan/UBSan full suite =====
+Command: cmake --build build-sanitize -j 4 && ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-sanitize --output-on-failure
+Exit: 0
+Raw output SHA256: bc31a3cf9e6aa09b2b22d6f0aa8f19009f39da57ec28e38f209aaca292b082d2
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+      Start  1: daw_performance_tests
+ 1/44 Test  #1: daw_performance_tests .............   Passed    2.00 sec
+      Start  2: daw_live_performance_tests
+ 2/44 Test  #2: daw_live_performance_tests ........   Passed    0.76 sec
+      Start  3: daw_parallel_render_graph_tests
+ 3/44 Test  #3: daw_parallel_render_graph_tests ...   Passed    0.91 sec
+      Start  4: daw_callback_timing_tests
+ 4/44 Test  #4: daw_callback_timing_tests .........   Passed    0.64 sec
+      Start  5: daw_tests
+ 5/44 Test  #5: daw_tests .........................   Passed    0.71 sec
+      Start  6: daw_project_tests
+ 6/44 Test  #6: daw_project_tests .................   Passed    0.60 sec
+      Start  7: daw_project_recovery_tests
+ 7/44 Test  #7: daw_project_recovery_tests ........   Passed    0.62 sec
+      Start  8: daw_history_tests
+ 8/44 Test  #8: daw_history_tests .................   Passed    0.92 sec
+      Start  9: daw_project_history_tests
+ 9/44 Test  #9: daw_project_history_tests .........   Passed    0.95 sec
+      Start 10: daw_realtime_event_tests
+10/44 Test #10: daw_realtime_event_tests ..........   Passed    0.65 sec
+      Start 11: daw_score_render_tests
+11/44 Test #11: daw_score_render_tests ............   Passed    0.74 sec
+      Start 12: daw_midi_import_tests
+12/44 Test #12: daw_midi_import_tests .............   Passed    0.74 sec
+      Start 13: daw_score_tie_tests
+13/44 Test #13: daw_score_tie_tests ...............   Passed    0.66 sec
+      Start 14: daw_musicxml_dynamics_tests
+14/44 Test #14: daw_musicxml_dynamics_tests .......   Passed    0.75 sec
+      Start 15: daw_musicxml_timing_tests
+15/44 Test #15: daw_musicxml_timing_tests .........   Passed    0.63 sec
+      Start 16: daw_midi_channel_events_tests
+16/44 Test #16: daw_midi_channel_events_tests .....   Passed    0.66 sec
+      Start 17: daw_score_midi_events_tests
+17/44 Test #17: daw_score_midi_events_tests .......   Passed    0.68 sec
+      Start 18: daw_project_midi_events_tests
+18/44 Test #18: daw_project_midi_events_tests .....   Passed    4.01 sec
+      Start 19: daw_midi_render_controls_tests
+19/44 Test #19: daw_midi_render_controls_tests ....   Passed    0.84 sec
+      Start 20: daw_score_tempo_tests
+20/44 Test #20: daw_score_tempo_tests .............   Passed    0.76 sec
+      Start 21: daw_project_tempo_tests
+21/44 Test #21: daw_project_tempo_tests ...........   Passed    0.71 sec
+      Start 22: daw_midi_meter_tests
+22/44 Test #22: daw_midi_meter_tests ..............   Passed    2.62 sec
+      Start 23: daw_score_meter_tests
+23/44 Test #23: daw_score_meter_tests .............   Passed    0.76 sec
+      Start 24: daw_project_meter_tests
+24/44 Test #24: daw_project_meter_tests ...........   Passed    0.68 sec
+      Start 25: daw_musicxml_fractional_tests
+25/44 Test #25: daw_musicxml_fractional_tests .....   Passed    0.67 sec
+      Start 26: daw_musicxml_divisions_tests
+26/44 Test #26: daw_musicxml_divisions_tests ......   Passed    1.11 sec
+      Start 27: daw_musicxml_tempo_tests
+27/44 Test #27: daw_musicxml_tempo_tests ..........   Passed    0.80 sec
+      Start 28: daw_musicxml_meter_tests
+28/44 Test #28: daw_musicxml_meter_tests ..........   Passed    0.66 sec
+      Start 29: daw_project_measure_tests
+29/44 Test #29: daw_project_measure_tests .........   Passed    0.63 sec
+      Start 30: daw_midi_sequence_tests
+30/44 Test #30: daw_midi_sequence_tests ...........   Passed    0.65 sec
+      Start 31: daw_session_tests
+31/44 Test #31: daw_session_tests .................   Passed    0.66 sec
+      Start 32: daw_session_routing_tests
+32/44 Test #32: daw_session_routing_tests .........   Passed    0.67 sec
+      Start 33: daw_session_performance_tests
+33/44 Test #33: daw_session_performance_tests .....   Passed    0.67 sec
+      Start 34: daw_session_bundle_tests
+34/44 Test #34: daw_session_bundle_tests ..........   Passed    2.11 sec
+      Start 35: daw_session_player_tests
+35/44 Test #35: daw_session_player_tests ..........   Passed    0.69 sec
+      Start 36: daw_output_health_tests
+36/44 Test #36: daw_output_health_tests ...........   Passed    0.61 sec
+      Start 37: daw_session_mix_tests
+37/44 Test #37: daw_session_mix_tests .............   Passed    0.66 sec
+      Start 38: daw_session_mix_history_tests
+38/44 Test #38: daw_session_mix_history_tests .....   Passed    0.75 sec
+      Start 39: daw_session_recovery_tests
+39/44 Test #39: daw_session_recovery_tests ........   Passed    0.65 sec
+      Start 40: daw_streaming_audio_tests
+40/44 Test #40: daw_streaming_audio_tests .........   Passed    1.13 sec
+      Start 41: daw_frozen_stream_writer_tests
+41/44 Test #41: daw_frozen_stream_writer_tests ....   Passed    0.60 sec
+      Start 42: daw_wav_stream_writer_tests
+42/44 Test #42: daw_wav_stream_writer_tests .......   Passed    0.64 sec
+      Start 43: daw_frozen_track_tests
+43/44 Test #43: daw_frozen_track_tests ............   Passed    0.61 sec
+      Start 44: daw_swam_state_tests
+44/44 Test #44: daw_swam_state_tests ..............   Passed    0.63 sec
+
+100% tests passed out of 44
+
+Total Test time (real) =  39.61 sec
+
+===== TSan portable PDC kernel =====
+Command: cmake --build build-stream-tsan --target daw_parallel_render_graph_tests -j 4 && build-stream-tsan/daw_parallel_render_graph_tests
+Exit: 0
+Raw output SHA256: 6b6b164024d0a106a4374ba85b4a926dd803b7ee8943122cadfe13ebda3d8672
+PDC: 7 latency layouts, isolated lanes + mix, 8 callback patterns, exact stereo samples, partial EOF/drain, nonempty-delay control change, fixed L, fault quarantine, latency invalidation, pollable status and zero callback allocations/frees passed
+
+===== CLI debug =====
+Command: python3 scripts/check_session_cli.py
+Exit: 0
+Raw output SHA256: 31b7419e89ddb82015a065fd57617bc67107bedb469d03fc6c7be8e815d19e75
+Wrote original piano/cello fixture, 1517594 common frames
+PASS 12 session CLI checks; no plugins loaded
+
+===== CLI ASan/UBSan =====
+Command: ASAN_OPTIONS=detect_leaks=0 python3 scripts/check_session_cli.py --build build-sanitize
+Exit: 0
+Raw output SHA256: 31b7419e89ddb82015a065fd57617bc67107bedb469d03fc6c7be8e815d19e75
+Wrote original piano/cello fixture, 1517594 common frames
+PASS 12 session CLI checks; no plugins loaded
+
+9d7919ad95b3d928101eb6a305317017582bf3e510130cd3026632f4375110d9  src/engine/include/daw/parallel_render_graph.hpp
+742f3cf8796cd043f6496857d3dd4b6094f7b1e39513c1ab22670fa9e05ddb3a  src/engine/parallel_render_graph.cpp
+8850b5af9275f3975111916611b9a1f5e0d9152b77e8600c0b5cb1e2988805a7  tests/parallel_render_graph_tests.cpp
+6ddcf681a8133fc8eb8ce604854098b6bc3ac3fb42e72aae74ee98f9326c218e  src/engine/session.cpp
+ef9fd70958a9c6fcc2c861905c09a1a4e36796486ced6629ccdeb261bbe7a150  src/engine/session_player.cpp
+9c99ade68a4939c970d98ca8623289794d226e370a7074ca07e92a1ea04a4bde  tests/session_tests.cpp
+d60d3cff7ac8210fa4e5c250eda5276ad5c7b1c2c25df5efc844ff724a8aedf7  tests/session_mix_tests.cpp
+e1d3900ee0267acf9f993ba35f575d644b0b53ee3d7fb01769d6ef03a1f96a39  scripts/check_session_cli.py

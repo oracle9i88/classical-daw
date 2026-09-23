@@ -1,0 +1,907 @@
+SWAM latency experiment, 2026-09-24, macOS local installed AU.
+Baseline repository: 8bd118d; probe source added in this iteration.
+No output device opened. No saved state/preset written. No human listening claim.
+
+Sweep probe source SHA256: 8710c78d7a343b79d64de3d6b92ca4c12fc4b1ad6d573fc51e1a9d56ee42c5ac
+
+===== inspect =====
+Command: build/daw_swam_latency_probe
+Exit: 0
+Raw stdout+stderr SHA256: 7c07e724bcee33f05760d95631e08f52a19eebf84be487c9585a5452c12ceb38
+Discovery build preceded addition of preset read-back/value-label logging; the SHA above belongs to the subsequent sweeps.
+component=aumu/Sce3/AuMo version=199682 sample_rate=48000 offline=0 output_device=none
+observation "initialized" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11403248459100723
+factory_preset_count=12
+observation "factory:Cello" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.23157811164855957
+observation "factory:Bach" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.2818705141544342
+observation "factory:Extra Large Recording Studio Far Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.229429692029953
+observation "factory:Medium Hall Far Mic (Cinematic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.086591668426990509
+observation "factory:Pop" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25063112378120422
+observation "factory:Recording Studio 1 Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11976650357246399
+observation "factory:Recording Studio 1 Low Absorption Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11268063634634018
+observation "factory:Recording Studio 2 Far Mic (Chamber)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.15931345522403717
+observation "factory:Saint-Saëns" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.38138648867607117
+observation "factory:Shostakovich" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.3261549174785614
+observation "factory:Small Hall Mid-Range Mic (Symphonic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.16587510704994202
+observation "factory:Vivaldi" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25493448972702026
+parameter id=14753226 name="Micro Tuning C" min=0 max=1 value=0 flags=3635413008
+parameter id=14753227 name="Micro Tuning C#" min=0 max=1 value=0 flags=3635413008
+parameter id=14753228 name="Micro Tuning D" min=0 max=1 value=0 flags=3635413008
+parameter id=14753229 name="Micro Tuning D#" min=0 max=1 value=0 flags=3635413008
+parameter id=14753230 name="Micro Tuning E" min=0 max=1 value=0 flags=3635413008
+parameter id=14753231 name="Micro Tuning F" min=0 max=1 value=0 flags=3635413008
+parameter id=14753232 name="Micro Tuning F#" min=0 max=1 value=0 flags=3635413008
+parameter id=14753233 name="Micro Tuning G" min=0 max=1 value=0 flags=3635413008
+parameter id=14753234 name="Micro Tuning G#" min=0 max=1 value=0 flags=3635413008
+parameter id=14753235 name="Micro Tuning A" min=0 max=1 value=0 flags=3635413008
+parameter id=21150189 name="Breath Ctrl Hi-Res Threshold" min=0 max=1 value=0.375 flags=3685744656
+parameter id=23714952 name="Alternate Fingering" min=0 max=2 value=0 flags=3366977552
+parameter id=58272484 name="Instrument Body" min=0 max=1 value=0.54545456171035767 flags=3400531984
+parameter id=68898008 name="Open Strings" min=0 max=1 value=0.5 flags=3400531984
+parameter id=88083463 name="Cavit Scale Ultimate" min=0 max=1 value=1 flags=3652190224
+parameter id=94685161 name="Expression String Release Muting" min=0 max=1 value=0 flags=3366977552
+parameter id=101866522 name="Note Off Velocity
+(if supported)" min=0 max=1 value=1 flags=3383754768
+parameter id=106433143 name="Panic" min=0 max=1 value=0 flags=3383754768
+parameter id=108338554 name="Master Tune" min=0 max=1 value=0.4761904776096344 flags=3400531984
+parameter id=186027426 name="Attack Control" min=0 max=3 value=0 flags=3635413008
+parameter id=191587727 name="Bowing Sensitivity" min=0 max=1 value=0.5 flags=3400531984
+parameter id=222145944 name="Bow Lift" min=0 max=1 value=0 flags=3366977552
+parameter id=222679962 name="Vibrato Fade In" min=0 max=1 value=0.1666666716337204 flags=3400531984
+parameter id=259020023 name="Bow Polyphony" min=0 max=4 value=0 flags=3366977552
+parameter id=277296446 name="Manual Bowing" min=0 max=1 value=0 flags=3400531984
+parameter id=295592483 name="Sustain" min=0 max=1 value=0 flags=3383754768
+parameter id=303057305 name="KS Octave" min=0 max=4 value=0 flags=3635413008
+parameter id=327674548 name="EQ Mid Freq" min=0 max=1 value=0.23782506585121155 flags=3668967440
+parameter id=327688123 name="EQ Mid Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=352031384 name="Expression" min=0 max=1 value=0.78900003433227539 flags=3668967440
+parameter id=356405467 name="Pitch Bend Down" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=389880618 name="Reverb Mix" min=0 max=1 value=1 flags=3400531984
+parameter id=427775986 name="Pan Pot Type" min=0 max=3 value=2 flags=3366977552
+parameter id=457350085 name="Micro Tuning A#" min=0 max=1 value=0 flags=3635413008
+parameter id=457350086 name="Micro Tuning B" min=0 max=1 value=0 flags=3635413008
+parameter id=537163328 name="Portamento Max Time" min=0 max=1 value=0.5 flags=3400531984
+parameter id=543665305 name="Pitch Bend" min=0 max=1 value=0.5 flags=3400531984
+parameter id=546040371 name="Main Volume" min=0 max=1 value=0.858734130859375 flags=3400531984
+parameter id=550942858 name="Slider Debug 1" min=0 max=1 value=0 flags=3417309200
+parameter id=550942859 name="Slider Debug 2" min=0 max=1 value=0 flags=3417309200
+parameter id=550942860 name="Slider Debug 3" min=0 max=1 value=0 flags=3417309200
+parameter id=550942861 name="Slider Debug 4" min=0 max=1 value=0 flags=3417309200
+parameter id=550942862 name="Slider Debug 5" min=0 max=1 value=0 flags=3417309200
+parameter id=560695067 name="Root" min=0 max=1 value=0 flags=3400531984
+parameter id=574719741 name="Bow Noise" min=0 max=1 value=0.5 flags=3400531984
+parameter id=593750711 name="String Tuning" min=0 max=1 value=0.5 flags=3400531984
+parameter id=623834388 name="Pitch Bend Up" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=636142698 name="Reset Micro Tuning KS" min=0 max=1 value=1 flags=3652190224
+parameter id=641237175 name="Attack Ramp Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=645209239 name="Manual Bowing:
+Sustain+Note" min=0 max=1 value=1 flags=3366977552
+parameter id=680867983 name="Tremolo Mode" min=0 max=2 value=1 flags=3366977552
+parameter id=696608674 name="Micro Tuning KS" min=0 max=1 value=0 flags=3652190224
+parameter id=717902815 name="MIDI Channel" min=0 max=1 value=1 flags=3685744656
+parameter id=783568573 name="Rosin" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=796119545 name="Vibrato Rate" min=0 max=1 value=0.43333330750465393 flags=3400531984
+parameter id=822535297 name="Advanced Legato" min=0 max=2 value=1 flags=3383754768
+parameter id=825744237 name="Temperament" min=0 max=1 value=0.5 flags=3400531984
+parameter id=885227349 name="Pizz/C.Legno Poly" min=0 max=1 value=1 flags=3366977552
+parameter id=921244212 name="KS Velocity Remap" min=0 max=1 value=0.5 flags=3417309200
+parameter id=960866759 name="Strings Model" min=0 max=1 value=0 flags=3366977552
+parameter id=1013107514 name="Bow/Pizz Position" min=0 max=1 value=0.62500005960464478 flags=3400531984
+parameter id=1016578249 name="Manual Bowing:
+KeySwitch" min=0 max=2 value=0 flags=3366977552
+parameter id=1044572362 name="Vibrato Depth" min=0 max=1 value=0 flags=3668967440
+parameter id=1052964665 name="Transpose" min=0 max=1 value=0.3333333432674408 flags=3668967440
+parameter id=1079357412 name="Key Switches Page Switch" min=0 max=1 value=0 flags=3400531984
+parameter id=1088641165 name="Early Reflection Gain" min=0 max=1 value=1 flags=3400531984
+parameter id=1114194414 name="Wind Controller Release Mode" min=0 max=1 value=0 flags=3635413008
+parameter id=1145853786 name="Interactive Bow Compensation" min=0 max=1 value=0.69999998807907104 flags=3400531984
+parameter id=1151920248 name="Pan Pot" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1210414604 name="Random Finger" min=0 max=1 value=0.29999998211860657 flags=3400531984
+parameter id=1242695816 name="Double Hold String Selection" min=0 max=2 value=0 flags=3366977552
+parameter id=1244941173 name="Pizz/C.Legno Control" min=0 max=1 value=0 flags=3366977552
+parameter id=1284651007 name="Dynamic Transitions" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1284785901 name="MAQAM" min=0 max=1 value=0 flags=3652190224
+parameter id=1291775422 name="Vibr. Rand. Rate" min=0 max=1 value=0.30000001192092896 flags=3400531984
+parameter id=1309757407 name="Breath Ctrl Mode" min=0 max=1 value=0 flags=3635413008
+parameter id=1336834641 name="Sordino" min=0 max=1 value=0 flags=3366977552
+parameter id=1339265445 name="Micro Tuning A# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1339265446 name="Micro Tuning B value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1349089215 name="Reverb Time" min=0 max=1 value=1 flags=3400531984
+parameter id=1417577692 name="Portamento Control" min=0 max=1 value=0 flags=3635413008
+parameter id=1418073406 name="Portamento Time" min=0 max=1 value=0 flags=3400531984
+parameter id=1435779758 name="KS MIDI Channel" min=0 max=1 value=1 flags=3417309200
+parameter id=1480856699 name="Timbral Correction" min=0 max=1 value=0 flags=3383754768
+parameter id=1484578252 name="Bow Pressure" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1533291983 name="PortamSplit Ratio" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1554627922 name="Mono CrossString Muting" min=0 max=3 value=2 flags=3366977552
+parameter id=1559861485 name="EQ High Gain" min=0 max=1 value=0.40000000596046448 flags=3400531984
+parameter id=1567222762 name="Micro Tuning C value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222763 name="Micro Tuning C# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222764 name="Micro Tuning D value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222765 name="Micro Tuning D# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222766 name="Micro Tuning E value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222767 name="Micro Tuning F value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222768 name="Micro Tuning F# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222769 name="Micro Tuning G value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222770 name="Micro Tuning G# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222771 name="Micro Tuning A value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1589060243 name="Breath Ctrl Attack Sens." min=0 max=1 value=0.3333333432674408 flags=3400531984
+parameter id=1621033190 name="Random Bow Amount" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1772752259 name="Auto Poly Detection Time" min=0 max=1 value=0.095378890633583069 flags=3400531984
+parameter id=1776989895 name="EQ Low Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1781921569 name="Tremolo" min=0 max=2 value=0 flags=3366977552
+parameter id=1785126619 name="Tremolo Min Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902005 name="Harmonic A Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902006 name="Harmonic B Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1821187856 name="MAQAM Transpose" min=0 max=1 value=0 flags=3652190224
+parameter id=1851615048 name="MIDI Profile" min=0 max=1 value=1 flags=3652190224
+parameter id=1857136711 name="Harmonics" min=0 max=3 value=0 flags=3366977552
+parameter id=1864818648 name="Harm. A" min=0 max=1 value=0.20000000298023224 flags=3417309200
+parameter id=1864818649 name="Harm. B" min=0 max=1 value=0.40000000596046448 flags=3417309200
+parameter id=1884889441 name="Gesture Mode" min=0 max=2 value=0 flags=3366977552
+parameter id=1894510231 name="Harmonics 4 Control" min=0 max=1 value=0.75 flags=3400531984
+parameter id=1924134581 name="Bow Start" min=0 max=1 value=0 flags=3366977552
+parameter id=1958189775 name="String Resonance" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=1958783253 name="EQ Enabled" min=0 max=1 value=0 flags=3635413008
+parameter id=2008574934 name="Play Mode" min=0 max=2 value=0 flags=3366977552
+parameter id=2041665749 name="Sustain Ramp" min=0 max=1 value=0 flags=3400531984
+parameter id=2080181315 name="Pizzicato Fingerboard Interference" min=0 max=1 value=0.80000001192092896 flags=3400531984
+parameter id=2100945834 name="Strings 3-4 Interval" min=0 max=1 value=1 flags=3366977552
+parameter id=2100945835 name="Strings 2-3 Interval" min=0 max=1 value=1 flags=3366977552
+parameter id=2100945836 name="Strings 1-2 Interval" min=0 max=1 value=1 flags=3366977552
+parameter id=2131942832 name="Bow Pressure Accent" min=0 max=1 value=0.5 flags=3400531984
+parameter id=2134260957 name="Velocity" min=0 max=1 value=0.70866143703460693 flags=3400531984
+parameter id=2145034283 name="Pizz/C.Legno Tone" min=0 max=1 value=0.5 flags=3400531984
+parameter id=17275293 name="Source Angle" min=0 max=1 value=0.5 flags=3400531984
+parameter id=394018539 name="Source Distance" min=0 max=1 value=0.1071428582072258 flags=3400531984
+parameter id=586380142 name="Staccato Interval Time" min=0 max=1 value=1 flags=3366977552
+parameter id=655530384 name="Source Delay Mode" min=0 max=2 value=0 flags=3383754768
+parameter id=766704962 name="Absorption Materials" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1068695671 name="Room Sizes" min=0 max=1 value=0.36363637447357178 flags=3400531984
+parameter id=1099171302 name="Ambiente
+Room Simulator" min=0 max=1 value=1 flags=3366977552
+parameter id=1445856409 name="Reverb Modulation" min=0 max=2 value=1 flags=3383754768
+parameter id=1578007800 name="Mic Position" min=0 max=1 value=0.090909093618392944 flags=3400531984
+parameter id=1651557455 name="Main Volume Processing" min=0 max=1 value=0 flags=3383754768
+parameter id=143125754 name="Keep Bow Direction" min=0 max=1 value=0 flags=3366977552
+parameter id=1425861412 name="Mics Spread" min=0 max=1 value=0.067464150488376617 flags=3685744656
+parameter id=345785969 name="Ambience Amount" min=0 max=1 value=0.66666668653488159 flags=3685744656
+observed_latency_stable=1 baseline_seconds=0.02 notifications=1 coverage=listed_settings_only
+
+===== sweep =====
+Command: build/daw_swam_latency_probe 2008574934 1 2008574934 2 2008574934 0 1781921569 1 1781921569 2 1781921569 0 1857136711 1 1857136711 2 1857136711 3 1857136711 0 1336834641 1 1336834641 0 822535297 0 822535297 2 822535297 1 222145944 1 222145944 0 186027426 1 186027426 2 186027426 3 186027426 0 655530384 1 394018539 1 655530384 2 655530384 0 1099171302 0 1099171302 1
+Exit: 0
+Raw stdout+stderr SHA256: 287c73167885ab64421815fdef3c66a998b4ecb31c0aaff524350fe3a2183993
+component=aumu/Sce3/AuMo version=199682 sample_rate=48000 offline=0 output_device=none
+observation "initialized" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11403248459100723
+factory_preset_count=12
+preset requested="Cello" readback="Cello"
+observation "factory:Cello" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.23157811164855957
+preset requested="Bach" readback="Bach"
+observation "factory:Bach" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.2818705141544342
+preset requested="Extra Large Recording Studio Far Mic" readback="Extra Large Recording Studio Far Mic"
+observation "factory:Extra Large Recording Studio Far Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.229429692029953
+preset requested="Medium Hall Far Mic (Cinematic)" readback="Medium Hall Far Mic (Cinematic)"
+observation "factory:Medium Hall Far Mic (Cinematic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.086591668426990509
+preset requested="Pop" readback="Pop"
+observation "factory:Pop" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25063112378120422
+preset requested="Recording Studio 1 Close Mic" readback="Recording Studio 1 Close Mic"
+observation "factory:Recording Studio 1 Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11976650357246399
+preset requested="Recording Studio 1 Low Absorption Close Mic" readback="Recording Studio 1 Low Absorption Close Mic"
+observation "factory:Recording Studio 1 Low Absorption Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11268063634634018
+preset requested="Recording Studio 2 Far Mic (Chamber)" readback="Recording Studio 2 Far Mic (Chamber)"
+observation "factory:Recording Studio 2 Far Mic (Chamber)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.15931345522403717
+preset requested="Saint-Saëns" readback="Saint-Saëns"
+observation "factory:Saint-Saëns" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.38138648867607117
+preset requested="Shostakovich" readback="Shostakovich"
+observation "factory:Shostakovich" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.3261549174785614
+preset requested="Small Hall Mid-Range Mic (Symphonic)" readback="Small Hall Mid-Range Mic (Symphonic)"
+observation "factory:Small Hall Mid-Range Mic (Symphonic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.16587510704994202
+preset requested="Vivaldi" readback="Vivaldi"
+observation "factory:Vivaldi" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25493448972702026
+parameter id=14753226 name="Micro Tuning C" min=0 max=1 value=0 flags=3635413008
+value_label id=14753226 index=0 label="OFF"
+value_label id=14753226 index=1 label="ON"
+parameter id=14753227 name="Micro Tuning C#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753227 index=0 label="OFF"
+value_label id=14753227 index=1 label="ON"
+parameter id=14753228 name="Micro Tuning D" min=0 max=1 value=0 flags=3635413008
+value_label id=14753228 index=0 label="OFF"
+value_label id=14753228 index=1 label="ON"
+parameter id=14753229 name="Micro Tuning D#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753229 index=0 label="OFF"
+value_label id=14753229 index=1 label="ON"
+parameter id=14753230 name="Micro Tuning E" min=0 max=1 value=0 flags=3635413008
+value_label id=14753230 index=0 label="OFF"
+value_label id=14753230 index=1 label="ON"
+parameter id=14753231 name="Micro Tuning F" min=0 max=1 value=0 flags=3635413008
+value_label id=14753231 index=0 label="OFF"
+value_label id=14753231 index=1 label="ON"
+parameter id=14753232 name="Micro Tuning F#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753232 index=0 label="OFF"
+value_label id=14753232 index=1 label="ON"
+parameter id=14753233 name="Micro Tuning G" min=0 max=1 value=0 flags=3635413008
+value_label id=14753233 index=0 label="OFF"
+value_label id=14753233 index=1 label="ON"
+parameter id=14753234 name="Micro Tuning G#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753234 index=0 label="OFF"
+value_label id=14753234 index=1 label="ON"
+parameter id=14753235 name="Micro Tuning A" min=0 max=1 value=0 flags=3635413008
+value_label id=14753235 index=0 label="OFF"
+value_label id=14753235 index=1 label="ON"
+parameter id=21150189 name="Breath Ctrl Hi-Res Threshold" min=0 max=1 value=0.375 flags=3685744656
+parameter id=23714952 name="Alternate Fingering" min=0 max=2 value=0 flags=3366977552
+value_label id=23714952 index=0 label="Mid Position"
+value_label id=23714952 index=1 label="Near the Bridge"
+value_label id=23714952 index=2 label="Near the Nut + Open"
+parameter id=58272484 name="Instrument Body" min=0 max=1 value=0.54545456171035767 flags=3400531984
+parameter id=68898008 name="Open Strings" min=0 max=1 value=0.5 flags=3400531984
+parameter id=88083463 name="Cavit Scale Ultimate" min=0 max=1 value=1 flags=3652190224
+value_label id=88083463 index=0 label="OFF"
+value_label id=88083463 index=1 label="ON"
+parameter id=94685161 name="Expression String Release Muting" min=0 max=1 value=0 flags=3366977552
+value_label id=94685161 index=0 label="ON"
+value_label id=94685161 index=1 label="OFF"
+parameter id=101866522 name="Note Off Velocity
+(if supported)" min=0 max=1 value=1 flags=3383754768
+value_label id=101866522 index=0 label="OFF"
+value_label id=101866522 index=1 label="ON"
+parameter id=106433143 name="Panic" min=0 max=1 value=0 flags=3383754768
+value_label id=106433143 index=0 label="OFF"
+value_label id=106433143 index=1 label="ON"
+parameter id=108338554 name="Master Tune" min=0 max=1 value=0.4761904776096344 flags=3400531984
+parameter id=186027426 name="Attack Control" min=0 max=3 value=0 flags=3635413008
+value_label id=186027426 index=0 label="Vel. Soft"
+value_label id=186027426 index=1 label="Vel. Hard"
+value_label id=186027426 index=2 label="Expression"
+value_label id=186027426 index=3 label="Mix Vel. Expr."
+parameter id=191587727 name="Bowing Sensitivity" min=0 max=1 value=0.5 flags=3400531984
+parameter id=222145944 name="Bow Lift" min=0 max=1 value=0 flags=3366977552
+value_label id=222145944 index=0 label="Off String"
+value_label id=222145944 index=1 label="On String"
+parameter id=222679962 name="Vibrato Fade In" min=0 max=1 value=0.1666666716337204 flags=3400531984
+parameter id=259020023 name="Bow Polyphony" min=0 max=4 value=0 flags=3366977552
+value_label id=259020023 index=0 label="Mono String Crossing"
+value_label id=259020023 index=1 label="Mono Poly Release"
+value_label id=259020023 index=2 label="Double"
+value_label id=259020023 index=3 label="Double/Hold"
+value_label id=259020023 index=4 label="Auto"
+parameter id=277296446 name="Manual Bowing" min=0 max=1 value=0 flags=3400531984
+parameter id=295592483 name="Sustain" min=0 max=1 value=0 flags=3383754768
+value_label id=295592483 index=0 label="OFF"
+value_label id=295592483 index=1 label="ON"
+parameter id=303057305 name="KS Octave" min=0 max=4 value=0 flags=3635413008
+value_label id=303057305 index=0 label="OFF"
+value_label id=303057305 index=1 label="C -2"
+value_label id=303057305 index=2 label="C -1"
+value_label id=303057305 index=3 label="C 0"
+value_label id=303057305 index=4 label="C 1"
+parameter id=327674548 name="EQ Mid Freq" min=0 max=1 value=0.23782506585121155 flags=3668967440
+parameter id=327688123 name="EQ Mid Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=352031384 name="Expression" min=0 max=1 value=0.78900003433227539 flags=3668967440
+parameter id=356405467 name="Pitch Bend Down" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=389880618 name="Reverb Mix" min=0 max=1 value=1 flags=3400531984
+parameter id=427775986 name="Pan Pot Type" min=0 max=3 value=2 flags=3366977552
+value_label id=427775986 index=0 label="Dyn 1"
+value_label id=427775986 index=1 label="Dyn 2"
+value_label id=427775986 index=2 label="Acoustic"
+value_label id=427775986 index=3 label="Balance"
+parameter id=457350085 name="Micro Tuning A#" min=0 max=1 value=0 flags=3635413008
+value_label id=457350085 index=0 label="OFF"
+value_label id=457350085 index=1 label="ON"
+parameter id=457350086 name="Micro Tuning B" min=0 max=1 value=0 flags=3635413008
+value_label id=457350086 index=0 label="OFF"
+value_label id=457350086 index=1 label="ON"
+parameter id=537163328 name="Portamento Max Time" min=0 max=1 value=0.5 flags=3400531984
+parameter id=543665305 name="Pitch Bend" min=0 max=1 value=0.5 flags=3400531984
+parameter id=546040371 name="Main Volume" min=0 max=1 value=0.858734130859375 flags=3400531984
+parameter id=550942858 name="Slider Debug 1" min=0 max=1 value=0 flags=3417309200
+parameter id=550942859 name="Slider Debug 2" min=0 max=1 value=0 flags=3417309200
+parameter id=550942860 name="Slider Debug 3" min=0 max=1 value=0 flags=3417309200
+parameter id=550942861 name="Slider Debug 4" min=0 max=1 value=0 flags=3417309200
+parameter id=550942862 name="Slider Debug 5" min=0 max=1 value=0 flags=3417309200
+parameter id=560695067 name="Root" min=0 max=1 value=0 flags=3400531984
+parameter id=574719741 name="Bow Noise" min=0 max=1 value=0.5 flags=3400531984
+parameter id=593750711 name="String Tuning" min=0 max=1 value=0.5 flags=3400531984
+parameter id=623834388 name="Pitch Bend Up" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=636142698 name="Reset Micro Tuning KS" min=0 max=1 value=1 flags=3652190224
+value_label id=636142698 index=0 label="OFF"
+value_label id=636142698 index=1 label="ON"
+parameter id=641237175 name="Attack Ramp Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=645209239 name="Manual Bowing:
+Sustain+Note" min=0 max=1 value=1 flags=3366977552
+value_label id=645209239 index=0 label="Tremolo"
+value_label id=645209239 index=1 label="Bow Change"
+parameter id=680867983 name="Tremolo Mode" min=0 max=2 value=1 flags=3366977552
+value_label id=680867983 index=0 label="Hz"
+value_label id=680867983 index=1 label="Sync"
+value_label id=680867983 index=2 label="Sync/Acc"
+parameter id=696608674 name="Micro Tuning KS" min=0 max=1 value=0 flags=3652190224
+value_label id=696608674 index=0 label="OFF"
+value_label id=696608674 index=1 label="ON"
+parameter id=717902815 name="MIDI Channel" min=0 max=1 value=1 flags=3685744656
+parameter id=783568573 name="Rosin" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=796119545 name="Vibrato Rate" min=0 max=1 value=0.43333330750465393 flags=3400531984
+parameter id=822535297 name="Advanced Legato" min=0 max=2 value=1 flags=3383754768
+value_label id=822535297 index=0 label="OFF"
+value_label id=822535297 index=1 label="From 4th"
+value_label id=822535297 index=2 label="From 5th"
+parameter id=825744237 name="Temperament" min=0 max=1 value=0.5 flags=3400531984
+parameter id=885227349 name="Pizz/C.Legno Poly" min=0 max=1 value=1 flags=3366977552
+value_label id=885227349 index=0 label="Mono String Crossing"
+value_label id=885227349 index=1 label="Polyphony"
+parameter id=921244212 name="KS Velocity Remap" min=0 max=1 value=0.5 flags=3417309200
+parameter id=960866759 name="Strings Model" min=0 max=1 value=0 flags=3366977552
+value_label id=960866759 index=0 label="Real (Alternate Fingering)"
+value_label id=960866759 index=1 label="Virtual Adaptive Resizing (Mono)"
+parameter id=1013107514 name="Bow/Pizz Position" min=0 max=1 value=0.62500005960464478 flags=3400531984
+parameter id=1016578249 name="Manual Bowing:
+KeySwitch" min=0 max=2 value=0 flags=3366977552
+value_label id=1016578249 index=0 label="Tremolo"
+value_label id=1016578249 index=1 label="Bow Change"
+value_label id=1016578249 index=2 label="Next Note"
+parameter id=1044572362 name="Vibrato Depth" min=0 max=1 value=0 flags=3668967440
+parameter id=1052964665 name="Transpose" min=0 max=1 value=0.3333333432674408 flags=3668967440
+parameter id=1079357412 name="Key Switches Page Switch" min=0 max=1 value=0 flags=3400531984
+parameter id=1088641165 name="Early Reflection Gain" min=0 max=1 value=1 flags=3400531984
+parameter id=1114194414 name="Wind Controller Release Mode" min=0 max=1 value=0 flags=3635413008
+value_label id=1114194414 index=0 label="OFF"
+value_label id=1114194414 index=1 label="ON"
+parameter id=1145853786 name="Interactive Bow Compensation" min=0 max=1 value=0.69999998807907104 flags=3400531984
+parameter id=1151920248 name="Pan Pot" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1210414604 name="Random Finger" min=0 max=1 value=0.29999998211860657 flags=3400531984
+parameter id=1242695816 name="Double Hold String Selection" min=0 max=2 value=0 flags=3366977552
+value_label id=1242695816 index=0 label="Strings 4-3"
+value_label id=1242695816 index=1 label="Strings 3-2"
+value_label id=1242695816 index=2 label="Strings 2-1"
+parameter id=1244941173 name="Pizz/C.Legno Control" min=0 max=1 value=0 flags=3366977552
+value_label id=1244941173 index=0 label="Velocity"
+value_label id=1244941173 index=1 label="Expression"
+parameter id=1284651007 name="Dynamic Transitions" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1284785901 name="MAQAM" min=0 max=1 value=0 flags=3652190224
+value_label id=1284785901 index=0 label="OFF"
+value_label id=1284785901 index=1 label="ON"
+parameter id=1291775422 name="Vibr. Rand. Rate" min=0 max=1 value=0.30000001192092896 flags=3400531984
+parameter id=1309757407 name="Breath Ctrl Mode" min=0 max=1 value=0 flags=3635413008
+value_label id=1309757407 index=0 label="OFF"
+value_label id=1309757407 index=1 label="ON"
+parameter id=1336834641 name="Sordino" min=0 max=1 value=0 flags=3366977552
+value_label id=1336834641 index=0 label="OFF"
+value_label id=1336834641 index=1 label="ON"
+parameter id=1339265445 name="Micro Tuning A# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1339265446 name="Micro Tuning B value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1349089215 name="Reverb Time" min=0 max=1 value=1 flags=3400531984
+parameter id=1417577692 name="Portamento Control" min=0 max=1 value=0 flags=3635413008
+value_label id=1417577692 index=0 label="Velocity
+(P.MaxTime)"
+value_label id=1417577692 index=1 label="CC
+(P.MaxTime)"
+parameter id=1418073406 name="Portamento Time" min=0 max=1 value=0 flags=3400531984
+parameter id=1435779758 name="KS MIDI Channel" min=0 max=1 value=1 flags=3417309200
+parameter id=1480856699 name="Timbral Correction" min=0 max=1 value=0 flags=3383754768
+value_label id=1480856699 index=0 label="OFF"
+value_label id=1480856699 index=1 label="ON"
+parameter id=1484578252 name="Bow Pressure" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1533291983 name="PortamSplit Ratio" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1554627922 name="Mono CrossString Muting" min=0 max=3 value=2 flags=3366977552
+value_label id=1554627922 index=0 label="1 sem"
+value_label id=1554627922 index=1 label="2 sem"
+value_label id=1554627922 index=2 label="Exclude Harm"
+value_label id=1554627922 index=3 label="All"
+parameter id=1559861485 name="EQ High Gain" min=0 max=1 value=0.40000000596046448 flags=3400531984
+parameter id=1567222762 name="Micro Tuning C value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222763 name="Micro Tuning C# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222764 name="Micro Tuning D value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222765 name="Micro Tuning D# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222766 name="Micro Tuning E value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222767 name="Micro Tuning F value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222768 name="Micro Tuning F# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222769 name="Micro Tuning G value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222770 name="Micro Tuning G# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222771 name="Micro Tuning A value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1589060243 name="Breath Ctrl Attack Sens." min=0 max=1 value=0.3333333432674408 flags=3400531984
+parameter id=1621033190 name="Random Bow Amount" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1772752259 name="Auto Poly Detection Time" min=0 max=1 value=0.095378890633583069 flags=3400531984
+parameter id=1776989895 name="EQ Low Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1781921569 name="Tremolo" min=0 max=2 value=0 flags=3366977552
+value_label id=1781921569 index=0 label="OFF"
+value_label id=1781921569 index=1 label="Slow"
+value_label id=1781921569 index=2 label="Fast"
+parameter id=1785126619 name="Tremolo Min Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902005 name="Harmonic A Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902006 name="Harmonic B Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1821187856 name="MAQAM Transpose" min=0 max=1 value=0 flags=3652190224
+value_label id=1821187856 index=0 label="Note"
+value_label id=1821187856 index=1 label="Root"
+parameter id=1851615048 name="MIDI Profile" min=0 max=1 value=1 flags=3652190224
+value_label id=1851615048 index=0 label="MPE"
+value_label id=1851615048 index=1 label="Legacy"
+parameter id=1857136711 name="Harmonics" min=0 max=3 value=0 flags=3366977552
+value_label id=1857136711 index=0 label="OFF"
+value_label id=1857136711 index=1 label="2"
+value_label id=1857136711 index=2 label="3"
+value_label id=1857136711 index=3 label="4 Control"
+parameter id=1864818648 name="Harm. A" min=0 max=1 value=0.20000000298023224 flags=3417309200
+parameter id=1864818649 name="Harm. B" min=0 max=1 value=0.40000000596046448 flags=3417309200
+parameter id=1884889441 name="Gesture Mode" min=0 max=2 value=0 flags=3366977552
+value_label id=1884889441 index=0 label="Expression"
+value_label id=1884889441 index=1 label="Bipolar"
+value_label id=1884889441 index=2 label="Bowing"
+parameter id=1894510231 name="Harmonics 4 Control" min=0 max=1 value=0.75 flags=3400531984
+parameter id=1924134581 name="Bow Start" min=0 max=1 value=0 flags=3366977552
+value_label id=1924134581 index=0 label="Down Bow"
+value_label id=1924134581 index=1 label="Up Bow"
+parameter id=1958189775 name="String Resonance" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=1958783253 name="EQ Enabled" min=0 max=1 value=0 flags=3635413008
+value_label id=1958783253 index=0 label="OFF"
+value_label id=1958783253 index=1 label="ON"
+parameter id=2008574934 name="Play Mode" min=0 max=2 value=0 flags=3366977552
+value_label id=2008574934 index=0 label="Bow"
+value_label id=2008574934 index=1 label="Pizzicato"
+value_label id=2008574934 index=2 label="Col Legno"
+parameter id=2041665749 name="Sustain Ramp" min=0 max=1 value=0 flags=3400531984
+parameter id=2080181315 name="Pizzicato Fingerboard Interference" min=0 max=1 value=0.80000001192092896 flags=3400531984
+parameter id=2100945834 name="Strings 3-4 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945834 index=0 label="4th"
+value_label id=2100945834 index=1 label="5th"
+parameter id=2100945835 name="Strings 2-3 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945835 index=0 label="4th"
+value_label id=2100945835 index=1 label="5th"
+parameter id=2100945836 name="Strings 1-2 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945836 index=0 label="4th"
+value_label id=2100945836 index=1 label="5th"
+parameter id=2131942832 name="Bow Pressure Accent" min=0 max=1 value=0.5 flags=3400531984
+parameter id=2134260957 name="Velocity" min=0 max=1 value=0.70866143703460693 flags=3400531984
+parameter id=2145034283 name="Pizz/C.Legno Tone" min=0 max=1 value=0.5 flags=3400531984
+parameter id=17275293 name="Source Angle" min=0 max=1 value=0.5 flags=3400531984
+parameter id=394018539 name="Source Distance" min=0 max=1 value=0.1071428582072258 flags=3400531984
+parameter id=586380142 name="Staccato Interval Time" min=0 max=1 value=1 flags=3366977552
+value_label id=586380142 index=0 label="31 ms"
+value_label id=586380142 index=1 label="18 ms"
+parameter id=655530384 name="Source Delay Mode" min=0 max=2 value=0 flags=3383754768
+value_label id=655530384 index=0 label="No Delay"
+value_label id=655530384 index=1 label="Real Delay"
+value_label id=655530384 index=2 label="Nearest"
+parameter id=766704962 name="Absorption Materials" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1068695671 name="Room Sizes" min=0 max=1 value=0.36363637447357178 flags=3400531984
+parameter id=1099171302 name="Ambiente
+Room Simulator" min=0 max=1 value=1 flags=3366977552
+value_label id=1099171302 index=0 label="OFF"
+value_label id=1099171302 index=1 label="ON"
+parameter id=1445856409 name="Reverb Modulation" min=0 max=2 value=1 flags=3383754768
+value_label id=1445856409 index=0 label="OFF"
+value_label id=1445856409 index=1 label="MEDIUM"
+value_label id=1445856409 index=2 label="HIGH"
+parameter id=1578007800 name="Mic Position" min=0 max=1 value=0.090909093618392944 flags=3400531984
+parameter id=1651557455 name="Main Volume Processing" min=0 max=1 value=0 flags=3383754768
+value_label id=1651557455 index=0 label="Pre Room"
+value_label id=1651557455 index=1 label="Post Room"
+parameter id=143125754 name="Keep Bow Direction" min=0 max=1 value=0 flags=3366977552
+value_label id=143125754 index=0 label="OFF"
+value_label id=143125754 index=1 label="ON"
+parameter id=1425861412 name="Mics Spread" min=0 max=1 value=0.067464150488376617 flags=3685744656
+parameter id=345785969 name="Ambience Amount" min=0 max=1 value=0.66666668653488159 flags=3685744656
+change id=2008574934 requested=1 readback=1
+observation "parameter:2008574934=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.24852636456489563
+change id=2008574934 requested=2 readback=2
+observation "parameter:2008574934=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.13723735511302948
+change id=2008574934 requested=0 readback=0
+observation "parameter:2008574934=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20599861443042755
+change id=1781921569 requested=1 readback=1
+observation "parameter:1781921569=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21103519201278687
+change id=1781921569 requested=2 readback=2
+observation "parameter:1781921569=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1730005294084549
+change id=1781921569 requested=0 readback=0
+observation "parameter:1781921569=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19755266606807709
+change id=1857136711 requested=1 readback=1
+observation "parameter:1857136711=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21165846288204193
+change id=1857136711 requested=2 readback=2
+observation "parameter:1857136711=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1866869181394577
+change id=1857136711 requested=3 readback=3
+observation "parameter:1857136711=3.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11721059679985046
+change id=1857136711 requested=0 readback=0
+observation "parameter:1857136711=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1992386132478714
+change id=1336834641 requested=1 readback=1
+observation "parameter:1336834641=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.17444436252117157
+change id=1336834641 requested=0 readback=0
+observation "parameter:1336834641=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20185865461826324
+change id=822535297 requested=0 readback=0
+observation "parameter:822535297=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21053056418895721
+change id=822535297 requested=2 readback=2
+observation "parameter:822535297=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21264444291591644
+change id=822535297 requested=1 readback=1
+observation "parameter:822535297=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20719194412231445
+change id=222145944 requested=1 readback=1
+observation "parameter:222145944=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21329112350940704
+change id=222145944 requested=0 readback=0
+observation "parameter:222145944=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21651153266429901
+change id=186027426 requested=1 readback=1
+observation "parameter:186027426=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21156887710094452
+change id=186027426 requested=2 readback=2
+observation "parameter:186027426=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19935287535190582
+change id=186027426 requested=3 readback=3
+observation "parameter:186027426=3.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21327674388885498
+change id=186027426 requested=0 readback=0
+observation "parameter:186027426=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19956547021865845
+change id=655530384 requested=1 readback=1
+observation "parameter:655530384=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.14219032227993011
+change id=394018539 requested=1 readback=1
+observation "parameter:394018539=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.15612629055976868
+change id=655530384 requested=2 readback=2
+observation "parameter:655530384=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11586645990610123
+change id=655530384 requested=0 readback=0
+observation "parameter:655530384=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11746589094400406
+change id=1099171302 requested=0 readback=0
+observation "parameter:1099171302=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.28360816836357117
+change id=1099171302 requested=1 readback=1
+observation "parameter:1099171302=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.12796938419342041
+observed_latency_stable=1 baseline_seconds=0.02 notifications=1 coverage=listed_settings_only
+
+===== offline =====
+Command: build/daw_swam_latency_probe --offline 2008574934 1 2008574934 2 2008574934 0 1781921569 1 1781921569 2 1781921569 0 1857136711 1 1857136711 2 1857136711 3 1857136711 0 1336834641 1 1336834641 0 822535297 0 822535297 2 822535297 1 222145944 1 222145944 0 186027426 1 186027426 2 186027426 3 186027426 0 655530384 1 394018539 1 655530384 2 655530384 0 1099171302 0 1099171302 1
+Exit: 0
+Raw stdout+stderr SHA256: 708098ec10e42561640897e566f6b12e0462f8b95e1f668d6cb834b055e11106
+component=aumu/Sce3/AuMo version=199682 sample_rate=48000 offline=1 output_device=none
+observation "initialized" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11403248459100723
+factory_preset_count=12
+preset requested="Cello" readback="Cello"
+observation "factory:Cello" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.23157811164855957
+preset requested="Bach" readback="Bach"
+observation "factory:Bach" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.2818705141544342
+preset requested="Extra Large Recording Studio Far Mic" readback="Extra Large Recording Studio Far Mic"
+observation "factory:Extra Large Recording Studio Far Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.229429692029953
+preset requested="Medium Hall Far Mic (Cinematic)" readback="Medium Hall Far Mic (Cinematic)"
+observation "factory:Medium Hall Far Mic (Cinematic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.086591668426990509
+preset requested="Pop" readback="Pop"
+observation "factory:Pop" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25063112378120422
+preset requested="Recording Studio 1 Close Mic" readback="Recording Studio 1 Close Mic"
+observation "factory:Recording Studio 1 Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11976650357246399
+preset requested="Recording Studio 1 Low Absorption Close Mic" readback="Recording Studio 1 Low Absorption Close Mic"
+observation "factory:Recording Studio 1 Low Absorption Close Mic" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11268063634634018
+preset requested="Recording Studio 2 Far Mic (Chamber)" readback="Recording Studio 2 Far Mic (Chamber)"
+observation "factory:Recording Studio 2 Far Mic (Chamber)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.15931345522403717
+preset requested="Saint-Saëns" readback="Saint-Saëns"
+observation "factory:Saint-Saëns" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.38138648867607117
+preset requested="Shostakovich" readback="Shostakovich"
+observation "factory:Shostakovich" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.3261549174785614
+preset requested="Small Hall Mid-Range Mic (Symphonic)" readback="Small Hall Mid-Range Mic (Symphonic)"
+observation "factory:Small Hall Mid-Range Mic (Symphonic)" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.16587510704994202
+preset requested="Vivaldi" readback="Vivaldi"
+observation "factory:Vivaldi" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.25493448972702026
+parameter id=14753226 name="Micro Tuning C" min=0 max=1 value=0 flags=3635413008
+value_label id=14753226 index=0 label="OFF"
+value_label id=14753226 index=1 label="ON"
+parameter id=14753227 name="Micro Tuning C#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753227 index=0 label="OFF"
+value_label id=14753227 index=1 label="ON"
+parameter id=14753228 name="Micro Tuning D" min=0 max=1 value=0 flags=3635413008
+value_label id=14753228 index=0 label="OFF"
+value_label id=14753228 index=1 label="ON"
+parameter id=14753229 name="Micro Tuning D#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753229 index=0 label="OFF"
+value_label id=14753229 index=1 label="ON"
+parameter id=14753230 name="Micro Tuning E" min=0 max=1 value=0 flags=3635413008
+value_label id=14753230 index=0 label="OFF"
+value_label id=14753230 index=1 label="ON"
+parameter id=14753231 name="Micro Tuning F" min=0 max=1 value=0 flags=3635413008
+value_label id=14753231 index=0 label="OFF"
+value_label id=14753231 index=1 label="ON"
+parameter id=14753232 name="Micro Tuning F#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753232 index=0 label="OFF"
+value_label id=14753232 index=1 label="ON"
+parameter id=14753233 name="Micro Tuning G" min=0 max=1 value=0 flags=3635413008
+value_label id=14753233 index=0 label="OFF"
+value_label id=14753233 index=1 label="ON"
+parameter id=14753234 name="Micro Tuning G#" min=0 max=1 value=0 flags=3635413008
+value_label id=14753234 index=0 label="OFF"
+value_label id=14753234 index=1 label="ON"
+parameter id=14753235 name="Micro Tuning A" min=0 max=1 value=0 flags=3635413008
+value_label id=14753235 index=0 label="OFF"
+value_label id=14753235 index=1 label="ON"
+parameter id=21150189 name="Breath Ctrl Hi-Res Threshold" min=0 max=1 value=0.375 flags=3685744656
+parameter id=23714952 name="Alternate Fingering" min=0 max=2 value=0 flags=3366977552
+value_label id=23714952 index=0 label="Mid Position"
+value_label id=23714952 index=1 label="Near the Bridge"
+value_label id=23714952 index=2 label="Near the Nut + Open"
+parameter id=58272484 name="Instrument Body" min=0 max=1 value=0.54545456171035767 flags=3400531984
+parameter id=68898008 name="Open Strings" min=0 max=1 value=0.5 flags=3400531984
+parameter id=88083463 name="Cavit Scale Ultimate" min=0 max=1 value=1 flags=3652190224
+value_label id=88083463 index=0 label="OFF"
+value_label id=88083463 index=1 label="ON"
+parameter id=94685161 name="Expression String Release Muting" min=0 max=1 value=0 flags=3366977552
+value_label id=94685161 index=0 label="ON"
+value_label id=94685161 index=1 label="OFF"
+parameter id=101866522 name="Note Off Velocity
+(if supported)" min=0 max=1 value=1 flags=3383754768
+value_label id=101866522 index=0 label="OFF"
+value_label id=101866522 index=1 label="ON"
+parameter id=106433143 name="Panic" min=0 max=1 value=0 flags=3383754768
+value_label id=106433143 index=0 label="OFF"
+value_label id=106433143 index=1 label="ON"
+parameter id=108338554 name="Master Tune" min=0 max=1 value=0.4761904776096344 flags=3400531984
+parameter id=186027426 name="Attack Control" min=0 max=3 value=0 flags=3635413008
+value_label id=186027426 index=0 label="Vel. Soft"
+value_label id=186027426 index=1 label="Vel. Hard"
+value_label id=186027426 index=2 label="Expression"
+value_label id=186027426 index=3 label="Mix Vel. Expr."
+parameter id=191587727 name="Bowing Sensitivity" min=0 max=1 value=0.5 flags=3400531984
+parameter id=222145944 name="Bow Lift" min=0 max=1 value=0 flags=3366977552
+value_label id=222145944 index=0 label="Off String"
+value_label id=222145944 index=1 label="On String"
+parameter id=222679962 name="Vibrato Fade In" min=0 max=1 value=0.1666666716337204 flags=3400531984
+parameter id=259020023 name="Bow Polyphony" min=0 max=4 value=0 flags=3366977552
+value_label id=259020023 index=0 label="Mono String Crossing"
+value_label id=259020023 index=1 label="Mono Poly Release"
+value_label id=259020023 index=2 label="Double"
+value_label id=259020023 index=3 label="Double/Hold"
+value_label id=259020023 index=4 label="Auto"
+parameter id=277296446 name="Manual Bowing" min=0 max=1 value=0 flags=3400531984
+parameter id=295592483 name="Sustain" min=0 max=1 value=0 flags=3383754768
+value_label id=295592483 index=0 label="OFF"
+value_label id=295592483 index=1 label="ON"
+parameter id=303057305 name="KS Octave" min=0 max=4 value=0 flags=3635413008
+value_label id=303057305 index=0 label="OFF"
+value_label id=303057305 index=1 label="C -2"
+value_label id=303057305 index=2 label="C -1"
+value_label id=303057305 index=3 label="C 0"
+value_label id=303057305 index=4 label="C 1"
+parameter id=327674548 name="EQ Mid Freq" min=0 max=1 value=0.23782506585121155 flags=3668967440
+parameter id=327688123 name="EQ Mid Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=352031384 name="Expression" min=0 max=1 value=0.78900003433227539 flags=3668967440
+parameter id=356405467 name="Pitch Bend Down" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=389880618 name="Reverb Mix" min=0 max=1 value=1 flags=3400531984
+parameter id=427775986 name="Pan Pot Type" min=0 max=3 value=2 flags=3366977552
+value_label id=427775986 index=0 label="Dyn 1"
+value_label id=427775986 index=1 label="Dyn 2"
+value_label id=427775986 index=2 label="Acoustic"
+value_label id=427775986 index=3 label="Balance"
+parameter id=457350085 name="Micro Tuning A#" min=0 max=1 value=0 flags=3635413008
+value_label id=457350085 index=0 label="OFF"
+value_label id=457350085 index=1 label="ON"
+parameter id=457350086 name="Micro Tuning B" min=0 max=1 value=0 flags=3635413008
+value_label id=457350086 index=0 label="OFF"
+value_label id=457350086 index=1 label="ON"
+parameter id=537163328 name="Portamento Max Time" min=0 max=1 value=0.5 flags=3400531984
+parameter id=543665305 name="Pitch Bend" min=0 max=1 value=0.5 flags=3400531984
+parameter id=546040371 name="Main Volume" min=0 max=1 value=0.858734130859375 flags=3400531984
+parameter id=550942858 name="Slider Debug 1" min=0 max=1 value=0 flags=3417309200
+parameter id=550942859 name="Slider Debug 2" min=0 max=1 value=0 flags=3417309200
+parameter id=550942860 name="Slider Debug 3" min=0 max=1 value=0 flags=3417309200
+parameter id=550942861 name="Slider Debug 4" min=0 max=1 value=0 flags=3417309200
+parameter id=550942862 name="Slider Debug 5" min=0 max=1 value=0 flags=3417309200
+parameter id=560695067 name="Root" min=0 max=1 value=0 flags=3400531984
+parameter id=574719741 name="Bow Noise" min=0 max=1 value=0.5 flags=3400531984
+parameter id=593750711 name="String Tuning" min=0 max=1 value=0.5 flags=3400531984
+parameter id=623834388 name="Pitch Bend Up" min=0 max=1 value=0.041666667908430099 flags=3400531984
+parameter id=636142698 name="Reset Micro Tuning KS" min=0 max=1 value=1 flags=3652190224
+value_label id=636142698 index=0 label="OFF"
+value_label id=636142698 index=1 label="ON"
+parameter id=641237175 name="Attack Ramp Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=645209239 name="Manual Bowing:
+Sustain+Note" min=0 max=1 value=1 flags=3366977552
+value_label id=645209239 index=0 label="Tremolo"
+value_label id=645209239 index=1 label="Bow Change"
+parameter id=680867983 name="Tremolo Mode" min=0 max=2 value=1 flags=3366977552
+value_label id=680867983 index=0 label="Hz"
+value_label id=680867983 index=1 label="Sync"
+value_label id=680867983 index=2 label="Sync/Acc"
+parameter id=696608674 name="Micro Tuning KS" min=0 max=1 value=0 flags=3652190224
+value_label id=696608674 index=0 label="OFF"
+value_label id=696608674 index=1 label="ON"
+parameter id=717902815 name="MIDI Channel" min=0 max=1 value=1 flags=3685744656
+parameter id=783568573 name="Rosin" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=796119545 name="Vibrato Rate" min=0 max=1 value=0.43333330750465393 flags=3400531984
+parameter id=822535297 name="Advanced Legato" min=0 max=2 value=1 flags=3383754768
+value_label id=822535297 index=0 label="OFF"
+value_label id=822535297 index=1 label="From 4th"
+value_label id=822535297 index=2 label="From 5th"
+parameter id=825744237 name="Temperament" min=0 max=1 value=0.5 flags=3400531984
+parameter id=885227349 name="Pizz/C.Legno Poly" min=0 max=1 value=1 flags=3366977552
+value_label id=885227349 index=0 label="Mono String Crossing"
+value_label id=885227349 index=1 label="Polyphony"
+parameter id=921244212 name="KS Velocity Remap" min=0 max=1 value=0.5 flags=3417309200
+parameter id=960866759 name="Strings Model" min=0 max=1 value=0 flags=3366977552
+value_label id=960866759 index=0 label="Real (Alternate Fingering)"
+value_label id=960866759 index=1 label="Virtual Adaptive Resizing (Mono)"
+parameter id=1013107514 name="Bow/Pizz Position" min=0 max=1 value=0.62500005960464478 flags=3400531984
+parameter id=1016578249 name="Manual Bowing:
+KeySwitch" min=0 max=2 value=0 flags=3366977552
+value_label id=1016578249 index=0 label="Tremolo"
+value_label id=1016578249 index=1 label="Bow Change"
+value_label id=1016578249 index=2 label="Next Note"
+parameter id=1044572362 name="Vibrato Depth" min=0 max=1 value=0 flags=3668967440
+parameter id=1052964665 name="Transpose" min=0 max=1 value=0.3333333432674408 flags=3668967440
+parameter id=1079357412 name="Key Switches Page Switch" min=0 max=1 value=0 flags=3400531984
+parameter id=1088641165 name="Early Reflection Gain" min=0 max=1 value=1 flags=3400531984
+parameter id=1114194414 name="Wind Controller Release Mode" min=0 max=1 value=0 flags=3635413008
+value_label id=1114194414 index=0 label="OFF"
+value_label id=1114194414 index=1 label="ON"
+parameter id=1145853786 name="Interactive Bow Compensation" min=0 max=1 value=0.69999998807907104 flags=3400531984
+parameter id=1151920248 name="Pan Pot" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1210414604 name="Random Finger" min=0 max=1 value=0.29999998211860657 flags=3400531984
+parameter id=1242695816 name="Double Hold String Selection" min=0 max=2 value=0 flags=3366977552
+value_label id=1242695816 index=0 label="Strings 4-3"
+value_label id=1242695816 index=1 label="Strings 3-2"
+value_label id=1242695816 index=2 label="Strings 2-1"
+parameter id=1244941173 name="Pizz/C.Legno Control" min=0 max=1 value=0 flags=3366977552
+value_label id=1244941173 index=0 label="Velocity"
+value_label id=1244941173 index=1 label="Expression"
+parameter id=1284651007 name="Dynamic Transitions" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1284785901 name="MAQAM" min=0 max=1 value=0 flags=3652190224
+value_label id=1284785901 index=0 label="OFF"
+value_label id=1284785901 index=1 label="ON"
+parameter id=1291775422 name="Vibr. Rand. Rate" min=0 max=1 value=0.30000001192092896 flags=3400531984
+parameter id=1309757407 name="Breath Ctrl Mode" min=0 max=1 value=0 flags=3635413008
+value_label id=1309757407 index=0 label="OFF"
+value_label id=1309757407 index=1 label="ON"
+parameter id=1336834641 name="Sordino" min=0 max=1 value=0 flags=3366977552
+value_label id=1336834641 index=0 label="OFF"
+value_label id=1336834641 index=1 label="ON"
+parameter id=1339265445 name="Micro Tuning A# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1339265446 name="Micro Tuning B value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1349089215 name="Reverb Time" min=0 max=1 value=1 flags=3400531984
+parameter id=1417577692 name="Portamento Control" min=0 max=1 value=0 flags=3635413008
+value_label id=1417577692 index=0 label="Velocity
+(P.MaxTime)"
+value_label id=1417577692 index=1 label="CC
+(P.MaxTime)"
+parameter id=1418073406 name="Portamento Time" min=0 max=1 value=0 flags=3400531984
+parameter id=1435779758 name="KS MIDI Channel" min=0 max=1 value=1 flags=3417309200
+parameter id=1480856699 name="Timbral Correction" min=0 max=1 value=0 flags=3383754768
+value_label id=1480856699 index=0 label="OFF"
+value_label id=1480856699 index=1 label="ON"
+parameter id=1484578252 name="Bow Pressure" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1533291983 name="PortamSplit Ratio" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1554627922 name="Mono CrossString Muting" min=0 max=3 value=2 flags=3366977552
+value_label id=1554627922 index=0 label="1 sem"
+value_label id=1554627922 index=1 label="2 sem"
+value_label id=1554627922 index=2 label="Exclude Harm"
+value_label id=1554627922 index=3 label="All"
+parameter id=1559861485 name="EQ High Gain" min=0 max=1 value=0.40000000596046448 flags=3400531984
+parameter id=1567222762 name="Micro Tuning C value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222763 name="Micro Tuning C# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222764 name="Micro Tuning D value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222765 name="Micro Tuning D# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222766 name="Micro Tuning E value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222767 name="Micro Tuning F value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222768 name="Micro Tuning F# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222769 name="Micro Tuning G value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222770 name="Micro Tuning G# value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1567222771 name="Micro Tuning A value" min=0 max=1 value=0.25 flags=3400531984
+parameter id=1589060243 name="Breath Ctrl Attack Sens." min=0 max=1 value=0.3333333432674408 flags=3400531984
+parameter id=1621033190 name="Random Bow Amount" min=0 max=1 value=0.34999999403953552 flags=3400531984
+parameter id=1772752259 name="Auto Poly Detection Time" min=0 max=1 value=0.095378890633583069 flags=3400531984
+parameter id=1776989895 name="EQ Low Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1781921569 name="Tremolo" min=0 max=2 value=0 flags=3366977552
+value_label id=1781921569 index=0 label="OFF"
+value_label id=1781921569 index=1 label="Slow"
+value_label id=1781921569 index=2 label="Fast"
+parameter id=1785126619 name="Tremolo Min Speed" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902005 name="Harmonic A Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1820902006 name="Harmonic B Gain" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1821187856 name="MAQAM Transpose" min=0 max=1 value=0 flags=3652190224
+value_label id=1821187856 index=0 label="Note"
+value_label id=1821187856 index=1 label="Root"
+parameter id=1851615048 name="MIDI Profile" min=0 max=1 value=1 flags=3652190224
+value_label id=1851615048 index=0 label="MPE"
+value_label id=1851615048 index=1 label="Legacy"
+parameter id=1857136711 name="Harmonics" min=0 max=3 value=0 flags=3366977552
+value_label id=1857136711 index=0 label="OFF"
+value_label id=1857136711 index=1 label="2"
+value_label id=1857136711 index=2 label="3"
+value_label id=1857136711 index=3 label="4 Control"
+parameter id=1864818648 name="Harm. A" min=0 max=1 value=0.20000000298023224 flags=3417309200
+parameter id=1864818649 name="Harm. B" min=0 max=1 value=0.40000000596046448 flags=3417309200
+parameter id=1884889441 name="Gesture Mode" min=0 max=2 value=0 flags=3366977552
+value_label id=1884889441 index=0 label="Expression"
+value_label id=1884889441 index=1 label="Bipolar"
+value_label id=1884889441 index=2 label="Bowing"
+parameter id=1894510231 name="Harmonics 4 Control" min=0 max=1 value=0.75 flags=3400531984
+parameter id=1924134581 name="Bow Start" min=0 max=1 value=0 flags=3366977552
+value_label id=1924134581 index=0 label="Down Bow"
+value_label id=1924134581 index=1 label="Up Bow"
+parameter id=1958189775 name="String Resonance" min=0 max=1 value=0.59999996423721313 flags=3400531984
+parameter id=1958783253 name="EQ Enabled" min=0 max=1 value=0 flags=3635413008
+value_label id=1958783253 index=0 label="OFF"
+value_label id=1958783253 index=1 label="ON"
+parameter id=2008574934 name="Play Mode" min=0 max=2 value=0 flags=3366977552
+value_label id=2008574934 index=0 label="Bow"
+value_label id=2008574934 index=1 label="Pizzicato"
+value_label id=2008574934 index=2 label="Col Legno"
+parameter id=2041665749 name="Sustain Ramp" min=0 max=1 value=0 flags=3400531984
+parameter id=2080181315 name="Pizzicato Fingerboard Interference" min=0 max=1 value=0.80000001192092896 flags=3400531984
+parameter id=2100945834 name="Strings 3-4 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945834 index=0 label="4th"
+value_label id=2100945834 index=1 label="5th"
+parameter id=2100945835 name="Strings 2-3 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945835 index=0 label="4th"
+value_label id=2100945835 index=1 label="5th"
+parameter id=2100945836 name="Strings 1-2 Interval" min=0 max=1 value=1 flags=3366977552
+value_label id=2100945836 index=0 label="4th"
+value_label id=2100945836 index=1 label="5th"
+parameter id=2131942832 name="Bow Pressure Accent" min=0 max=1 value=0.5 flags=3400531984
+parameter id=2134260957 name="Velocity" min=0 max=1 value=0.70866143703460693 flags=3400531984
+parameter id=2145034283 name="Pizz/C.Legno Tone" min=0 max=1 value=0.5 flags=3400531984
+parameter id=17275293 name="Source Angle" min=0 max=1 value=0.5 flags=3400531984
+parameter id=394018539 name="Source Distance" min=0 max=1 value=0.1071428582072258 flags=3400531984
+parameter id=586380142 name="Staccato Interval Time" min=0 max=1 value=1 flags=3366977552
+value_label id=586380142 index=0 label="31 ms"
+value_label id=586380142 index=1 label="18 ms"
+parameter id=655530384 name="Source Delay Mode" min=0 max=2 value=0 flags=3383754768
+value_label id=655530384 index=0 label="No Delay"
+value_label id=655530384 index=1 label="Real Delay"
+value_label id=655530384 index=2 label="Nearest"
+parameter id=766704962 name="Absorption Materials" min=0 max=1 value=0.5 flags=3400531984
+parameter id=1068695671 name="Room Sizes" min=0 max=1 value=0.36363637447357178 flags=3400531984
+parameter id=1099171302 name="Ambiente
+Room Simulator" min=0 max=1 value=1 flags=3366977552
+value_label id=1099171302 index=0 label="OFF"
+value_label id=1099171302 index=1 label="ON"
+parameter id=1445856409 name="Reverb Modulation" min=0 max=2 value=1 flags=3383754768
+value_label id=1445856409 index=0 label="OFF"
+value_label id=1445856409 index=1 label="MEDIUM"
+value_label id=1445856409 index=2 label="HIGH"
+parameter id=1578007800 name="Mic Position" min=0 max=1 value=0.090909093618392944 flags=3400531984
+parameter id=1651557455 name="Main Volume Processing" min=0 max=1 value=0 flags=3383754768
+value_label id=1651557455 index=0 label="Pre Room"
+value_label id=1651557455 index=1 label="Post Room"
+parameter id=143125754 name="Keep Bow Direction" min=0 max=1 value=0 flags=3366977552
+value_label id=143125754 index=0 label="OFF"
+value_label id=143125754 index=1 label="ON"
+parameter id=1425861412 name="Mics Spread" min=0 max=1 value=0.067464150488376617 flags=3685744656
+parameter id=345785969 name="Ambience Amount" min=0 max=1 value=0.66666668653488159 flags=3685744656
+change id=2008574934 requested=1 readback=1
+observation "parameter:2008574934=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.24852636456489563
+change id=2008574934 requested=2 readback=2
+observation "parameter:2008574934=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.13723735511302948
+change id=2008574934 requested=0 readback=0
+observation "parameter:2008574934=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20599861443042755
+change id=1781921569 requested=1 readback=1
+observation "parameter:1781921569=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21103519201278687
+change id=1781921569 requested=2 readback=2
+observation "parameter:1781921569=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1730005294084549
+change id=1781921569 requested=0 readback=0
+observation "parameter:1781921569=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19755266606807709
+change id=1857136711 requested=1 readback=1
+observation "parameter:1857136711=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21165846288204193
+change id=1857136711 requested=2 readback=2
+observation "parameter:1857136711=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1866869181394577
+change id=1857136711 requested=3 readback=3
+observation "parameter:1857136711=3.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11721059679985046
+change id=1857136711 requested=0 readback=0
+observation "parameter:1857136711=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.1992386132478714
+change id=1336834641 requested=1 readback=1
+observation "parameter:1336834641=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.17444436252117157
+change id=1336834641 requested=0 readback=0
+observation "parameter:1336834641=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20185865461826324
+change id=822535297 requested=0 readback=0
+observation "parameter:822535297=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21053056418895721
+change id=822535297 requested=2 readback=2
+observation "parameter:822535297=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21264444291591644
+change id=822535297 requested=1 readback=1
+observation "parameter:822535297=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.20719194412231445
+change id=222145944 requested=1 readback=1
+observation "parameter:222145944=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21329112350940704
+change id=222145944 requested=0 readback=0
+observation "parameter:222145944=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21651153266429901
+change id=186027426 requested=1 readback=1
+observation "parameter:186027426=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21156887710094452
+change id=186027426 requested=2 readback=2
+observation "parameter:186027426=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19935287535190582
+change id=186027426 requested=3 readback=3
+observation "parameter:186027426=3.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.21327674388885498
+change id=186027426 requested=0 readback=0
+observation "parameter:186027426=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.19956547021865845
+change id=655530384 requested=1 readback=1
+observation "parameter:655530384=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.14219032227993011
+change id=394018539 requested=1 readback=1
+observation "parameter:394018539=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.15612629055976868
+change id=655530384 requested=2 readback=2
+observation "parameter:655530384=2.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11586645990610123
+change id=655530384 requested=0 readback=0
+observation "parameter:655530384=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.11746589094400406
+change id=1099171302 requested=0 readback=0
+observation "parameter:1099171302=0.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.28360816836357117
+change id=1099171302 requested=1 readback=1
+observation "parameter:1099171302=1.000000" before_seconds=0.02 after_seconds=0.02 notifications=1 peak=0.12796938419342041
+observed_latency_stable=1 baseline_seconds=0.02 notifications=1 coverage=listed_settings_only

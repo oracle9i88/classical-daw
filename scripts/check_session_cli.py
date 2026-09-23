@@ -32,6 +32,17 @@ def main():
             count += 1
 
         check(source, None)
+        for delay in (-25000, 17000):
+            lines = source.splitlines()
+            for i, line in enumerate(lines):
+                if line.startswith('route "cello" '):
+                    lines[i] = line.rsplit(" ", 1)[0] + " " + str(delay)
+            offset = "\n".join(lines) + "\n"
+            check(offset, "nonzero musical track_delay_us")
+            destination = root / f"unsupported-delay-{delay}"
+            check(offset, "nonzero musical track_delay_us", destination)
+            if destination.exists():
+                raise ValueError("unsupported delay created a partial export")
         check(source + "garbage", "trailing session content")
         check(source.replace('score "score.dawproj"', 'score "../score.dawproj"'), "sibling filename")
         check(source.replace('route "piano"', 'route "unknown"'), "unknown score part")

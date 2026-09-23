@@ -6,9 +6,17 @@ another part uses the same MIDI channel. Routes use stable part IDs, not their
 position in a UI or MIDI channel number. This is the first offline multi-instrument
 slice, not a realtime mixer or complete orchestral host.
 
-Session v2 now adds saved mute/solo and explicit pre-fader frozen-audio reuse.
+Session v2 added saved mute/solo and explicit pre-fader frozen-audio reuse.
 See [frozen mixing](frozen-mixing.md) for the edit/reuse commands; the v1 example
-below remains readable, while current output uses v2.
+below remains readable, while current output uses v3. V3 appends a signed
+`int64 track_delay_us` to each route, separate from algorithmic latency/PDC.
+Old v1/v2 routes default to zero. Positive means later, negative earlier;
+the stored microseconds do not rescale with tempo. Serialization preserves the
+full signed range without floating-point conversion. **Nonzero execution is
+not implemented:** offline planning/export and both frozen players reject it
+explicitly, including on muted tracks. Data-only saving and mix undo/redo retain
+the field. There is no track-delay edit command yet; do not interpret the schema
+as a working negative-delay/pre-roll feature.
 
 ## Reproduce locally
 

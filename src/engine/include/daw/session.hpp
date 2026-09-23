@@ -3,6 +3,7 @@
 #include "daw/score.hpp"
 #include "daw/midi.hpp"
 #include "daw/wav.hpp"
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ struct InstrumentRoute {
   bool mute = false;
   bool solo = false;
   std::string frozen_file;  // optional pre-fader audio, explicitly reused by CLI
+  std::int64_t track_delay_us = 0; // musical offset, positive=later; independent of PDC
 };
 struct Session {
   std::string score_file;
@@ -34,12 +36,14 @@ struct SessionPlan {
   std::size_t frames = 0;
 };
 
-// Session v2 adds mute/solo/frozen audio; v1 loads with all tracks audible.
+// Session v3 adds signed musical track delay; v1/v2 load with zero delay.
+// Nonzero delays are preserved as data but currently rejected for execution.
 // Text is bounded to 1 MiB / 64 routes; paths cannot escape that directory.
 // Parsing returns a new value; malformed input cannot partially modify a session.
 Session parseSession(const std::string& text);
 std::string serializeSession(const Session& session);
 void validateSession(const Session& session);
+void requireExecutableSession(const Session& session);
 // Any solo selects only solo tracks; mute always wins, including muted solos.
 std::vector<bool> audibleSessionRoutes(const Session& session);
 
