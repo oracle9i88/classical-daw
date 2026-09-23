@@ -13,9 +13,14 @@ validating score timing and audio rendering before platform integration.
   the Mac realtime callback and browser do not yet use the plugin. See
   [Pianoteq setup and verification](docs/pianoteq.md).
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
-  Cocoa startup handling, saved state and verified audio reload. Other installed
-  SWAM instruments, per-track orchestral routing and realtime playback remain
-  pending. See [SWAM Cello setup](docs/swam.md).
+  Cocoa startup handling and saved state. Other installed SWAM instruments and
+  realtime playback remain pending. See [SWAM Cello setup](docs/swam.md).
+- Offline multi-instrument sessions route each score part to an independent
+  piano/cello instance, with saved gain, stereo balance and instrument state.
+  They export aligned stems and a master mix on the shared tempo map, retaining
+  terminal silent bars. Saved state/MIDI round-trips are verified; SWAM's initial
+  versus reopened waveform differs, so exact rerendering is not promised. See
+  [session format, commands and measured limits](docs/sessions.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.
@@ -148,9 +153,10 @@ and positive integer measure numbers; staff-specific, composite and mid-measure
 meters remain unsupported. Use native projects and MIDI to retain raw playback
 fields. The web prototype has
 its own model and does not yet share these C++ event-preservation features.
-There is no production instrument library, score engraving, automation, mixer,
-plugin hosting, scheduled autosave, persisted undo history, or multi-part project
-package yet.
+There is no bundled production instrument library, score engraving, automation,
+graphical mixer, general plugin scanner/host, scheduled autosave, or persisted
+undo history yet. The bounded piano/cello AU host and offline session bundle
+are the current first slices of plugin and multi-part production support.
 
 ## Build and test
 

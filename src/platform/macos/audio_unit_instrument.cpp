@@ -176,9 +176,10 @@ void AudioUnitInstrument::restoreState(const std::vector<std::uint8_t>& bytes) {
   }
 }
 
-AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderReport* report, std::uint32_t rate, double tail) {
+AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderReport* report, std::uint32_t rate, double tail,
+                                       bool clip_output, Tick minimum_end_tick) {
   impl_->requireEditable();
-  const auto sequence = makeMidiSampleSequence(midi, rate, tail);
+  const auto sequence = makeMidiSampleSequence(midi, rate, tail, 64U * 1024U * 1024U, minimum_end_tick);
   AudioBuffer output;
   output.sample_rate = rate;
   output.channels = 2;
@@ -245,8 +246,11 @@ AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderRe
         const double square = static_cast<double>(value) * value;
         energy += square;
         if (frame + i >= sequence.frames - tail_frames) tail_energy += square;
-        if (value < -1.0F || value > 1.0F) ++diagnostics.clipped_samples;
-        output.samples[(frame + i) * 2 + channel] = std::clamp(value, -1.0F, 1.0F);
+        if (value < -1.0F || value > 1.0F) {
+          ++diagnostics.over_unity_samples;
+          if (clip_output) ++diagnostics.clipped_samples;
+        }
+        output.samples[(frame + i) * 2 + channel] = clip_output ? std::clamp(value, -1.0F, 1.0F) : value;
       }
     }
   }

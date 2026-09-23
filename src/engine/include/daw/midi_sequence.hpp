@@ -27,9 +27,11 @@ struct MidiSampleSequence {
 // After the final source event, lifts sustain/sostenuto/hold-2 and sends all
 // notes off on used channels. A positive tail is required to render that release.
 // Default limit is 512 MiB of stereo float output. Throws before audio allocation.
+// minimum_end_tick extends the shared release/tail boundary (never trims events),
+// allowing independent instruments and explicit terminal rests to stay aligned.
 MidiSampleSequence makeMidiSampleSequence(
     const MidiFile& midi, std::uint32_t rate = 48000, double tail_seconds = 5.0,
-    std::size_t max_frames = 64U * 1024U * 1024U);
+    std::size_t max_frames = 64U * 1024U * 1024U, Tick minimum_end_tick = 0);
 
 // A fixed piano preset must not be replaced by imported GM bank/program data.
 // The original project/MIDI still retains these messages.

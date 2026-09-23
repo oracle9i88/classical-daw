@@ -26,6 +26,7 @@ struct InstrumentRenderReport {
   std::uint64_t sent_messages = 0;
   std::uint64_t skipped_instrument_selection = 0;
   std::uint64_t clipped_samples = 0;
+  std::uint64_t over_unity_samples = 0;
   double peak = 0.0;
   double rms = 0.0;
   double last_second_rms = 0.0;
@@ -56,8 +57,11 @@ class AudioUnitInstrument {
   // unchanged. Interpretation depends on the plugin's MIDI mapping. No GM drum
   // routing, host tempo callbacks, latency compensation or automatic mastering.
   // Out-of-range samples are counted and clipped for the PCM16 export boundary.
+  // Sessions set clip_output=false to preserve float headroom for track/master
+  // gain, and minimum_end_tick to use a common ending across instrument instances.
   AudioBuffer render(const MidiFile& midi, InstrumentRenderReport* report = nullptr,
-                     std::uint32_t rate = 48000, double tail_seconds = 5.0);
+                     std::uint32_t rate = 48000, double tail_seconds = 5.0,
+                     bool clip_output = true, Tick minimum_end_tick = 0);
 
  private:
   struct Impl;

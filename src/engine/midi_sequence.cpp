@@ -26,7 +26,8 @@ bool isInstrumentSelection(const MidiSampleEvent& event) noexcept {
 }
 
 MidiSampleSequence makeMidiSampleSequence(const MidiFile& midi, std::uint32_t rate,
-                                          double tail, std::size_t max_frames) {
+                                          double tail, std::size_t max_frames, Tick minimum_end_tick) {
+  if (minimum_end_tick < 0) throw std::invalid_argument("minimum render end tick must be non-negative");
   if (rate < 8000 || rate > 192000 || !std::isfinite(tail) || tail <= 0.0 || tail > 60.0) {
     throw std::invalid_argument("instrument rendering requires 8000..192000 Hz and a tail in (0,60] seconds");
   }
@@ -39,7 +40,7 @@ MidiSampleSequence makeMidiSampleSequence(const MidiFile& midi, std::uint32_t ra
     count += 2 * track.notes.size() + track.channel_events.size();
     if (count > 3000000) throw std::length_error("instrument input event budget exceeded");
   }
-  Tick end_tick = 0;
+  Tick end_tick = minimum_end_tick;
   const auto source = detail::scheduleMidiEvents(midi, end_tick);
   MidiSampleSequence sequence;
   sequence.sample_rate = rate;

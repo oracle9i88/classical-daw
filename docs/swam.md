@@ -74,10 +74,19 @@ python3 scripts/check_swam_bundles.py out/my-swam-check
 
 The observed local installation also contains SWAM Violin 3 and Violin/Viola/
 Cello/Double Bass Sections. Those are **not yet enabled or rendered by this
-adapter**. Multi-instance orchestral routing, legato/articulation validation,
-MPE, recording, realtime monitoring and plugin UI integration remain pending.
-Every part currently routes to one instrument instance. The cello fixture is
-monophonic; this is not a complete orchestral mockup or a general plugin host.
+adapter**. Legato/articulation validation, MPE, recording, realtime monitoring
+and plugin UI integration remain pending. The single-instrument command sends
+all parts to one instance; [the session command](sessions.md) now routes each
+part to an independent piano/cello instance and exports aligned stems. The
+cello fixtures are monophonic; this is not a complete orchestral mockup or a
+general plugin host.
+
+The session duet exposed a limit not seen in the earlier single-cello fixture:
+the first factory-selected session and reopened session have identical stored
+state/MIDI but different PCM waveforms. Two reopens matched each other. The
+[measured comparison](sessions.md#local-evidence-2026-09-23) records waveform,
+energy-envelope and onset differences; deterministic SWAM rerendering remains
+unproven. Retain bounced stems for exact audio reuse.
 
 Research used the local AU's preset/parameter metadata, Apple SDK headers and
 one free web search call (two queries); **Tavily calls: 0**. No third-party code

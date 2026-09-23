@@ -6,10 +6,16 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add offline independent piano/cello routes per score part, persisted static
+  gain/balance/state, shared tempo/end timing, aligned stems and a master mix.
+  Verify controller isolation even on equal MIDI channels, saved-session reload,
+  PCM16 stem-sum reconstruction and overload failure cleanup. SWAM's initial
+  versus reopened waveform difference remains unresolved; preserve bounced audio
+  for exact reuse. See [session evidence and limits](sessions.md).
 - Extend the shared offline AU host to SWAM Cello 3. Validate Cocoa startup,
   explicit CC11 before the first note, actual expression response, state reload
-  and unchanged piano output. Other SWAM instruments and multi-instance routing
-  remain pending. See [SWAM integration](swam.md).
+  and unchanged piano output. Other SWAM instruments remain pending.
+  See [SWAM integration](swam.md).
 - Connect the installed Pianoteq 9 AU to the offline engine, with sample-timed
   MIDI, serialized instrument state, stereo WAV export and project reload.
   Verify actual velocity/pedal behavior and fix factory-vs-restored-state level
@@ -139,14 +145,16 @@ timeline edit → deterministic WAV export.
 
 ### M2: production workflow
 
-Extend the piano/SWAM Cello host to the other installed SWAM instruments and per-track routing.
+Extend the piano/SWAM Cello per-part offline host to the other installed SWAM instruments.
 Validate continuous expression, legato/articulation and saved state per instrument.
+Resolve initial-versus-reopened SWAM waveform differences and add audio freeze/cache
+reuse for exact repeatability. Add mute/solo and realtime track mixing separately.
 Keep optional synthesized orchestral effects on the same future track/bus path;
 the user's synth-demo screenshots are design references, not audited DSP code.
 
 Add recording/takes, MIDI event scheduling, buses, automation, plugin scanning in a worker,
-latency compensation, stems, and streaming offline bounce. Extend the first real
-instrument adapters to validated per-track orchestral routing before calling
+latency compensation, effects sends/returns, and streaming offline bounce. Extend the first real
+instrument adapters to a validated orchestral instrument set before calling
 the renderer an orchestral solution.
 
 ### M3: notation and assisted composition

@@ -14,6 +14,7 @@ add_library(daw_engine STATIC
   src/engine/score.cpp
   src/engine/score_midi.cpp
   src/engine/score_tempo.cpp
+  src/engine/session.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
   src/engine/wav.cpp
@@ -134,6 +135,13 @@ add_executable(daw_midi_sequence_tests tests/midi_sequence_tests.cpp)
 target_link_libraries(daw_midi_sequence_tests PRIVATE daw_engine)
 add_test(NAME daw_midi_sequence_tests COMMAND daw_midi_sequence_tests)
 
+add_executable(daw_session_tests tests/session_tests.cpp)
+target_link_libraries(daw_session_tests PRIVATE daw_engine)
+add_test(NAME daw_session_tests COMMAND daw_session_tests)
+
+add_executable(daw_session_fixture tools/session_fixture.cpp)
+target_link_libraries(daw_session_fixture PRIVATE daw_engine)
+
 add_executable(daw_midi_roundtrip tools/midi_roundtrip.cpp)
 target_link_libraries(daw_midi_roundtrip PRIVATE daw_engine)
 
@@ -155,6 +163,9 @@ if(APPLE)
   add_executable(daw_instrument_render tools/piano_render.cpp)
   target_compile_definitions(daw_instrument_render PRIVATE DAW_GENERIC_INSTRUMENT_CLI=1)
   target_link_libraries(daw_instrument_render PRIVATE daw_au_host)
+
+  add_executable(daw_session_render tools/session_render.cpp)
+  target_link_libraries(daw_session_render PRIVATE daw_au_host)
 
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp

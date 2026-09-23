@@ -1,0 +1,60 @@
+#pragma once
+
+#include "daw/score.hpp"
+#include "daw/midi.hpp"
+#include "daw/wav.hpp"
+#include <string>
+#include <vector>
+
+namespace daw {
+
+struct InstrumentRoute {
+  std::string part_id;
+  std::string instrument;  // pianoteq or swam-cello in the current host
+  double gain_db = 0;
+  double balance = 0;  // -1 left, 0 unchanged stereo, +1 right
+  std::string preset;
+  std::string state_file;  // sibling filename, exclusive with preset
+};
+struct Session {
+  std::string score_file;
+  double master_gain_db = -6;
+  std::vector<InstrumentRoute> routes;
+};
+struct RoutedTrack {
+  InstrumentRoute route;
+  MidiFile midi;
+};
+struct SessionPlan {
+  std::vector<RoutedTrack> tracks;
+  Tick end_tick = 0;
+  std::size_t frames = 0;
+};
+
+// Session v1 references a sibling project and sibling instrument state files.
+// Text is bounded to 1 MiB / 64 routes; paths cannot escape that directory.
+// Parsing returns a new value; malformed input cannot partially modify a session.
+Session parseSession(const std::string& text);
+std::string serializeSession(const Session& session);
+void validateSession(const Session& session);
+
+// Exactly one independent instrument per score part, matched by stable part ID,
+// never by UI route order or MIDI channel. No cross-part controller inheritance.
+// Shares the complete tempo/meter map and preserves explicit terminal silence.
+// At most 256 MiB per stereo audio buffer (mix + one rendered track ~512 MiB).
+SessionPlan planSession(const Session& session, const Score& score,
+                        std::uint32_t rate = 48000, double tail = 5.0);
+
+struct MixReport {
+  double peak = 0;
+  double rms = 0;
+  std::uint64_t over_unity_samples = 0;
+};
+// Offline float processing. No intermediate clipping: a later master fader may
+// recover headroom. Stereo balance attenuates the opposite channel with cosine;
+// center leaves both channels untouched. Throws on bad shape, gain or NaN/Inf.
+void applyTrackMix(AudioBuffer& audio, double gain_db, double balance);
+void addStereoTrack(AudioBuffer& mix, const AudioBuffer& track);
+MixReport applyMasterMix(AudioBuffer& audio, double gain_db);
+
+}  // namespace daw
