@@ -85,6 +85,9 @@ inline constexpr std::size_t kMaxScoreTempoChanges = 1'000'000;
 TempoMap scoreTempoMap(const Score& score);
 
 // This first vertical slice supports ordered parts with multiple voices/staves.
+// Import normalizes positive integral source divisions per part (leading changes
+// at measure starts) exactly to 960 ticks. Fractional source timing and any
+// conversion requiring rounding are rejected. Export uses 960 divisions.
 // It preserves pitch, integer duration, rests, chords, ties, tuplets, meter,
 // tempo, and MIDI velocity via the standard note dynamics percentage.
 // Meter declarations at measure starts are retained across synchronized parts.

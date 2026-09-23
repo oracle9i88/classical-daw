@@ -20,7 +20,11 @@ validating score timing and audio rendering before platform integration.
 - A deliberately limited MusicXML `score-partwise` slice: multiple ordered
   parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
   meter, step-tempo changes, note velocity, and one escaped lyric text per note with deterministic
-  import/export.
+  import/export. MusicXML import accepts positive integral source divisions,
+  inherits them per part, and supports changes at measure starts. Durations and
+  playback offsets must convert exactly to the internal 960-tick grid; export
+  remains at 960 divisions. Fractional source values and mid-measure resolution
+  changes are explicitly unsupported.
 - A deterministic Score-to-SMF bridge for exporting ordered score parts as a
   Type 1 MIDI track per part, retaining note timing, pitch, velocity, voices as
   events, and the complete step-tempo and meter maps. Imported notes retain their original MIDI channels and
@@ -201,6 +205,8 @@ the optional offline W3C schema check.
 The [MusicXML tempo interchange record](docs/research/2026-09-23-musicxml-tempo-interchange.md)
 documents intra-measure speed changes, offset rules and exact tempo-map checks
 on the three real MIDI files.
+The [MusicXML divisions record](docs/research/2026-09-23-musicxml-divisions-normalization.md)
+covers exact source-unit conversion and equivalent mixed-resolution corpus fixtures.
 
 ## Planned macOS slices
 

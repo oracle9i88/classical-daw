@@ -48,8 +48,17 @@ ScoreNote` keeps written pitch spelling, tick onset/duration, velocity, rests,
 chords, ties, and one optional lyric syllable. MusicXML note `dynamics` expresses
 velocity as a percentage of MIDI forte 90; this is not a hairpin/direction model.
 The MusicXML adapter runs outside the
-realtime path and accepts multiple ordered 960-PPQ parts, retaining multiple
-voices/staves inside each measure. It can be replaced by a full XML reader later
+realtime path and normalizes multiple ordered parts into the 960-PPQ core,
+retaining multiple voices/staves inside each measure. Each part inherits its own
+positive integral source divisions; an undeclared part retains the legacy 960
+fallback. Leading declarations can change at measure boundaries but must precede
+notes, cursor moves and playback-tempo events. Durations and playback offsets
+convert by exact integer ratio: reduce divisions against 960 before multiplying,
+reject a nonintegral result, and check signed overflow before multiplication.
+No duration rounding is performed. This deliberately rejects fractional source
+divisions/durations/playback offsets and mid-measure resolution declarations.
+Integral decimal spellings such as `24.000` are accepted. The stored Score and
+MusicXML writer remain at 960 units, so no project version change is needed. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
 MIDI channel streams can contain a held tone under later attacks. MusicXML

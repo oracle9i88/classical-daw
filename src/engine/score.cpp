@@ -10,6 +10,7 @@
 #include <limits>
 #include <locale>
 #include <map>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -265,20 +266,37 @@ double tempoValue(const std::string& value) {
   return bpm;
 }
 
-Tick tempoOffset(const std::string& xml, const XmlBlock& offset) {
-  auto value = decimalText(xml.substr(offset.content_start, offset.content_end - offset.content_start), "tempo offset");
+Tick integerTimingText(const std::string& text, const std::string& field) {
+  auto value = decimalText(text, field);
   const auto point = value.find('.');
   if (point != std::string::npos) {
     if (value.find_first_not_of('0', point + 1) != std::string::npos) {
-      throw std::runtime_error("fractional MusicXML tempo offsets are unsupported at 960 divisions");
+      throw std::runtime_error("fractional MusicXML " + field + " is unsupported; use integer source units");
     }
     value.erase(point);
   }
   if (value.empty() || value == "+" || value == "-") value += '0';
-  return integerText(value, "tempo offset");
+  return integerText(value, field);
 }
 
-Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool direction) {
+// Reduce first: raw * 960 could overflow even when the result fits. Require
+// exact ticks instead of independently rounding durations and drifting voices.
+Tick normalizeXmlTicks(Tick raw, Tick divisions, const std::string& field) {
+  const Tick common = std::gcd(divisions, kTicksPerQuarter);
+  const Tick denominator = divisions / common;
+  const Tick numerator = kTicksPerQuarter / common;
+  if (raw % denominator != 0) {
+    throw std::runtime_error("MusicXML " + field + " cannot be represented exactly at 960 ticks per quarter");
+  }
+  const Tick units = raw / denominator;
+  if (units > std::numeric_limits<Tick>::max() / numerator ||
+      units < std::numeric_limits<Tick>::min() / numerator) {
+    throw std::runtime_error("MusicXML " + field + " conversion overflows tick range");
+  }
+  return units * numerator;
+}
+
+Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool direction, Tick divisions) {
   Tick result = 0;
   bool seen = false;
   for (const auto& child : childElements(xml, parent.content_start, parent.content_end)) {
@@ -288,8 +306,10 @@ Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool directi
     bool present = false;
     const auto sound = attribute(child.opening, "sound", &present);
     if (present && sound != "yes" && sound != "no") throw std::runtime_error("invalid MusicXML offset sound flag");
-    if (!direction || sound == "yes") result = tempoOffset(xml, child);
-    else (void)decimalText(xml.substr(child.content_start, child.content_end - child.content_start), "visual offset");
+    if (!direction || sound == "yes") {
+      const auto raw = integerTimingText(xml.substr(child.content_start, child.content_end - child.content_start), "tempo offset");
+      result = normalizeXmlTicks(raw, divisions, "tempo offset");
+    } else (void)decimalText(xml.substr(child.content_start, child.content_end - child.content_start), "visual offset");
   }
   return result;
 }
@@ -757,7 +777,6 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
     const auto parts = findBlocks(xml, "part", 0, xml.size());
     if (parts.empty()) throw std::runtime_error("MusicXML has no part elements");
     if (parts.size() != part_names.size()) throw std::runtime_error("MusicXML part and part-list counts differ");
-    bool have_divisions = false;
     std::map<Tick, double> global_tempos;
     std::vector<NotationMeters> part_meters;
     std::vector<Tick> part_ends;
@@ -767,6 +786,9 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       parsed_part.id = attribute(part_block.opening, "id");
       parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
       Tick measure_start = 0;
+      // Legacy files with no declaration use 960. Explicit declarations are
+      // inherited within this part only, never from a preceding part.
+      Tick source_divisions = kTicksPerQuarter;
       TimeSignature active_meter{};
       NotationMeters local_meters{{0, active_meter}};
       const auto measures = findBlocks(xml, "measure", part_block.content_start, part_block.content_end);
@@ -809,19 +831,28 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       std::map<VoiceKey, bool> have_notes;
       bool have_timed_event = false;
       bool have_measure_meter = false;
+      bool have_tempo_event = false;
+      bool have_measure_divisions = false;
       for (const TimedBlock& event : events) {
         if (event.tag == "attributes") {
           const auto& block = event.block;
-          const auto divisions = textIn(xml, "divisions", block.content_start, block.content_end);
+          const auto divisions = findBlocks(xml, "divisions", block.content_start, block.content_end);
+          if (hasSelfClosingTag(xml, "divisions", block.content_start, block.content_end) || divisions.size() > 1) {
+            throw std::runtime_error("invalid MusicXML divisions declaration");
+          }
           if (!divisions.empty()) {
-            if (integerText(divisions, "divisions") != kTicksPerQuarter) {
-              throw std::runtime_error("MusicXML divisions must be 960 in Alpha");
+            if (have_timed_event || have_tempo_event) {
+              throw std::runtime_error("MusicXML divisions declarations must precede timed events in a measure");
             }
-            if (have_divisions && parsed.divisions != kTicksPerQuarter) {
-              throw std::runtime_error("conflicting MusicXML divisions");
+            const auto& declaration = divisions.front();
+            const Tick value = integerTimingText(xml.substr(declaration.content_start,
+                declaration.content_end - declaration.content_start), "divisions");
+            if (value <= 0) throw std::runtime_error("MusicXML divisions must be positive");
+            if (have_measure_divisions && value != source_divisions) {
+              throw std::runtime_error("conflicting MusicXML divisions at measure start");
             }
-            have_divisions = true;
-            parsed.divisions = kTicksPerQuarter;
+            have_measure_divisions = true;
+            source_divisions = value;
           }
           const auto times = findBlocks(xml, "time", block.content_start, block.content_end);
           if (hasSelfClosingTag(xml, "time", block.content_start, block.content_end) || times.size() > 1) {
@@ -861,8 +892,9 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         }
         if (event.tag == "direction" || event.tag == "sound") {
           const bool is_direction = event.tag == "direction";
-          const auto direction_offset = [&] { return is_direction ? playbackOffset(xml, event.block, true) : 0; };
+          const auto direction_offset = [&] { return is_direction ? playbackOffset(xml, event.block, true, source_divisions) : 0; };
           const auto record = [&](double bpm, Tick offset) {
+            have_tempo_event = true;
             if (offset < -cursor || (offset > 0 && cursor > std::numeric_limits<Tick>::max() - offset)) {
               throw std::runtime_error("MusicXML tempo offset crosses measure start or overflows");
             }
@@ -893,7 +925,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
             for (const auto& child : childElements(xml, sound.content_start, sound.content_end)) {
               if (elementName(child) == "offset") own_offset = true;
             }
-            record(tempoValue(value), own_offset ? playbackOffset(xml, sound, false) : direction_offset());
+            record(tempoValue(value), own_offset ? playbackOffset(xml, sound, false, source_divisions) : direction_offset());
             have_sound_tempo = true;
           }
           if (is_direction && !have_sound_tempo) {
@@ -904,7 +936,8 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           continue;  // Directions never advance the note cursor or bar extent.
         }
         have_timed_event = true;
-        const Tick duration = integerText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
+        const Tick raw_duration = integerTimingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
+        const Tick duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
         if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
         if (event.tag == "backup") {
           if (duration > cursor) throw std::runtime_error("MusicXML backup crosses measure start");

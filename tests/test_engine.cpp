@@ -488,11 +488,11 @@ int main() {
   const auto invalid_musicxml_path = temp / "classical_daw_invalid.musicxml";
   const std::string invalid_musicxml =
       "<score-partwise><part-list><score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list>"
-      "<part id=\"P1\"><measure number=\"1\"><attributes><divisions>480</divisions></attributes>"
+      "<part id=\"P1\"><measure number=\"1\"><attributes><divisions>0</divisions></attributes>"
       "</measure></part></score-partwise>";
   if (!writeText(invalid_musicxml_path, invalid_musicxml)) return fail("invalid MusicXML fixture write");
   if (readMusicXmlFile(invalid_musicxml_path.string(), &parsed_score, &error)) {
-    return fail("unsupported MusicXML divisions were accepted");
+    return fail("zero MusicXML divisions were accepted");
   }
 
   const auto trailing_musicxml_path = temp / "classical_daw_trailing.musicxml";
