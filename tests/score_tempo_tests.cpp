@@ -256,13 +256,13 @@ void xmlOmissions(const std::filesystem::path& directory) {
   daw::MusicXmlExportReport report{77, 88, 99};
   std::string error;
   require(daw::writeMusicXmlFile(score, path.string(), &error, &report), "MusicXML tempo export: " + error);
-  require(report.omitted_tempo_changes == 2 && report.omitted_midi_events == 0 &&
+  require(report.omitted_tempo_changes == 0 && report.omitted_midi_events == 0 &&
               report.omitted_note_midi_metadata == 0,
-          "MusicXML must explicitly count omitted later tempo changes");
+          "MusicXML must preserve all supported later tempo changes");
   Score imported;
   require(daw::readMusicXmlFile(path.string(), &imported, &error), "MusicXML initial tempo import: " + error);
   near(imported.bpm, 73.5, 1.0e-12, "MusicXML lost its supported initial tempo");
-  require(imported.tempo_changes.empty(), "MusicXML fabricated unsupported later tempo changes");
+  require(sameTempos(imported.tempo_changes, score.tempo_changes), "MusicXML changed later tempo positions or BPM");
   require(sameScoreProbe(score, original), "MusicXML export changed the source tempo map");
   score.tempo_changes.clear();
   require(daw::writeMusicXmlFile(score, path.string(), &error, &report) && report.omitted_tempo_changes == 0,

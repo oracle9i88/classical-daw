@@ -147,9 +147,10 @@ void canonicalMeterAndMidiPerformance(const std::filesystem::path& path) {
           "MusicXML did not preserve canonical n/d changes at their absolute ticks");
   require(report.omitted_meter_playback_metadata == 4,
           "initial click, click-only, redundant, and changed-meter click omissions must each count once");
-  require(report.omitted_tempo_changes == 1 && restored.tempo_changes.empty() &&
+  require(report.omitted_tempo_changes == 0 && restored.tempo_changes.size() == 1 &&
+              restored.tempo_changes[0].tick == 960 && restored.tempo_changes[0].bpm == 123.45 &&
               std::abs(restored.bpm - 91.25) < 1.0e-12,
-          "meter support changed initial tempo preservation or later-tempo omission reporting");
+          "mixed meter and tempo interchange lost a speed change");
   daw::MidiFile result;
   require(daw::scoreToMidiFile(restored, &result, &error), "restore MIDI after variable-meter XML: " + error);
   require(performance(result) == performance(source),

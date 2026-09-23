@@ -1,5 +1,5 @@
 // Read-only source-file probe for MIDI -> Score -> MusicXML -> Score -> MIDI.
-// The output directory must not exist; generated MusicXML stays there for review.
+// The output directory must not exist; generated MusicXML and restored MIDI stay there for review.
 // Build from the repository root:
 // c++ -std=c++17 -Isrc/engine/include scripts/check_score_interchange.cpp \
 //   src/engine/{midi,meter_map,score,score_midi,score_tempo,tempo_map}.cpp -o /tmp/check_score_interchange
@@ -89,9 +89,25 @@ void printNote(const char* label, const std::vector<NoteKey>& notes, std::size_t
             << " pitch=" << std::get<2>(note) << " velocity=" << std::get<3>(note);
 }
 
+bool compareTempos(const std::string& path, const daw::TempoMap& before, const daw::TempoMap& after) {
+  const auto& expected = before.changes();
+  const auto& actual = after.changes();
+  if (expected.size() != actual.size()) {
+    std::cerr << "FAIL " << path << " tempo count " << expected.size() << " -> " << actual.size() << '\n';
+    return false;
+  }
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    if (expected[i].tick != actual[i].tick || expected[i].bpm != actual[i].bpm) {
+      std::cerr << "FAIL " << path << " tempo mismatch at entry " << i << '\n';
+      return false;
+    }
+  }
+  return true;
+}
+
 bool checkFile(const std::string& input_path, const std::filesystem::path& xml_path,
                std::size_t* imported_notes, std::size_t* verified_notes,
-               std::size_t* imported_meters, std::size_t* verified_meters) {
+               std::size_t* imported_meters, std::size_t* verified_meters, std::size_t* verified_tempos) {
   daw::MidiFile original, exported;
   daw::MidiImportReport report;
   daw::Score score, restored;
@@ -172,6 +188,14 @@ bool checkFile(const std::string& input_path, const std::filesystem::path& xml_p
   }
   if (!compareMeters(input_path, "MIDI -> MusicXML -> MIDI", original_meters, exported_meters)) return false;
 
+  if (!compareTempos(input_path, original.tempo, daw::scoreTempoMap(score)) ||
+      !compareTempos(input_path, original.tempo, daw::scoreTempoMap(restored)) ||
+      !compareTempos(input_path, original.tempo, exported.tempo)) return false;
+  if (omissions.omitted_tempo_changes != 0) { error = "tempo omission"; return failure("tempo report"); }
+  auto midi_path = xml_path;
+  midi_path.replace_extension("mid");
+  if (!daw::writeMidiFile(exported, midi_path.string(), &error)) return failure("write restored MIDI");
+
   // The score importer omits metadata-only conductor tracks, but retains
   // event-only tracks (whose events MusicXML reports as omitted). All remaining
   // tracks must correspond in source order, including duplicate note counts.
@@ -198,9 +222,11 @@ bool checkFile(const std::string& input_path, const std::filesystem::path& xml_p
     std::cout << "  PASS source_track=" << source_index << " output_track=" << index
               << " notes=" << before.size() << '\n';
   }
+  *verified_tempos += original.tempo.changes().size();
   *verified_notes += file_notes;
   *verified_meters += original_meters.size();
   std::cout << "PASS " << input_path << " notes=" << file_notes
+            << " verified_tempo_entries=" << original.tempo.changes().size()
             << " verified_meter_entries=" << original_meters.size()
             << " verified_measure_starts=" << checked_measure_starts
             << " verified_measure_durations=" << checked_measure_durations << " xml=" << xml_path << '\n';
@@ -224,19 +250,20 @@ int main(int argc, char** argv) {
   }
   std::cout << "Compare note start/end/pitch/velocity per nonempty track in normalized 960 PPQ.\n"
             << "Compare canonical n/d meter maps (bb = 8, cc ignored), measure starts and explicit durations.\n"
-            << "Adjacent equal n/d entries are folded; tempo and channel semantics are not verified.\n"
+            << "Compare all step-tempo ticks and BPM exactly. Channel semantics are not verified.\n"
             << "Metadata-only tracks are omitted; MusicXML omission counts are reported per file.\n";
   std::size_t imported_notes = 0;
   std::size_t verified_notes = 0;
   std::size_t imported_meters = 0;
   std::size_t verified_meters = 0;
+  std::size_t verified_tempos = 0;
   bool passed = true;
   for (int index = 2; index < argc; ++index) {
     const auto xml_path = output_directory / ("roundtrip-" + std::to_string(index - 1) + ".musicxml");
-    if (!checkFile(argv[index], xml_path, &imported_notes, &verified_notes, &imported_meters, &verified_meters)) passed = false;
+    if (!checkFile(argv[index], xml_path, &imported_notes, &verified_notes, &imported_meters, &verified_meters, &verified_tempos)) passed = false;
   }
   std::cout << (passed ? "PASS" : "FAIL") << " imported_notes=" << imported_notes
             << " verified_notes=" << verified_notes << " imported_meter_entries=" << imported_meters
-            << " verified_meter_entries=" << verified_meters << '\n';
+            << " verified_tempo_entries=" << verified_tempos << " verified_meter_entries=" << verified_meters << '\n';
   return passed ? 0 : 1;
 }

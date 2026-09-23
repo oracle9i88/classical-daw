@@ -29,7 +29,9 @@ not count as completion.
   [meter persistence record](research/2026-09-23-score-meter-persistence.md).
 - Preserve initial and later step tempos through MIDI ↔ Score ↔ project v6,
   history and recovery; use them for offline rendering. Read v1–3 projects as
-  constant-tempo scores and report later-tempo omissions on MusicXML export.
+  constant-tempo scores. Preserve the complete map through MusicXML, including
+  playback offsets and simple numeric metronome directions; verify held-note
+  rendering, sparse part declarations and exact tempo parity on real MIDI files.
 - Add one offline, tempo-aware MIDI event timeline with shared channel state,
   sustain/volume/expression/bend and all-notes/sound/reset controls; apply it
   to Score rendering and expose a local MIDI-to-WAV diagnostic CLI. Cover
@@ -111,7 +113,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize MusicXML tempo directions, broader divisions/measure-label support and
+Prioritize broader MusicXML divisions/measure-label support, richer tempo notation and
 editing commands for re-barring after a meter change, then
 extend the offline controller support to realtime playback and add an instrument/port routing layer
 (including GM percussion and orchestras spanning multiple MIDI ports).

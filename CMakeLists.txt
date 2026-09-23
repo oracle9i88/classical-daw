@@ -105,6 +105,10 @@ add_executable(daw_project_meter_tests tests/project_meter_tests.cpp)
 target_link_libraries(daw_project_meter_tests PRIVATE daw_engine)
 add_test(NAME daw_project_meter_tests COMMAND daw_project_meter_tests)
 
+add_executable(daw_musicxml_tempo_tests tests/musicxml_tempo_tests.cpp)
+target_link_libraries(daw_musicxml_tempo_tests PRIVATE daw_engine)
+add_test(NAME daw_musicxml_tempo_tests COMMAND daw_musicxml_tempo_tests)
+
 add_executable(daw_musicxml_meter_tests tests/musicxml_meter_tests.cpp)
 target_link_libraries(daw_musicxml_meter_tests PRIVATE daw_engine)
 add_test(NAME daw_musicxml_meter_tests COMMAND daw_musicxml_meter_tests)

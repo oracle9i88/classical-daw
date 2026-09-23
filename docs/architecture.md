@@ -145,10 +145,26 @@ This is not yet an orchestral interchange model. SysEx is not retained.
 The SMF tempo and meter maps survive file import, Score conversion and
 native persistence. Keep the import report available to callers rather
 than treating a successful parse as proof of a lossless musical round-trip.
-MusicXML currently omits raw performance metadata and later tempo changes,
+MusicXML currently omits raw performance metadata,
 exposing the omissions in `MusicXmlExportReport`. Canonical n/d changes at stored
 measure boundaries are now retained. `bb != 8`, a change inside an unrebared
 measure, or a change beyond every part's stored boundaries fails before writing.
+MusicXML writes the global step-tempo map once in the longest synchronized part,
+using quarter-note metronome marks plus `offset sound="yes"` and `sound tempo`.
+The map must fit within stored measures (a mark at the final end is allowed).
+Reading merges sparse declarations from all parts at their actual note cursor
+plus playback offset: a sound's offset overrides the direction offset; a direction
+with no `sound="yes"` offset leaves playback at its current cursor. Same-tick
+identical BPM declarations coalesce; conflicting BPM values fail. Marks never
+advance the note cursor, split held notes or extend a measure. A first mark after
+tick zero leaves the initial default at 120 BPM. Numeric metronomes without an
+explicit sound tempo support beat units maxima through 1024th and up to three
+dots. Text/ranges, metric modulation, repeat-specific tempos, fractional playback
+offsets and offsets across a measure boundary are refused. Sound tempo is
+authoritative when both sound and metronome are present. `omitted_tempo_changes`
+remains in the API and is zero on successful export. No project version change
+is needed: v6 already retains these tempo fields.
+
 The initial nondefault cc setting counts once in `omitted_meter_playback_metadata`;
 each later event with nondefault cc or unchanged n/d counts once more. XML carries
 the canonical notation map with default cc/bb, not the raw MIDI event sequence.

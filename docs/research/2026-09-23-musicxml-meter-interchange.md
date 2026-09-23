@@ -1,5 +1,8 @@
 # MusicXML 变拍交换与工程 v6：2026-09-23
 
+后续：[MusicXML 变速交换](2026-09-23-musicxml-tempo-interchange.md) 已补上本文记录时
+仍被省略的后续速度指令。以下保留变拍迭代当时的测试记录。
+
 本轮接通按小节边界变拍的 MIDI → Score → MusicXML → Score → MIDI 路径，并补上
 小节实际时长的持久化。三份本地 LilyPond 文件共 9,200 个音符、10 个规范化 n/d 拍号
 条目、932 个小节的起点与时长通过往返比较；导出的三份文件通过官方 MusicXML 4.0

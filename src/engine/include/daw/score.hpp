@@ -91,14 +91,17 @@ TempoMap scoreTempoMap(const Score& score);
 // Short/empty measures export explicit duration through forward moves;
 // implicit input measures use their actual note/forward extent. Mid-measure or
 // staff-specific time declarations and polymeter are explicitly unsupported.
+// Step tempos retain their absolute ticks, including intra-measure changes.
+// Import respects direction/sound offsets and simple numeric metronome marks;
+// conditional tempos, metric modulation and cross-measure offsets are unsupported.
 // Full engraving metadata remains outside this model.
 struct MusicXmlExportReport {
   // The native project and SMF bridge retain these fields; the current
   // MusicXML notation slice omits them. Unchanged on failed export.
   std::uint64_t omitted_midi_events = 0;
   std::uint64_t omitted_note_midi_metadata = 0;
-  // The current MusicXML slice writes only the initial tempo. Native project
-  // v4+ and SMF retain all tempo changes; this counter makes XML loss visible.
+  // Retained for API compatibility. Successful XML export preserves the entire
+  // step-tempo map (zero omissions); changes beyond stored measures fail.
   std::uint64_t omitted_tempo_changes = 0;
   // One for a nondefault initial clock setting, plus one per later event
   // with nondefault clocks or redundant n/d. XML retains canonical n/d changes

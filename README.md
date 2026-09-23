@@ -19,7 +19,7 @@ validating score timing and audio rendering before platform integration.
   not supported.
 - A deliberately limited MusicXML `score-partwise` slice: multiple ordered
   parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
-  meter, tempo, note velocity, and one escaped lyric text per note with deterministic
+  meter, step-tempo changes, note velocity, and one escaped lyric text per note with deterministic
   import/export.
 - A deterministic Score-to-SMF bridge for exporting ordered score parts as a
   Type 1 MIDI track per part, retaining note timing, pitch, velocity, voices as
@@ -119,8 +119,13 @@ Channel 9 is not yet reserved for percussion by the score exporter: instrument
 routing for newly authored notes must be implemented before using this bridge
 for a full orchestra. Explicit imported routes are retained.
 The current MusicXML notation export omits raw MIDI channel events, note routing,
-source-message order, release velocity and later tempo changes; `MusicXmlExportReport` counts these
-omissions. Meter n/d changes at measure starts are retained; nonstandard notation
+source-message order and release velocity; `MusicXmlExportReport` counts these
+omissions. Step tempos are retained at exact ticks, including changes during held notes.
+The reader respects playback offsets and accepts simple numeric metronome marks;
+repeat-specific tempos, metric modulation, fractional playback offsets and offsets
+crossing measure boundaries fail explicitly. Tempo changes outside the stored
+score extent fail export. No change is silently moved to the start of a measure.
+Meter n/d changes at measure starts are retained; nonstandard notation
 ratios (`bb != 8`), unrebared changes and conflicting part timelines fail explicitly.
 Nondefault MIDI clock settings and redundant n/d events are counted in
 `omitted_meter_playback_metadata`. The XML reader accepts leading time declarations
@@ -193,6 +198,9 @@ describes project v5, raw meter limits, measure-grid rules and MusicXML boundari
 The [MusicXML meter interchange record](docs/research/2026-09-23-musicxml-meter-interchange.md)
 updates that XML boundary, documents project v6 measure extents and provides
 the optional offline W3C schema check.
+The [MusicXML tempo interchange record](docs/research/2026-09-23-musicxml-tempo-interchange.md)
+documents intra-measure speed changes, offset rules and exact tempo-map checks
+on the three real MIDI files.
 
 ## Planned macOS slices
 

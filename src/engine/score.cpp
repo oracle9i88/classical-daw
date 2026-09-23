@@ -206,12 +206,117 @@ std::int64_t integerText(const std::string& value, const std::string& field) {
   return parsed;
 }
 
-double realText(const std::string& value, const std::string& field) {
-  if (value.empty()) throw std::runtime_error("MusicXML is missing " + field);
-  std::size_t consumed = 0;
-  const double parsed = std::stod(value, &consumed);
-  if (consumed != value.size() || !std::isfinite(parsed)) throw std::runtime_error("invalid MusicXML number in " + field);
-  return parsed;
+// Only immediate children belong to this time cursor. In particular, a sound
+// inside a direction is not another measure event, and its offset is not the
+// direction's offset. Include self-closing sound/beat-unit-dot elements.
+std::vector<XmlBlock> childElements(const std::string& xml, std::size_t begin, std::size_t end) {
+  std::vector<XmlBlock> result;
+  std::vector<std::string> stack;
+  XmlBlock current;
+  for (auto position = xml.find('<', begin); position < end; position = xml.find('<', position + 1)) {
+    const auto close = xml.find('>', position);
+    if (close == std::string::npos || close >= end) throw std::runtime_error("truncated MusicXML element");
+    const bool closing = xml[position + 1] == '/';
+    const auto name_begin = position + (closing ? 2 : 1);
+    const auto name_end = xml.find_first_of(" \t\r\n/>", name_begin);
+    const auto name = xml.substr(name_begin, name_end - name_begin);
+    if (closing) {
+      if (stack.empty() || stack.back() != name) throw std::runtime_error("mismatched MusicXML element");
+      stack.pop_back();
+      if (stack.empty()) {
+        current.content_end = position;
+        result.push_back(current);
+      }
+    } else {
+      if (stack.empty()) current = {position, close, close + 1, close + 1, xml.substr(position, close - position + 1)};
+      if (xml[close - 1] == '/') {
+        if (stack.empty()) result.push_back(current);
+      } else stack.push_back(name);
+    }
+    position = close;
+  }
+  if (!stack.empty()) throw std::runtime_error("unclosed MusicXML element");
+  return result;
+}
+
+std::string elementName(const XmlBlock& block) {
+  return block.opening.substr(1, block.opening.find_first_of(" \t\r\n/>", 1) - 1);
+}
+
+std::string decimalText(std::string value, const std::string& field) {
+  value = trim(value);
+  bool digit = false, point = false;
+  for (std::size_t i = (!value.empty() && (value[0] == '+' || value[0] == '-')) ? 1 : 0; i < value.size(); ++i) {
+    if (value[i] >= '0' && value[i] <= '9') digit = true;
+    else if (value[i] == '.' && !point) point = true;
+    else throw std::runtime_error("invalid MusicXML decimal in " + field);
+  }
+  if (!digit) throw std::runtime_error("missing MusicXML decimal in " + field);
+  return value;
+}
+
+double tempoValue(const std::string& value) {
+  std::istringstream input(decimalText(value, "tempo"));
+  input.imbue(std::locale::classic());
+  double bpm = 0;
+  if (!(input >> bpm) || !std::isfinite(bpm) || bpm <= 0 || bpm > 1000000) {
+    throw std::runtime_error("MusicXML tempo must be positive and at most 1000000 quarter notes per minute");
+  }
+  return bpm;
+}
+
+Tick tempoOffset(const std::string& xml, const XmlBlock& offset) {
+  auto value = decimalText(xml.substr(offset.content_start, offset.content_end - offset.content_start), "tempo offset");
+  const auto point = value.find('.');
+  if (point != std::string::npos) {
+    if (value.find_first_not_of('0', point + 1) != std::string::npos) {
+      throw std::runtime_error("fractional MusicXML tempo offsets are unsupported at 960 divisions");
+    }
+    value.erase(point);
+  }
+  if (value.empty() || value == "+" || value == "-") value += '0';
+  return integerText(value, "tempo offset");
+}
+
+Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool direction) {
+  Tick result = 0;
+  bool seen = false;
+  for (const auto& child : childElements(xml, parent.content_start, parent.content_end)) {
+    if (elementName(child) != "offset") continue;
+    if (seen) throw std::runtime_error("multiple MusicXML tempo offsets");
+    seen = true;
+    bool present = false;
+    const auto sound = attribute(child.opening, "sound", &present);
+    if (present && sound != "yes" && sound != "no") throw std::runtime_error("invalid MusicXML offset sound flag");
+    if (!direction || sound == "yes") result = tempoOffset(xml, child);
+    else (void)decimalText(xml.substr(child.content_start, child.content_end - child.content_start), "visual offset");
+  }
+  return result;
+}
+
+// Simple metronome marks are a fallback when there is no authoritative sound
+// tempo. Metric modulation, ranges and textual per-minute values need a richer
+// model; refusing them avoids inventing a constant playback speed.
+double metronomeTempo(const std::string& xml, const XmlBlock& metronome) {
+  double unit = 0, per_minute = 0;
+  int dots = 0;
+  const std::map<std::string, double> units{{"maxima",32}, {"long",16}, {"breve",8}, {"whole",4},
+      {"half",2}, {"quarter",1}, {"eighth",0.5}, {"16th",0.25}, {"32nd",0.125},
+      {"64th",0.0625}, {"128th",0.03125}, {"256th",0.015625}, {"512th",0.0078125}, {"1024th",0.00390625}};
+  for (const auto& child : childElements(xml, metronome.content_start, metronome.content_end)) {
+    const auto name = elementName(child);
+    const auto value = trim(xml.substr(child.content_start, child.content_end - child.content_start));
+    if (name == "beat-unit" && unit == 0 && per_minute == 0) {
+      const auto found = units.find(value);
+      if (found == units.end()) throw std::runtime_error("unsupported MusicXML metronome beat unit");
+      unit = found->second;
+    } else if (name == "beat-unit-dot" && unit != 0 && per_minute == 0 && dots < 3) ++dots;
+    else if (name == "per-minute" && unit != 0 && per_minute == 0) per_minute = tempoValue(value);
+    else throw std::runtime_error("unsupported MusicXML metronome structure or metric modulation");
+  }
+  const double bpm = per_minute * unit * (2.0 - std::ldexp(1.0, -dots));
+  if (!std::isfinite(bpm) || bpm <= 0 || bpm > 1000000) throw std::runtime_error("unsupported MusicXML metronome tempo");
+  return bpm;
 }
 
 std::uint8_t noteVelocity(const std::string& opening) {
@@ -455,12 +560,19 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
   try {
     if (score.parts.empty()) throw std::invalid_argument("MusicXML score must contain at least one part");
     if (score.divisions != kTicksPerQuarter) throw std::invalid_argument("score divisions must be 960 ticks per quarter");
-    (void)scoreTempoMap(score);
+    const auto tempos = scoreTempoMap(score);
     MusicXmlExportReport omissions;
     const auto meters = notationMeters(score, omissions);
     const auto measure_spans = exportMeasureSpans(score, meters);
     std::map<std::string, bool> part_ids;
-    omissions.omitted_tempo_changes = score.tempo_changes.size();
+    std::vector<Tick> part_ends;
+    for (std::size_t p = 0; p < score.parts.size(); ++p) {
+      part_ends.push_back(score.parts[p].measures.back().start + measure_spans[p].back());
+    }
+    const auto tempo_part = synchronousReference(score.parts, part_ends);
+    if (tempos.changes().back().tick > part_ends[tempo_part]) {
+      throw std::invalid_argument("MusicXML tempo change is outside the stored measure extent");
+    }
     for (const ScorePart& part : score.parts) {
       if (part.id.empty()) throw std::invalid_argument("MusicXML part id cannot be empty");
       if (!part_ids.emplace(part.id, true).second) throw std::invalid_argument("MusicXML part ids must be unique");
@@ -500,10 +612,19 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
           output << "<time><beats>" << static_cast<int>(meter.numerator) << "</beats><beat-type>"
                  << static_cast<int>(meter.denominator) << "</beat-type></time></attributes>\n";
         }
-        if (measure_index == 0) {
-          output << "      <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>"
-                 << tempoDecimal(score.bpm) << "</per-minute></metronome></direction-type><sound tempo=\""
-                 << tempoDecimal(score.bpm) << "\"/></direction>\n";
+        // Write the global map once, in the longest part. Playback offsets
+        // place changes inside held notes without splitting/retriggering them.
+        if (part_index == tempo_part) {
+          auto tempo = std::lower_bound(tempos.changes().begin(), tempos.changes().end(), measure.start,
+              [](const TempoChange& change, Tick tick) { return change.tick < tick; });
+          const Tick end = measure.start + span;
+          const bool last_measure = measure_index + 1 == part.measures.size();
+          for (; tempo != tempos.changes().end() && (tempo->tick < end || (last_measure && tempo->tick == end)); ++tempo) {
+            output << "      <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>"
+                   << tempoDecimal(tempo->bpm) << "</per-minute></metronome></direction-type><offset sound=\"yes\">"
+                   << tempo->tick - measure.start << "</offset><sound tempo=\""
+                   << tempoDecimal(tempo->bpm) << "\"/></direction>\n";
+          }
         }
         using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
         std::map<VoiceKey, std::vector<ScoreNote>> streams;
@@ -637,7 +758,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
     if (parts.empty()) throw std::runtime_error("MusicXML has no part elements");
     if (parts.size() != part_names.size()) throw std::runtime_error("MusicXML part and part-list counts differ");
     bool have_divisions = false;
-    bool have_tempo = false;
+    std::map<Tick, double> global_tempos;
     std::vector<NotationMeters> part_meters;
     std::vector<Tick> part_ends;
 
@@ -669,45 +790,20 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       if (noncontrolling_present && noncontrolling != "no") {
         throw std::runtime_error("MusicXML non-controlling measures are unsupported by the global score timeline");
       }
-      const auto directions = findBlocks(xml, "direction", measure_block.content_start, measure_block.content_end);
-      for (const XmlBlock& direction : directions) {
-        std::size_t sound_search = direction.content_start;
-        while (true) {
-          const std::size_t sound_start = xml.find("<sound", sound_search);
-          if (sound_start == std::string::npos || sound_start >= direction.content_end) break;
-          if (sound_start + 6 >= direction.content_end || !tagBoundary(xml[sound_start + 6])) {
-            sound_search = sound_start + 6;
-            continue;
-          }
-          const std::size_t sound_end = xml.find('>', sound_start);
-          if (sound_end == std::string::npos || sound_end >= direction.content_end) {
-            throw std::runtime_error("truncated MusicXML sound element");
-          }
-          const std::string tempo = attribute(xml.substr(sound_start, sound_end - sound_start + 1), "tempo");
-          if (!tempo.empty()) {
-            const double bpm = realText(tempo, "tempo");
-            if (bpm <= 0.0) throw std::runtime_error("MusicXML tempo must be positive");
-            if (have_tempo && std::abs(parsed.bpm - bpm) > 1e-9) throw std::runtime_error("conflicting MusicXML tempos");
-            have_tempo = true;
-            parsed.bpm = bpm;
-          }
-          sound_search = sound_end + 1;
-        }
-      }
-
       struct TimedBlock {
         std::size_t position;
         std::string tag;
         XmlBlock block;
       };
       std::vector<TimedBlock> events;
-      for (const auto& block : findBlocks(xml, "attributes", measure_block.content_start, measure_block.content_end)) events.push_back({block.start, "attributes", block});
-      for (const auto& note : findBlocks(xml, "note", measure_block.content_start, measure_block.content_end)) events.push_back({note.start, "note", note});
-      for (const auto& backup : findBlocks(xml, "backup", measure_block.content_start, measure_block.content_end)) events.push_back({backup.start, "backup", backup});
-      for (const auto& forward : findBlocks(xml, "forward", measure_block.content_start, measure_block.content_end)) events.push_back({forward.start, "forward", forward});
-      std::sort(events.begin(), events.end(), [](const TimedBlock& left, const TimedBlock& right) { return left.position < right.position; });
+      for (const auto& child : childElements(xml, measure_block.content_start, measure_block.content_end)) {
+        const auto name = elementName(child);
+        if (name == "attributes" || name == "note" || name == "backup" || name == "forward" ||
+            name == "direction" || name == "sound") events.push_back({child.start, name, child});
+      }
       Tick cursor = 0;
       Tick furthest_position = 0;
+      Tick furthest_tempo = 0;
       using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
       std::map<VoiceKey, Tick> last_note_starts;
       std::map<VoiceKey, bool> have_notes;
@@ -762,6 +858,50 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
             active_meter = meter;
           }
           continue;
+        }
+        if (event.tag == "direction" || event.tag == "sound") {
+          const bool is_direction = event.tag == "direction";
+          const auto direction_offset = [&] { return is_direction ? playbackOffset(xml, event.block, true) : 0; };
+          const auto record = [&](double bpm, Tick offset) {
+            if (offset < -cursor || (offset > 0 && cursor > std::numeric_limits<Tick>::max() - offset)) {
+              throw std::runtime_error("MusicXML tempo offset crosses measure start or overflows");
+            }
+            const Tick local_tick = cursor + offset;
+            if (measure_start > std::numeric_limits<Tick>::max() - local_tick) throw std::runtime_error("MusicXML tempo tick overflow");
+            furthest_tempo = std::max(furthest_tempo, local_tick);
+            const Tick tick = measure_start + local_tick;
+            const auto found = global_tempos.find(tick);
+            if (found != global_tempos.end()) {
+              if (found->second != bpm) throw std::runtime_error("conflicting MusicXML tempos at the same tick");
+            } else {
+              if (global_tempos.size() >= kMaxScoreTempoChanges + 1) throw std::runtime_error("MusicXML tempo count exceeds limit");
+              global_tempos.emplace(tick, bpm);
+            }
+          };
+          bool have_sound_tempo = false;
+          const auto sound_blocks = is_direction ? childElements(xml, event.block.content_start, event.block.content_end)
+                                                : std::vector<XmlBlock>{event.block};
+          for (const auto& sound : sound_blocks) {
+            if (elementName(sound) != "sound") continue;
+            bool present = false;
+            const auto value = attribute(sound.opening, "tempo", &present);
+            if (!present) continue;
+            bool conditional = false;
+            (void)attribute(sound.opening, "time-only", &conditional);
+            if (conditional) throw std::runtime_error("repeat-specific MusicXML tempos are unsupported");
+            bool own_offset = false;
+            for (const auto& child : childElements(xml, sound.content_start, sound.content_end)) {
+              if (elementName(child) == "offset") own_offset = true;
+            }
+            record(tempoValue(value), own_offset ? playbackOffset(xml, sound, false) : direction_offset());
+            have_sound_tempo = true;
+          }
+          if (is_direction && !have_sound_tempo) {
+            for (const auto& metronome : findBlocks(xml, "metronome", event.block.content_start, event.block.content_end)) {
+              record(metronomeTempo(xml, metronome), direction_offset());
+            }
+          }
+          continue;  // Directions never advance the note cursor or bar extent.
         }
         have_timed_event = true;
         const Tick duration = integerText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
@@ -853,6 +993,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       if (measure_span < 0 || measure_start > std::numeric_limits<Tick>::max() - measure_span) {
         throw std::runtime_error("MusicXML measure timing overflow");
       }
+      if (furthest_tempo > measure_span) throw std::runtime_error("MusicXML tempo offset crosses measure end");
       measure.duration = measure_span;
       parsed_part.measures.push_back(std::move(measure));
       measure_start += measure_span;
@@ -877,6 +1018,10 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
     parsed.time_signature = part_meters[reference].front().signature;
     parsed.meter_changes.assign(part_meters[reference].begin() + 1, part_meters[reference].end());
     validateMeterMap(parsed.time_signature, parsed.meter_changes);
+    for (const auto& tempo : global_tempos) {
+      if (tempo.first == 0) parsed.bpm = tempo.second;
+      else parsed.tempo_changes.push_back({tempo.first, tempo.second});
+    }
     (void)scoreTempoMap(parsed);
     *score = std::move(parsed);
     return true;
