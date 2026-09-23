@@ -6,6 +6,12 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Automatically checkpoint native mix edits/undo/redo to isolated per-run
+  recovery directories. Add source-bound, checksummed recovery to a new sibling,
+  saved-revision/error reporting, explicit retry and startup discovery. Verify
+  forced process exit, failed writes and recovered output on a real frozen
+  bundle. This covers mix targets only; whole-document recovery is still pending.
+
 - Add bounded mix undo/redo, branch invalidation and monotonic revisions to the
   shared control layer. Invalid, queue-full and allocation-failed edits/replays
   preserve document/history/audio targets. Verify real callback output after
@@ -16,7 +22,7 @@ not count as completion.
   and the native player. Add live-target inspection and no-overwrite sibling
   saving; invalid/queue-rejected edits leave the document unchanged. Verify
   saved/reopened mix parity and competing saves. Full document transactions,
-  autosave and history persistence remain pending. See the [framework audit](architecture-audit-20260923.md).
+  whole-project autosave and history persistence remain pending. See the [framework audit](architecture-audit-20260923.md).
 
 - Add native frozen-track playback and live CLI track mixing. Fix CoreAudio
   output callback registration and AU slice capacity versus device-buffer/rate

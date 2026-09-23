@@ -105,6 +105,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   1–4 default older meter metadata to 24 clocks
   per click and 8 notated 32nds per quarter with no later meters. Versions 1–3
   remain constant-tempo scores.
+- Native mix edits, undo and redo automatically checkpoint to isolated per-run
+  recovery directories. Explicit source-checked recovery saves a new sibling;
+  failed writes are reported separately from accepted audible edits. Forced-exit
+  recovery is tested on a real frozen bundle. See [recovery usage](docs/session-playback.md).
 - A crash-recovery sidecar writer and loader that tries the primary project,
   `.recovery`, then interrupted `.tmp` data without overwriting the primary
   file or mutating the output on total failure.

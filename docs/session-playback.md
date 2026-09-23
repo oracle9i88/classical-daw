@@ -66,8 +66,8 @@ edits, undo and redo increment the revision; transport and no-ops do not.
 Saving keeps the current target settings and leaves the in-memory history
 available. Reopening starts a new history at revision zero. The undo stack is
 not serialized, nor is it yet unified with score edits. Multi-parameter grouped
-edits, drag coalescing, scheduled autosave and whole-project transactions remain
-pending. Gain ramps still take 5 ms to reach restored targets.
+edits, drag coalescing, scheduled whole-project autosave and whole-project
+transactions remain pending. Mix-only automatic recovery is described below. Gain ramps still take 5 ms to reach restored targets.
 
 New-session saving writes a complete staged file and atomically publishes it
 with an exclusive hard link. Unsupported filesystems fail explicitly; no
@@ -78,6 +78,51 @@ outside -1..1 reaching the device; `status` reports pre-clamp last-block peak
 and cumulative affected sample count. Lower gains if that count increases.
 This clamp is not a mastering limiter. The separate offline bounce still
 rejects overload rather than silently applying the monitoring clamp.
+
+## Automatic mix recovery
+
+After each accepted mix edit, undo or redo, the native CLI writes a checkpoint
+on its control thread. Playback callbacks never access these files. The first
+edit creates a unique sibling `SESSION.mix-recovery-*` directory. Each run owns
+its own directory, so two players cannot replace one another's checkpoints.
+`--check` and `--device-check` do not create recovery data.
+
+The directory contains the original session and score bytes for identity
+checking, plus `latest.mixrecovery`: versioned `DAWMIX01`, a 64-bit revision,
+bounded session payload and CRC32 for accidental corruption. A full staged file
+is closed then atomically renamed over that run's last checkpoint. If a process
+dies during writing, its earlier complete checkpoint remains usable; temporary
+partials are never treated as accepted checkpoints. There is no fsync or
+power-loss guarantee. The last edit can be lost if the process dies before its
+checkpoint finishes. No claim of lossless recovery from every crash is made.
+
+`status` reports both the current revision and the recovery's saved revision.
+If disk I/O fails, the accepted mix stays applied and the CLI explicitly prints
+`recovery NOT saved`. Use `recovery` to retry, or `save NEW_FILENAME` to save a
+normal sibling session. A successful no-op edit also retries a pending checkpoint.
+Invalid commands do not create new checkpoints. A stale `.saving` directory is
+preserved rather than silently removed; its last complete checkpoint can still
+be recovered, and a fresh player run uses a different recovery directory.
+
+At startup the CLI reports existing candidates, but always opens the requested
+session. Inspect and explicitly restore to a **new sibling session**:
+
+```sh
+build/daw_session_recover --list path/to/session.dawsession
+build/daw_session_recover path/to/session.dawsession path/to/session.dawsession.mix-recovery-ID path/to/recovered.dawsession
+build/daw_session_play path/to/recovered.dawsession
+```
+
+Recovery checks exact original session/score bytes and permits only mix-field
+changes. Stale source data, corrupt/truncated records, symlinks and an existing
+destination are rejected. Media/plugin-state files remain external references;
+normal frozen-playback validation still checks their binding before playback.
+This restores mix targets, not transport, undo history, media, plugin state or
+a full document transaction. Reopening starts a fresh history. Checkpoints are
+retained after save/quit and never automatically pruned: each edited run stores
+one score copy (up to 64 MiB), one source session and one latest mix. After
+verifying recovery or a manual save, unwanted recovery directories can be removed
+manually. Generated recovery data is ignored by Git.
 
 ## Validation and memory limits
 
@@ -165,3 +210,15 @@ The actual hardware probe also verified undo/redo levels through the shared
 mix controller, with 10,032 frames before restart and zero callback errors;
 speaker output remained silenced. The native save/reopen checker passed the
 undo/redo/branch checks on the real piano/cello bundle without modifying it.
+
+The mix recovery iteration passed **33/33 normal + 33/33 ASan/UBSan tests**.
+The opt-in test below runs on a temporary real piano/cello bundle, exercises
+write failure with a preserved partial staging file, retries the same revision,
+undoes an edit and then force-kills only its own paused player process after
+checkpoint revision 8. Restored settings and complete numerical playback output
+match the independently edited reference; source hashes are unchanged. Normal
+native save/reopen regressions also pass. No sound is emitted by these checks.
+
+```sh
+python3 scripts/check_session_recovery.py out/swam-note-audit-20260923/corrected
+```

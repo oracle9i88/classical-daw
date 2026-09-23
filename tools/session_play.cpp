@@ -1,5 +1,7 @@
 #include "daw/session_player.hpp"
 #include "daw/session_mix.hpp"
+#include "daw/session_recovery.hpp"
+#include <memory>
 #include "daw/frozen_track.hpp"
 #include "daw/project.hpp"
 #include "audio_unit_instrument.hpp"
@@ -42,7 +44,7 @@ void end(std::istringstream& input) {
 void help() {
   std::cout << "play | pause | stop | seek SECONDS | master DB\n"
                "gain PART DB | balance PART -1..1 | mute PART 0|1 | solo PART 0|1\n"
-               "undo | redo | mix | save NEW_FILENAME | status | help | quit\n"
+               "undo | redo | mix | save NEW_FILENAME | recovery | status | help | quit\n"
                "Starts paused. Save writes a new sibling session; originals are never overwritten.\n";
 }
 }
@@ -55,7 +57,8 @@ int main(int argc, char** argv) {
       return 2;
     }
     const fs::path path(argv[check || device_check ? 2 : 1]);
-    const auto session = daw::parseSession(read(path, 1024U * 1024U));
+    const auto source_bytes = read(path, 1024U * 1024U);
+    const auto session = daw::parseSession(source_bytes);
     const auto root = path.parent_path();
     const auto score_bytes = read(root / session.score_file, 64U * 1024U * 1024U);
     daw::Score score;
@@ -121,6 +124,26 @@ int main(int argc, char** argv) {
               << static_cast<double>(player.frameCount()) / 48000 << " seconds.\n";
     for (const auto& r : session.routes) std::cout << "  " << std::quoted(r.part_id) << ": " << r.instrument
         << " gain=" << r.gain_db << " balance=" << r.balance << " mute=" << r.mute << " solo=" << r.solo << '\n';
+    try {
+      const auto candidates = daw::listSessionMixRecoveries(path.string());
+      if (!candidates.empty()) std::cout << "Recovery candidates found: " << candidates.size()
+          << "; inspect with daw_session_recover --list " << path << '\n';
+    } catch (const std::exception& e) { std::cerr << "Recovery scan failed: " << e.what() << '\n'; }
+    std::unique_ptr<daw::SessionMixRecovery> recovery;
+    // Only the control thread touches disk. An already accepted audible edit
+    // stays applied on I/O failure; show the lag and retry on the next edit.
+    auto checkpoint = [&] {
+      if (!mix.revision() || (recovery && recovery->savedRevision() == mix.revision())) return;
+      try {
+        if (!recovery) recovery = std::make_unique<daw::SessionMixRecovery>(path.string(), source_bytes, score_bytes);
+        recovery->checkpoint(mix.current(), mix.revision());
+        std::cout << "Recovery checkpoint revision=" << recovery->savedRevision()
+                  << " directory=" << std::quoted(recovery->directory()) << std::endl;
+      } catch (const std::exception& e) {
+        std::cerr << "Mix applied, but recovery NOT saved at revision=" << mix.revision()
+                  << ": " << e.what() << "; use save or retry recovery\n";
+      }
+    };
     help();
     std::string line;
     while (std::cout << "> " && std::getline(std::cin, line)) {
@@ -130,12 +153,19 @@ int main(int argc, char** argv) {
         if (word.empty()) continue;
         if (word == "quit") { end(input); break; }
         if (word == "help") { end(input); help(); continue; }
+        if (word == "recovery") {
+          end(input); checkpoint();
+          std::cout << "Recovery saved revision=" << (recovery ? recovery->savedRevision() : 0)
+                    << ", current revision=" << mix.revision() << '\n';
+          continue;
+        }
         if (word == "undo" || word == "redo") {
           end(input);
           if (word == "undo" ? !mix.canUndo() : !mix.canRedo())
             throw std::runtime_error(word == "undo" ? "no mix edit to undo" : "no mix edit to redo");
           if (!(word == "undo" ? mix.undo(&player) : mix.redo(&player)))
             throw std::runtime_error("command queue full; history and mix unchanged");
+          checkpoint();
           std::cout << (word == "undo" ? "Undid" : "Redid") << " mix edit; revision=" << mix.revision() << '\n';
           continue;
         }
@@ -160,6 +190,7 @@ int main(int argc, char** argv) {
           std::cout << (s.playing ? "Playing " : "Paused ") << static_cast<double>(s.frame) / 48000
                     << "s, last-block peak=" << s.block_peak << ", clipped samples=" << s.clipped_samples
                     << ", rejected commands=" << s.rejected_commands << ", callback errors=" << output.xrunCount()
+                    << ", recovery saved revision=" << (recovery ? recovery->savedRevision() : 0)
                     << ", mix revision=" << mix.revision() << ", undo=" << mix.canUndo() << ", redo=" << mix.canRedo() << '\n';
           continue;
         }
@@ -181,6 +212,7 @@ int main(int argc, char** argv) {
               daw::MixParameter::Gain : word == "balance" ? daw::MixParameter::Balance :
               word == "mute" ? daw::MixParameter::Mute : daw::MixParameter::Solo;
           if (!mix.apply({parameter, part, value}, &player)) throw std::runtime_error("command queue full; mix edit not applied or saved");
+          checkpoint();
           continue;
         } else throw std::runtime_error("unknown command; enter help");
         end(input);

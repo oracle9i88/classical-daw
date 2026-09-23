@@ -18,6 +18,7 @@ add_library(daw_engine STATIC
   src/engine/score_tempo.cpp
   src/engine/session.cpp
   src/engine/session_mix.cpp
+  src/engine/session_recovery.cpp
   src/engine/session_player.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
@@ -151,9 +152,15 @@ add_test(NAME daw_session_mix_tests COMMAND daw_session_mix_tests)
 add_executable(daw_session_mix_history_tests tests/session_mix_history_tests.cpp)
 target_link_libraries(daw_session_mix_history_tests PRIVATE daw_engine)
 add_test(NAME daw_session_mix_history_tests COMMAND daw_session_mix_history_tests)
+add_executable(daw_session_recovery_tests tests/session_recovery_tests.cpp)
+target_link_libraries(daw_session_recovery_tests PRIVATE daw_engine)
+add_test(NAME daw_session_recovery_tests COMMAND daw_session_recovery_tests)
 add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
 target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)
+
+add_executable(daw_session_recover tools/session_recover.cpp)
+target_link_libraries(daw_session_recover PRIVATE daw_engine)
 
 add_executable(daw_session_fixture tools/session_fixture.cpp)
 target_link_libraries(daw_session_fixture PRIVATE daw_engine)

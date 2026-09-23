@@ -272,3 +272,21 @@ timestamp bridge remain future work.
 
 The Alpha renderer is intentionally a diagnostic voice. It must not be
 described as a finished sampler, orchestral engine, or professional mix bus.
+
+## Mix checkpoint boundary
+
+`SessionMixRecovery` snapshots accepted `SessionMixState` targets on the control
+thread after queue acceptance; it does not participate in the audio callback or
+undo transaction. I/O failure leaves the audible edit intact and is surfaced
+with separate current/saved revisions. Every edited player run owns a unique
+sibling directory with immutable source-session/score baselines and an atomically
+replaced, bounded CRC32 checkpoint. A crash before replacement preserves the
+previous complete checkpoint. Recovery validates baseline bytes and mix-only
+changes, then uses the existing exclusive sibling-save operation. It never
+silently replaces the requested project or chooses between concurrent runs.
+See [playback/recovery usage and evidence](session-playback.md).
+
+This is process-interruption recovery for mix targets, not fsync-backed power
+loss durability, a media backup, a persisted history or a unified Score/Session
+transaction. Each run retains one score copy and its latest checkpoint until
+manually removed; retention policy and full-document persistence remain open.
