@@ -16,6 +16,7 @@ add_library(daw_engine STATIC
   src/engine/score_midi.cpp
   src/engine/score_tempo.cpp
   src/engine/session.cpp
+  src/engine/session_player.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
   src/engine/wav.cpp
@@ -139,6 +140,9 @@ add_test(NAME daw_midi_sequence_tests COMMAND daw_midi_sequence_tests)
 add_executable(daw_session_tests tests/session_tests.cpp)
 target_link_libraries(daw_session_tests PRIVATE daw_engine)
 add_test(NAME daw_session_tests COMMAND daw_session_tests)
+add_executable(daw_session_player_tests tests/session_player_tests.cpp)
+target_link_libraries(daw_session_player_tests PRIVATE daw_engine)
+add_test(NAME daw_session_player_tests COMMAND daw_session_player_tests)
 add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
 target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)
@@ -183,6 +187,8 @@ if(APPLE)
   target_link_libraries(daw_coreaudio PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreAudio")
   target_compile_features(daw_coreaudio PUBLIC cxx_std_17)
   target_compile_options(daw_coreaudio PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+  add_executable(daw_session_play tools/session_play.cpp)
+  target_link_libraries(daw_session_play PRIVATE daw_coreaudio daw_au_host)
 
   add_library(daw_coremidi STATIC
     src/platform/macos/coremidi_host.cpp

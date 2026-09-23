@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daw/realtime.hpp"
+#include "daw/audio_output_source.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
 
@@ -45,9 +46,13 @@ class CoreAudioOutput {
   // Select a device for the next start. Changing a live device is rejected so
   // callers cannot race an active AudioUnit from the control thread.
   bool setOutputDevice(std::uint32_t device_id, std::string* error = nullptr);
+  // Control thread only, with output stopped. nullptr restores the diagnostic
+  // synth path. The source must outlive this output's active callback.
+  bool setAudioSource(AudioOutputSource* source, std::string* error = nullptr);
   [[nodiscard]] std::uint32_t currentDeviceId() const noexcept { return current_device_id_; }
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
-  [[nodiscard]] std::uint64_t xrunCount() const noexcept { return scheduler_.snapshot().xrun_count; }
+  [[nodiscard]] std::uint64_t xrunCount() const noexcept { return callback_errors_.load(std::memory_order_relaxed); }
+  [[nodiscard]] std::uint64_t renderedFrames() const noexcept { return rendered_frames_.load(std::memory_order_relaxed); }
   [[nodiscard]] BlockScheduler& scheduler() noexcept { return scheduler_; }
   [[nodiscard]] SineVoiceBank& synth() noexcept { return synth_; }
 
@@ -63,7 +68,10 @@ class CoreAudioOutput {
   AudioUnit audio_unit_ = nullptr;
   BlockScheduler scheduler_;
   SineVoiceBank synth_;
+  AudioOutputSource* source_ = nullptr;
   std::atomic<bool> running_{false};
+  std::atomic<std::uint64_t> callback_errors_{0};
+  std::atomic<std::uint64_t> rendered_frames_{0};
   std::uint32_t current_device_id_ = 0;
 };
 

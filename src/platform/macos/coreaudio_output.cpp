@@ -69,6 +69,10 @@ CoreAudioOutput::~CoreAudioOutput() { stop(); }
 
 bool CoreAudioOutput::start(std::string* error) {
   if (running()) return true;
+  if (source_ && !source_->acceptsFormat(config_.sample_rate, config_.channels)) {
+    if (error) *error = "audio source does not support this output format";
+    return false;
+  }
   if (!std::isfinite(config_.sample_rate) || config_.sample_rate <= 0.0 || config_.block_size == 0 ||
       config_.channels == 0 || config_.channels > 8) {
     if (error != nullptr) *error = "invalid CoreAudio output configuration";
@@ -134,9 +138,9 @@ bool CoreAudioOutput::start(std::string* error) {
   AURenderCallbackStruct callback{};
   callback.inputProc = reinterpret_cast<AURenderCallback>(renderCallback);
   callback.inputProcRefCon = this;
-  if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioOutputUnitProperty_SetInputCallback,
-                                        kAudioUnitScope_Global, 0, &callback, sizeof(callback)),
-                   "input callback", error)) {
+  if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioUnitProperty_SetRenderCallback,
+                                        kAudioUnitScope_Input, 0, &callback, sizeof(callback)),
+                   "render callback", error)) {
     stop();
     return false;
   }
@@ -223,6 +227,20 @@ bool CoreAudioOutput::setOutputDevice(std::uint32_t device_id, std::string* erro
   return true;
 }
 
+bool CoreAudioOutput::setAudioSource(AudioOutputSource* source, std::string* error) {
+  if (running()) {
+    if (error) *error = "cannot replace an audio source while output is running";
+    return false;
+  }
+  if (source && !source->acceptsFormat(config_.sample_rate, config_.channels)) {
+    if (error) *error = "audio source does not support this output format";
+    return false;
+  }
+  source_ = source;
+  if (error) error->clear();
+  return true;
+}
+
 OSStatus CoreAudioOutput::renderCallback(void* reference,
                                          AudioUnitRenderActionFlags* /*action_flags*/,
                                          const AudioTimeStamp* /*timestamp*/,
@@ -232,16 +250,24 @@ OSStatus CoreAudioOutput::renderCallback(void* reference,
   auto* output = static_cast<CoreAudioOutput*>(reference);
   if (output == nullptr) return noErr;
   if (buffers == nullptr) {
+    output->callback_errors_.fetch_add(1, std::memory_order_relaxed);
     output->scheduler_.recordXrun();
     return noErr;
   }
-  output->scheduler_.processBlock(frame_count);
   const std::size_t required_bytes = static_cast<std::size_t>(frame_count) * output->config_.channels * sizeof(float);
   if (buffers->mNumberBuffers == 1 && buffers->mBuffers[0].mData != nullptr &&
+      frame_count <= output->config_.block_size &&
+      buffers->mBuffers[0].mNumberChannels == output->config_.channels &&
       buffers->mBuffers[0].mDataByteSize >= required_bytes) {
     auto& buffer = buffers->mBuffers[0];
-    output->synth_.render(static_cast<float*>(buffer.mData), frame_count, output->config_.channels, output->config_.sample_rate);
+    if (output->source_) output->source_->render(static_cast<float*>(buffer.mData), frame_count);
+    else {
+      output->scheduler_.processBlock(frame_count);
+      output->synth_.render(static_cast<float*>(buffer.mData), frame_count, output->config_.channels, output->config_.sample_rate);
+    }
+    output->rendered_frames_.fetch_add(frame_count, std::memory_order_relaxed);
   } else {
+    output->callback_errors_.fetch_add(1, std::memory_order_relaxed);
     output->scheduler_.recordXrun();
     for (UInt32 index = 0; index < buffers->mNumberBuffers; ++index) {
       AudioBuffer& buffer = buffers->mBuffers[index];
