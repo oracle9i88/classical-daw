@@ -78,6 +78,17 @@ class AudioUnitInstrument {
                     InstrumentRenderReport* report = nullptr, double tail_seconds = 5.0,
                     Tick minimum_end_tick = 0);
 
+  // Explicit one-instrument realtime mode. Setup/state/latency query happen
+  // before output starts; prepared instance is exclusively owned by the audio
+  // callback until output stops. Fixed 48 kHz stereo, <=256 frames per call.
+  // Event.frame is the offset WITHIN this block; full channel-voice MIDI bytes.
+  // No throwing, host allocation, property queries or file I/O in renderRealtime.
+  // Plugin internals remain third-party code. Failure latches and silences output.
+  void prepareRealtime();
+  bool renderRealtime(const TimedMidiEvent* events, std::size_t count,
+                      float* stereo, std::uint32_t frames) noexcept;
+  double realtimeLatencySeconds() const noexcept;
+
  private:
   void renderSequence(const MidiSampleSequence& sequence, const ChunkSink& sink,
                       InstrumentRenderReport* report, bool clip_output);

@@ -20,6 +20,7 @@ void clearError(std::string* error) {
 // output score is non-throwing after the source copy has succeeded.
 void replaceScore(Score* destination, Score&& source) noexcept {
   destination->divisions = source.divisions;
+  destination->next_note_id = source.next_note_id;
   destination->time_signature = source.time_signature;
   destination->bpm = source.bpm;
   destination->parts.swap(source.parts);
@@ -41,7 +42,8 @@ bool reportException(std::string* error, const char* operation) {
 }  // namespace
 
 ScoreHistory::ScoreHistory(Score initial, std::size_t max_states)
-    : states_{std::move(initial)}, max_states_(std::max<std::size_t>(1U, max_states)) {}
+    : states_{std::move(initial)}, max_states_(std::max<std::size_t>(1U, max_states)),
+      note_id_high_water_(states_.front().next_note_id) {}
 
 bool ScoreHistory::commit(const Score& score, std::string* error) {
   clearError(error);
@@ -49,6 +51,11 @@ bool ScoreHistory::commit(const Score& score, std::string* error) {
     // Build the complete replacement first.  This gives commit a strong
     // exception guarantee and makes redo-branch removal atomic from the
     // caller's perspective.
+    if (bool(note_id_high_water_) != bool(score.next_note_id))
+      return fail(error, "identity migration requires a new history baseline");
+    if (note_id_high_water_ && score.next_note_id < note_id_high_water_)
+      return fail(error, "identified score allocator cannot move backwards");
+    validateNoteIds(score);
     std::vector<Score> next;
     const std::size_t retained = cursor_ + 1U;
     next.reserve(std::min(max_states_, retained + 1U));
@@ -59,6 +66,7 @@ bool ScoreHistory::commit(const Score& score, std::string* error) {
       next.erase(next.begin(), next.begin() + static_cast<std::ptrdiff_t>(drop));
     }
     states_.swap(next);
+    note_id_high_water_ = std::max(note_id_high_water_, score.next_note_id);
     cursor_ = states_.size() - 1U;
     return true;
   } catch (...) {
@@ -72,6 +80,7 @@ bool ScoreHistory::undo(Score* score, std::string* error) {
   if (!canUndo()) return fail(error, "no undo state available");
   try {
     Score previous = states_[cursor_ - 1U];
+    if (previous.next_note_id) previous.next_note_id = std::max(previous.next_note_id,note_id_high_water_);
     replaceScore(score, std::move(previous));
     --cursor_;
     return true;
@@ -86,6 +95,7 @@ bool ScoreHistory::redo(Score* score, std::string* error) {
   if (!canRedo()) return fail(error, "no redo state available");
   try {
     Score next = states_[cursor_ + 1U];
+    if (next.next_note_id) next.next_note_id = std::max(next.next_note_id,note_id_high_water_);
     replaceScore(score, std::move(next));
     ++cursor_;
     return true;
@@ -101,6 +111,7 @@ bool ScoreHistory::snapshot(Score* score, std::string* error) const {
     // Copy before touching the destination so allocation failure leaves both
     // the caller's output and this history unchanged.
     Score copy = states_[cursor_];
+    if (copy.next_note_id) copy.next_note_id = std::max(copy.next_note_id,note_id_high_water_);
     replaceScore(score, std::move(copy));
     return true;
   } catch (...) {
@@ -117,6 +128,7 @@ bool ScoreHistory::reset(const Score& score, std::string* error) {
     next.reserve(1U);
     next.push_back(score);
     states_.swap(next);
+    note_id_high_water_ = score.next_note_id;
     cursor_ = 0U;
     return true;
   } catch (...) {

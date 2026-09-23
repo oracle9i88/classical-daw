@@ -7,10 +7,18 @@ an initial native frozen-track playback path; it is not a finished DAW.
 
 ## What works in Alpha
 
+- An internal eight-bar performance-editing slice separates notation IDs from
+  performed-note IDs, stores explicit tie mappings and editable pedal/expression
+  curves, and uses one delta-command history for notation/performance/curve/gain
+  edits. Real Pianoteq audition runs inside CoreAudio callbacks; saving/reopening
+  preserves data exactly, with audio checked under a declared tolerance. This
+  is a one-part CLI workflow, not the complete DAW UI. See
+  [commands, acceptance evidence and boundaries](docs/performance-vertical-slice.md).
 - A local macOS Pianoteq 9 AU host renders MIDI/MusicXML/native projects to real
   stereo piano audio, with saved instrument state, fixed-preset protection,
-  sample-timed MIDI controls and a reloadable output bundle. This is offline;
-  the Mac realtime callback and browser do not yet use the plugin. See
+  sample-timed MIDI controls and a reloadable output bundle. This export path is
+  offline; the separate native performance audition above now hosts Pianoteq
+  live, while the browser still does not use it. See
   [Pianoteq setup and verification](docs/pianoteq.md).
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
   Cocoa startup handling, concert-pitch factory initialization, saved-state

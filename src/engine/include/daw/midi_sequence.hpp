@@ -7,12 +7,15 @@
 
 namespace daw {
 
-struct MidiSampleEvent {
+struct TimedMidiEvent {
   std::size_t frame = 0;
   std::uint8_t status = 0;
   std::uint8_t data1 = 0;
   std::uint8_t data2 = 0;
+  std::uint64_t note_id = 0; // Zero for controllers and synthetic final releases.
+  bool terminal_reset = false;
 };
+using MidiSampleEvent = TimedMidiEvent;
 
 struct MidiSampleSequence {
   std::uint32_t sample_rate = 48000;

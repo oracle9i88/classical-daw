@@ -174,12 +174,14 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error, Sco
           sustained.duration = note.start + note.duration - sustained.start;
           sustained.off_order = note.midi_off_order;
           sustained.release_velocity = note.midi_release_velocity;
+          if (note.id) sustained.source_notation_ids.push_back(note.id);
           // Continuation velocity is notation, not a second MIDI note-on.
           if (!note.tie_start) active_ties.erase(tie);
         } else {
           if (tie != active_ties.end()) throw tieError("score tie is missing its continuation stop");
           track.notes.push_back({note.start, note.duration, pitch, note.velocity, channel,
-                                 note.midi_release_velocity, note.midi_on_order, note.midi_off_order});
+                                 note.midi_release_velocity, note.midi_on_order, note.midi_off_order, note.id, {}});
+          if (note.id) track.notes.back().source_notation_ids.push_back(note.id);
           if (note.tie_start) active_ties.emplace(key, track.notes.size() - 1U);
         }
       }

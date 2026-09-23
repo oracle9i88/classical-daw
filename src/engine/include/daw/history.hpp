@@ -52,6 +52,7 @@ class ScoreHistory {
   std::vector<Score> states_;
   std::size_t cursor_ = 0U;
   std::size_t max_states_ = 1U;
+  std::uint64_t note_id_high_water_ = 0;
 };
 
 }  // namespace daw

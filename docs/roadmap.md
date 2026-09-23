@@ -6,6 +6,13 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Prioritize the creative vertical slice: persistent notation IDs, separate
+  performed IDs and explicit tie correspondences, editable/persisted CC64/CC11
+  curves, and one delta history covering notation, performance, curve and gain.
+  Validate actual Pianoteq/CoreAudio audition, interleaved undo/redo and saved/
+  reopened exact data plus audio tolerance. Legacy editors still need migration.
+  See [internal performance workflow](performance-vertical-slice.md).
+
 - Add explicit incremental offline render/preflight from previous to current
   session. Compare stable part ID, instrument/state and ordered sample events;
   validate candidate caches before loading changed instruments. Rebind unchanged
@@ -202,7 +209,8 @@ not count as completion.
 
 ## Next gates
 
-Cross-cutting priority: unify Score/Session/media revisions and command/history
+Cross-cutting priority: extend the validated internal performance workflow and
+migrate legacy editors to its command boundary; unify Score/Session/media revisions and command/history
 boundaries; stress the initial streaming path on longer real orchestral sessions and bridge realtime
 MIDI input to a real instrument. The browser's separate document model and AI
 tool execution remain explicit integration gaps. The framework audit above

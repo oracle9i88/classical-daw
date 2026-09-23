@@ -7,6 +7,8 @@ enable_testing()
 
 add_library(daw_engine STATIC
   src/engine/midi.cpp
+  src/engine/note_identity.cpp
+  src/engine/performance.cpp
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
   src/engine/history.cpp
@@ -36,6 +38,9 @@ else()
 endif()
 
 add_executable(daw_tests tests/test_engine.cpp)
+add_executable(daw_performance_tests tests/performance_tests.cpp)
+target_link_libraries(daw_performance_tests PRIVATE daw_engine)
+add_test(NAME daw_performance_tests COMMAND daw_performance_tests)
 target_link_libraries(daw_tests PRIVATE daw_engine)
 add_test(NAME daw_tests COMMAND daw_tests)
 
@@ -189,6 +194,8 @@ add_executable(daw_session_collect tools/session_collect.cpp)
 target_link_libraries(daw_session_collect PRIVATE daw_engine)
 
 add_executable(daw_session_fixture tools/session_fixture.cpp)
+add_executable(daw_performance_fixture tools/performance_fixture.cpp)
+target_link_libraries(daw_performance_fixture PRIVATE daw_engine)
 target_link_libraries(daw_session_fixture PRIVATE daw_engine)
 add_executable(daw_session_edit tools/session_edit.cpp)
 target_link_libraries(daw_session_edit PRIVATE daw_engine)
@@ -237,6 +244,12 @@ if(APPLE)
   # Explicit local hardware check, intentionally excluded from CTest/CI.
   add_executable(daw_output_probe tools/output_probe.cpp)
   target_link_libraries(daw_output_probe PRIVATE daw_coreaudio)
+  add_executable(daw_au_realtime_probe tools/au_realtime_probe.cpp)
+  target_link_libraries(daw_au_realtime_probe PRIVATE daw_coreaudio daw_au_host)
+  add_executable(daw_performance_play tools/performance_play.cpp)
+  target_link_libraries(daw_performance_play PRIVATE daw_coreaudio daw_au_host)
+  add_executable(daw_performance_probe tools/performance_probe.cpp)
+  target_link_libraries(daw_performance_probe PRIVATE daw_coreaudio daw_au_host)
 
   add_library(daw_coremidi STATIC
     src/platform/macos/coremidi_host.cpp

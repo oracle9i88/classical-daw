@@ -1,6 +1,7 @@
 #pragma once
 
 #include "daw/types.hpp"
+#include "daw/midi_sequence.hpp"
 
 #include <array>
 #include <atomic>
@@ -106,7 +107,12 @@ class InstrumentRenderer {
 
   virtual bool prepare(const InstrumentRenderConfig& config) noexcept = 0;
   virtual void reset() noexcept = 0;
-  virtual bool enqueue(const VoiceEvent& event) noexcept = 0;
+  virtual bool enqueue(const TimedMidiEvent& event) noexcept = 0;
+  // Legacy note-only call-site adapter; the renderer/event queue is full MIDI.
+  bool enqueue(const VoiceEvent& e) noexcept {
+    if(e.sample_position<0)return false;
+    return enqueue(TimedMidiEvent{static_cast<std::size_t>(e.sample_position),static_cast<std::uint8_t>(e.type==VoiceEventType::NoteOn?0x90:0x80),e.pitch,e.velocity});
+  }
   virtual void render(float* interleaved_output, std::uint32_t frame_count,
                      std::uint32_t channels, double sample_rate) noexcept = 0;
 };
@@ -131,7 +137,7 @@ class SineVoiceBank : public InstrumentRenderer {
   }
 
   void reset() noexcept override {
-    VoiceEvent pending;
+    TimedMidiEvent pending;
     while (events_.pop(&pending)) {
     }
     for (Voice& voice : voices_) voice = Voice{};
@@ -140,7 +146,7 @@ class SineVoiceBank : public InstrumentRenderer {
     sample_rate_ = 48000.0;
   }
 
-  bool enqueue(const VoiceEvent& event) noexcept override { return events_.push(event); }
+  bool enqueue(const TimedMidiEvent& event) noexcept override { return events_.push(event); }
 
   [[nodiscard]] bool prepared() const noexcept { return prepared_; }
   [[nodiscard]] InstrumentRenderConfig preparedConfig() const noexcept { return prepared_config_; }
@@ -149,7 +155,7 @@ class SineVoiceBank : public InstrumentRenderer {
               double sample_rate) noexcept override {
     if (interleaved_output == nullptr || channels == 0 || sample_rate <= 0.0) return;
     sample_rate_ = sample_rate;
-    VoiceEvent event;
+    TimedMidiEvent event;
     while (events_.pop(&event)) apply(event);
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       float sample = 0.0F;
@@ -176,16 +182,17 @@ class SineVoiceBank : public InstrumentRenderer {
 
   static constexpr double kTwoPi = 6.28318530717958647692;
 
-  void apply(const VoiceEvent& event) noexcept {
-    if (event.type == VoiceEventType::NoteOff || event.velocity == 0) {
+  void apply(const TimedMidiEvent& event) noexcept {
+    if ((event.status & 0xf0) == 0x80 || ((event.status & 0xf0) == 0x90 && event.data2 == 0)) {
       for (Voice& voice : voices_) {
-        if (voice.active && voice.pitch == event.pitch) voice.active = false;
+        if (voice.active && voice.pitch == event.data1) voice.active = false;
       }
       return;
     }
+    if ((event.status & 0xf0) != 0x90) return; // Diagnostic sine implements notes only.
     Voice* target = nullptr;
     for (Voice& voice : voices_) {
-      if (voice.active && voice.pitch == event.pitch) {
+      if (voice.active && voice.pitch == event.data1) {
         target = &voice;
         break;
       }
@@ -193,13 +200,13 @@ class SineVoiceBank : public InstrumentRenderer {
     }
     if (target == nullptr) target = &voices_.front();
     target->active = true;
-    target->pitch = event.pitch;
-    target->amplitude = static_cast<float>(event.velocity) / 127.0F * 0.15F;
+    target->pitch = event.data1;
+    target->amplitude = static_cast<float>(event.data2) / 127.0F * 0.15F;
     target->phase = 0.0;
-    target->phase_increment = kTwoPi * 440.0 * std::pow(2.0, (static_cast<double>(event.pitch) - 69.0) / 12.0) / sample_rate_;
+    target->phase_increment = kTwoPi * 440.0 * std::pow(2.0, (static_cast<double>(event.data1) - 69.0) / 12.0) / sample_rate_;
   }
 
-  SpscRing<VoiceEvent, kEventCapacity> events_;
+  SpscRing<TimedMidiEvent, kEventCapacity> events_;
   std::array<Voice, kVoiceCapacity> voices_{};
   double sample_rate_ = 48000.0;
   InstrumentRenderConfig prepared_config_{};
@@ -218,7 +225,13 @@ class BlockScheduler {
   BlockScheduler() noexcept { publishSnapshot(); }
 
   bool enqueue(const TransportCommand& command) noexcept { return commands_.push(command); }
-  bool enqueueVoiceEvent(const VoiceEvent& event) noexcept {
+  bool enqueueVoiceEvent(const VoiceEvent& e) noexcept {
+    if(e.sample_position<0)return false;
+    return enqueueMidiEvent({static_cast<std::size_t>(e.sample_position),static_cast<std::uint8_t>(e.type==VoiceEventType::NoteOn?0x90:0x80),e.pitch,e.velocity});
+  }
+  bool enqueueMidiEvent(const TimedMidiEvent& event) noexcept {
+    const auto type=event.status&0xf0;
+    if(type<0x80||type>0xe0||event.data1>127||event.data2>127||((type==0xc0||type==0xd0)&&event.data2))return false;
     if (!voice_events_.push(event)) {
       voice_event_drop_count_.fetch_add(1U, std::memory_order_relaxed);
       return false;
@@ -303,14 +316,14 @@ class BlockScheduler {
   }
 
   void ingestVoiceEvents() noexcept {
-    VoiceEvent event;
+    TimedMidiEvent event;
     while (voice_events_.pop(&event)) {
       if (pending_voice_event_count_ >= kVoiceEventCapacity) {
         voice_event_drop_count_.fetch_add(1U, std::memory_order_relaxed);
         continue;
       }
       std::size_t insert_at = pending_voice_event_count_;
-      while (insert_at > 0 && pending_voice_events_[insert_at - 1U].sample_position > event.sample_position) {
+      while (insert_at > 0 && pending_voice_events_[insert_at - 1U].frame > event.frame) {
         pending_voice_events_[insert_at] = pending_voice_events_[insert_at - 1U];
         --insert_at;
       }
@@ -325,18 +338,18 @@ class BlockScheduler {
     // current transport position once, while retaining future events.
     const bool zero_length_block = !state_.running || frame_count == 0;
     while (pending_voice_event_count_ > 0) {
-      const VoiceEvent& next = pending_voice_events_.front();
-      const bool due = zero_length_block ? next.sample_position <= block_start
-                                         : next.sample_position < block_end;
+      const TimedMidiEvent& next = pending_voice_events_.front();
+      const bool due = zero_length_block ? next.frame <= static_cast<std::size_t>(block_start)
+                                         : next.frame < static_cast<std::size_t>(block_end);
       if (!due) break;
 
-      const VoiceEvent event = next;
+      const TimedMidiEvent event = next;
       for (std::size_t index = 1; index < pending_voice_event_count_; ++index) {
         pending_voice_events_[index - 1U] = pending_voice_events_[index];
       }
       --pending_voice_event_count_;
 
-      if (event.sample_position < block_start) {
+      if (event.frame < static_cast<std::size_t>(block_start)) {
         voice_event_late_count_.fetch_add(1U, std::memory_order_relaxed);
       }
       if (renderer_ != nullptr && !renderer_->enqueue(event)) {
@@ -363,8 +376,8 @@ class BlockScheduler {
   }
 
   SpscRing<TransportCommand, kCommandCapacity> commands_;
-  SpscRing<VoiceEvent, kVoiceEventCapacity> voice_events_;
-  std::array<VoiceEvent, kVoiceEventCapacity> pending_voice_events_{};
+  SpscRing<TimedMidiEvent, kVoiceEventCapacity> voice_events_;
+  std::array<TimedMidiEvent, kVoiceEventCapacity> pending_voice_events_{};
   std::size_t pending_voice_event_count_ = 0;
   InstrumentRenderer* renderer_ = nullptr;
   TransportSnapshot state_;

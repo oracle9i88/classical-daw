@@ -41,6 +41,9 @@ struct ScoreNote {
   std::uint64_t midi_on_order = 0;
   std::uint64_t midi_off_order = 0;
   std::uint8_t midi_release_velocity = 0;
+  // Persistent notation-segment identity. Zero is an unassigned legacy/import
+  // note. A sounding tie chain is addressed by its first segment's ID.
+  std::uint64_t id = 0;
 };
 
 struct ScoreMeasure {
@@ -74,7 +77,14 @@ struct Score {
   // Initial time_signature is authoritative at zero. Later changes retain
   // all four SMF meter values at strictly increasing positive tick positions.
   std::vector<TimeSignatureChange> meter_changes{};
+  // Zero denotes an unidentified legacy score; otherwise monotonic high water.
+  std::uint64_t next_note_id = 0;
 };
+
+// Control thread, explicit opt-in migration. Assign only missing IDs, preserving
+// existing identities and allocator high water. Strong exception guarantee.
+void assignNoteIds(Score& score);
+void validateNoteIds(const Score& score);
 
 inline constexpr std::size_t kMaxScoreTempoChanges = 1'000'000;
 

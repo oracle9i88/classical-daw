@@ -20,6 +20,9 @@ struct MidiNote {
   // notes should clear these to zero; export rejects stale retrigger ordering.
   std::uint64_t on_order = 0;
   std::uint64_t off_order = 0;
+  // Native score anchor only; SMF interchange does not preserve this identity.
+  std::uint64_t source_note_id = 0;
+  std::vector<std::uint64_t> source_notation_ids; // All tied segments, native only.
 
   [[nodiscard]] Tick end() const { return start + duration; }
 };

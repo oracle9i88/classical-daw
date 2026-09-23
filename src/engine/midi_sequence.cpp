@@ -81,6 +81,7 @@ MidiSampleSequence makeMidiSampleSequence(const MidiFile& midi, std::uint32_t ra
     MidiSampleEvent message;
     message.frame = frame;
     if (event.note) {
+      message.note_id = event.note->source_note_id;
       message.status = static_cast<std::uint8_t>((event.priority == 2 ? 0x90 : 0x80) | event.note->channel);
       message.data1 = event.note->pitch;
       message.data2 = event.priority == 2 ? event.note->velocity : event.note->release_velocity;
@@ -97,7 +98,7 @@ MidiSampleSequence makeMidiSampleSequence(const MidiFile& midi, std::uint32_t ra
     if (!channels[channel]) continue;
     for (auto controller : {64, 66, 69, 123}) {
       sequence.events.push_back({sequence.end_frame, static_cast<std::uint8_t>(0xb0 | channel),
-                                 static_cast<std::uint8_t>(controller), 0});
+                                 static_cast<std::uint8_t>(controller), 0, 0, true});
     }
   }
   return sequence;

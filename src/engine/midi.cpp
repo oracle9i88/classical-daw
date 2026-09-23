@@ -418,7 +418,7 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
               throw std::runtime_error("MIDI note collapses to zero duration at 960 PPQ");
             }
             track.notes.push_back({normalized_start, normalized_end - normalized_start, pitch, velocity, channel,
-                                   value, on_order, event_order});
+                                   value, on_order, event_order, 0, {}});
           } else {
             const Tick normalized = canonicalTick(tick, division, &diagnostics.rounded_channel_events);
             track.channel_events.push_back({normalized, static_cast<MidiChannelEventType>(command), channel,

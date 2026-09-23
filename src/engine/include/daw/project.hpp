@@ -19,7 +19,10 @@ enum class ProjectLoadSource {
 };
 
 // Persist the editable score state in the versioned line-oriented
-// CLASSICAL_DAW_PROJECT format. Version 6 adds an explicit duration after each
+// CLASSICAL_DAW_PROJECT format. Identified scores use version 7 with per-segment
+// note IDs and a persisted allocator high water. Legacy/unidentified scores
+// still write version 6; assignNoteIds is the explicit upgrade operation.
+// Version 6 adds an explicit duration after each
 // measure start, including terminal silence. Zero keeps the legacy unspecified
 // extent; versions 1..5 load with zero measure durations. A positive duration
 // must contain the measure's notes and meet the next measure start, if any.

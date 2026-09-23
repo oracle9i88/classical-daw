@@ -10,14 +10,14 @@ class RecordingRenderer final : public daw::InstrumentRenderer {
  public:
   bool prepare(const daw::InstrumentRenderConfig&) noexcept override { return true; }
   void reset() noexcept override { count = 0; }
-  bool enqueue(const daw::VoiceEvent& event) noexcept override {
+  bool enqueue(const daw::TimedMidiEvent& event) noexcept override {
     if (count >= events.size()) return false;
     events[count++] = event;
     return true;
   }
   void render(float*, std::uint32_t, std::uint32_t, double) noexcept override {}
 
-  std::array<daw::VoiceEvent, 16> events{};
+  std::array<daw::TimedMidiEvent, 16> events{};
   std::size_t count = 0;
 };
 
@@ -44,18 +44,18 @@ int main() {
   }
 
   scheduler.processBlock(128);
-  if (renderer.count != 1 || renderer.events[0].pitch != 60 ||
-      renderer.events[0].sample_position != 100 || scheduler.pendingVoiceEventCount() != 2) {
+  if (renderer.count != 1 || renderer.events[0].data1 != 60 ||
+      renderer.events[0].frame != 100 || scheduler.pendingVoiceEventCount() != 2) {
     return fail("first block event dispatch");
   }
   // An event at the exact block end belongs to the following block.
   scheduler.processBlock(128);
-  if (renderer.count != 2 || renderer.events[1].type != VoiceEventType::NoteOff ||
-      renderer.events[1].sample_position != 128 || scheduler.pendingVoiceEventCount() != 1) {
+  if (renderer.count != 2 || renderer.events[1].status != 0x80 ||
+      renderer.events[1].frame != 128 || scheduler.pendingVoiceEventCount() != 1) {
     return fail("block-end event dispatch");
   }
   scheduler.processBlock(128);
-  if (renderer.count != 3 || renderer.events[2].pitch != 64 || scheduler.pendingVoiceEventCount() != 0) {
+  if (renderer.count != 3 || renderer.events[2].data1 != 64 || scheduler.pendingVoiceEventCount() != 0) {
     return fail("future event retention");
   }
 
@@ -86,5 +86,20 @@ int main() {
     return fail("future event queue retention");
   }
 
+  RecordingRenderer midi_renderer;
+  BlockScheduler midi_scheduler;
+  midi_scheduler.setInstrumentRenderer(&midi_renderer);
+  midi_scheduler.enqueue({TransportCommandType::Start,0,120});
+  if (!midi_scheduler.enqueueMidiEvent({7,0xb3,64,127}) ||
+      !midi_scheduler.enqueueMidiEvent({8,0xb3,11,96}) ||
+      !midi_scheduler.enqueueMidiEvent({9,0xe3,1,64}) ||
+      !midi_scheduler.enqueueMidiEvent({10,0xd3,72,0})) return fail("full MIDI enqueue");
+  midi_scheduler.processBlock(64);
+  if (midi_renderer.count != 4 || midi_renderer.events[0].status != 0xb3 ||
+      midi_renderer.events[1].data1 != 11 || midi_renderer.events[1].data2 != 96 ||
+      midi_renderer.events[2].frame != 9 || midi_renderer.events[2].status != 0xe3 ||
+      midi_renderer.events[3].status != 0xd3) return fail("controller/bend/pressure bytes lost");
+  if (midi_scheduler.enqueueMidiEvent({0,0xf0,0,0}) ||
+      midi_scheduler.enqueueMidiEvent({0,0xb0,128,0})) return fail("invalid MIDI accepted");
   return 0;
 }
