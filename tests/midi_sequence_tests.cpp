@@ -71,6 +71,16 @@ int main() {
     midi = fixture(); midi.tracks[0].notes.clear();
     sequence = daw::makeMidiSampleSequence(midi);
     require(sequence.events.empty() && sequence.frames == 240000, "empty sequence is not bounded silence");
+    daw::requireInitialExpression(sequence);
+    midi = fixture();
+    rejects([&] { daw::requireInitialExpression(daw::makeMidiSampleSequence(midi)); });
+    midi.tracks[0].channel_events = {{0, daw::MidiChannelEventType::ControlChange, 3, 11, 0}};
+    daw::requireInitialExpression(daw::makeMidiSampleSequence(midi));  // Deliberate silence before crescendo is valid.
+    midi.tracks[0].channel_events[0].channel = 2;
+    rejects([&] { daw::requireInitialExpression(daw::makeMidiSampleSequence(midi)); });
+    midi.tracks[0].channel_events[0].channel = 3;
+    midi.tracks[0].channel_events[0].tick = 961;
+    rejects([&] { daw::requireInitialExpression(daw::makeMidiSampleSequence(midi)); });
     std::cout << "MIDI sample sequence tests passed\n";
     return 0;
   } catch (const std::exception& error) {

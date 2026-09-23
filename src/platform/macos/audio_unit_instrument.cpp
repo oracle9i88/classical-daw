@@ -1,4 +1,5 @@
-#include "pianoteq_au.hpp"
+#include "audio_unit_instrument.hpp"
+#include "audio_unit_runtime.hpp"
 #include "daw/midi_sequence.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
@@ -10,8 +11,7 @@
 
 namespace daw {
 namespace {
-constexpr OSType kSubtype = 'Pt9q';
-constexpr OSType kManufacturer = 'Mdrt';
+
 constexpr std::size_t kStateLimit = 16U * 1024U * 1024U;
 constexpr UInt32 kBlock = 256;
 
@@ -38,7 +38,7 @@ std::string utf8(CFStringRef string) {
   return bytes.data();
 }
 
-void requireIdentity(CFPropertyListRef value) {
+void requireIdentity(CFPropertyListRef value, const InstrumentDescriptor& descriptor) {
   if (!value || CFGetTypeID(value) != CFDictionaryGetTypeID()) throw std::runtime_error("AU state must be a dictionary");
   const auto dictionary = static_cast<CFDictionaryRef>(value);
   auto numberMatches = [&](CFStringRef key, std::int64_t expected) {
@@ -48,14 +48,25 @@ void requireIdentity(CFPropertyListRef value) {
         CFNumberGetValue(static_cast<CFNumberRef>(number), kCFNumberSInt64Type, &actual) && actual == expected;
   };
   if (!numberMatches(CFSTR(kAUPresetTypeKey), kAudioUnitType_MusicDevice) ||
-      !numberMatches(CFSTR(kAUPresetSubtypeKey), kSubtype) ||
-      !numberMatches(CFSTR(kAUPresetManufacturerKey), kManufacturer)) {
-    throw std::runtime_error("AU state does not belong to Pianoteq 9 (aumu/Pt9q/Mdrt)");
+      !numberMatches(CFSTR(kAUPresetSubtypeKey), descriptor.subtype) ||
+      !numberMatches(CFSTR(kAUPresetManufacturerKey), descriptor.manufacturer)) {
+    throw std::runtime_error(std::string("AU state does not belong to ") + descriptor.name);
   }
 }
 }  // namespace
 
-struct PianoteqAU::Impl {
+const InstrumentDescriptor& instrumentDescriptor(InstrumentKind kind) {
+  static const InstrumentDescriptor piano{'Pt9q', 'Mdrt', "pianoteq", "Pianoteq 9", "NY Steinway D Classical", "aumu/Pt9q/Mdrt", 0.0};
+  static const InstrumentDescriptor cello{'Sce3', 'AuMo', "swam-cello", "SWAM Cello 3", "Cello", "aumu/Sce3/AuMo", 5.0};
+  switch (kind) {
+    case InstrumentKind::Pianoteq9: return piano;
+    case InstrumentKind::SwamCello3: return cello;
+  }
+  throw std::invalid_argument("unsupported instrument kind");
+}
+
+struct AudioUnitInstrument::Impl {
+  InstrumentKind kind = InstrumentKind::Pianoteq9;
   AudioComponent component = nullptr;
   AudioUnit unit = nullptr;
   bool initialized = false;
@@ -65,25 +76,29 @@ struct PianoteqAU::Impl {
     if (unit) AudioComponentInstanceDispose(unit);
   }
   void requireEditable() const {
-    if (consumed) throw std::logic_error("create a new piano instance to change state or render again");
+    if (consumed) throw std::logic_error("create a new instrument instance to change state or render again");
   }
 };
 
-PianoteqAU::PianoteqAU() : impl_(std::make_unique<Impl>()) {
-  AudioComponentDescription description{kAudioUnitType_MusicDevice, kSubtype, kManufacturer, 0, 0};
+AudioUnitInstrument::AudioUnitInstrument(InstrumentKind kind) : impl_(std::make_unique<Impl>()) {
+  impl_->kind = kind;
+  const auto& profile = instrumentDescriptor(kind);
+  prepareAudioUnitRuntime();
+  AudioComponentDescription description{kAudioUnitType_MusicDevice, profile.subtype, profile.manufacturer, 0, 0};
   impl_->component = AudioComponentFindNext(nullptr, &description);
-  if (!impl_->component) throw std::runtime_error("Pianoteq 9 AU is not registered; install the local AU component first");
-  check(AudioComponentInstanceNew(impl_->component, &impl_->unit), "load Pianoteq 9 AU");
+  if (!impl_->component) throw std::runtime_error(std::string(profile.name) + " AU is not registered; install the local AU component first");
+  check(AudioComponentInstanceNew(impl_->component, &impl_->unit), "load local instrument AU");
 }
-PianoteqAU::~PianoteqAU() = default;
+AudioUnitInstrument::~AudioUnitInstrument() = default;
+const InstrumentDescriptor& AudioUnitInstrument::descriptor() const { return instrumentDescriptor(impl_->kind); }
 
-std::uint32_t PianoteqAU::componentVersion() const {
+std::uint32_t AudioUnitInstrument::componentVersion() const {
   UInt32 version = 0;
   check(AudioComponentGetVersion(impl_->component, &version), "read AU version");
   return version;
 }
 
-std::vector<std::string> PianoteqAU::factoryPresets() const {
+std::vector<std::string> AudioUnitInstrument::factoryPresets() const {
   CFHandle<CFArrayRef> array;
   UInt32 size = sizeof(array.value);
   check(AudioUnitGetProperty(impl_->unit, kAudioUnitProperty_FactoryPresets, kAudioUnitScope_Global,
@@ -98,7 +113,7 @@ std::vector<std::string> PianoteqAU::factoryPresets() const {
   return names;
 }
 
-void PianoteqAU::selectFactoryPreset(const std::string& name) {
+void AudioUnitInstrument::selectFactoryPreset(const std::string& name) {
   impl_->requireEditable();
   CFHandle<CFArrayRef> array;
   UInt32 size = sizeof(array.value);
@@ -113,10 +128,10 @@ void PianoteqAU::selectFactoryPreset(const std::string& name) {
       return;
     }
   }
-  throw std::invalid_argument("Pianoteq factory preset not found: " + name);
+  throw std::invalid_argument(std::string(descriptor().name) + " factory preset not found: " + name);
 }
 
-std::string PianoteqAU::presetName() const {
+std::string AudioUnitInstrument::presetName() const {
   AUPreset preset{};
   UInt32 size = sizeof(preset);
   check(AudioUnitGetProperty(impl_->unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global,
@@ -126,13 +141,13 @@ std::string PianoteqAU::presetName() const {
   return utf8(name.value);
 }
 
-std::vector<std::uint8_t> PianoteqAU::state() const {
+std::vector<std::uint8_t> AudioUnitInstrument::state() const {
   impl_->requireEditable();  // Snapshot the instrument, never post-performance voice state.
   CFHandle<CFPropertyListRef> dictionary;
   UInt32 size = sizeof(dictionary.value);
   check(AudioUnitGetProperty(impl_->unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global,
                             0, &dictionary.value, &size), "capture AU state");
-  requireIdentity(dictionary.value);
+  requireIdentity(dictionary.value, descriptor());
   CFHandle<CFDataRef> data;
   data.value = CFPropertyListCreateData(nullptr, dictionary.value, kCFPropertyListBinaryFormat_v1_0, 0, nullptr);
   if (!data.value || CFDataGetLength(data.value) <= 0 ||
@@ -143,7 +158,7 @@ std::vector<std::uint8_t> PianoteqAU::state() const {
   return {bytes, bytes + CFDataGetLength(data.value)};
 }
 
-void PianoteqAU::restoreState(const std::vector<std::uint8_t>& bytes) {
+void AudioUnitInstrument::restoreState(const std::vector<std::uint8_t>& bytes) {
   impl_->requireEditable();
   if (bytes.empty() || bytes.size() > kStateLimit) throw std::invalid_argument("AU state must contain 1..16 MiB bytes");
   CFHandle<CFDataRef> data;
@@ -151,7 +166,7 @@ void PianoteqAU::restoreState(const std::vector<std::uint8_t>& bytes) {
   if (!data.value) throw std::runtime_error("cannot allocate AU state");
   CFHandle<CFPropertyListRef> dictionary;
   dictionary.value = CFPropertyListCreateWithData(nullptr, data.value, kCFPropertyListImmutable, nullptr, nullptr);
-  requireIdentity(dictionary.value);
+  requireIdentity(dictionary.value, descriptor());
   // Apple specifies the document property first when reopening a saved session.
   const auto status = AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_ClassInfoFromDocument,
       kAudioUnitScope_Global, 0, &dictionary.value, sizeof(dictionary.value));
@@ -161,7 +176,7 @@ void PianoteqAU::restoreState(const std::vector<std::uint8_t>& bytes) {
   }
 }
 
-AudioBuffer PianoteqAU::render(const MidiFile& midi, PianoRenderReport* report, std::uint32_t rate, double tail) {
+AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderReport* report, std::uint32_t rate, double tail) {
   impl_->requireEditable();
   const auto sequence = makeMidiSampleSequence(midi, rate, tail);
   AudioBuffer output;
@@ -187,9 +202,13 @@ AudioBuffer PianoteqAU::render(const MidiFile& midi, PianoRenderReport* report, 
                             0, &offline, sizeof(offline)), "configure AU offline mode");
   check(AudioUnitInitialize(impl_->unit), "initialize AU");
   impl_->initialized = true;
+  // SWAM's startup work uses Cocoa timers / a message thread. Without a running
+  // main loop the AU accepts MIDI and returns only zero samples. This bounded
+  // startup phase occurs before sample zero; it is not added to the score timing.
+  serviceAudioUnitRuntime(descriptor().startup_seconds);
   std::array<float, kBlock> left{}, right{};
   struct StereoBuffers { UInt32 count; ::AudioBuffer buffers[2]; } buffers{};
-  PianoRenderReport diagnostics;
+  InstrumentRenderReport diagnostics;
   double energy = 0.0, tail_energy = 0.0;
   const auto tail_frames = std::min<std::size_t>(rate, sequence.frames);
   std::size_t next = 0;

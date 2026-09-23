@@ -12,6 +12,10 @@ validating score timing and audio rendering before platform integration.
   sample-timed MIDI controls and a reloadable output bundle. This is offline;
   the Mac realtime callback and browser do not yet use the plugin. See
   [Pianoteq setup and verification](docs/pianoteq.md).
+- SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
+  Cocoa startup handling, saved state and verified audio reload. Other installed
+  SWAM instruments, per-track orchestral routing and realtime playback remain
+  pending. See [SWAM Cello setup](docs/swam.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.

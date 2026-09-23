@@ -16,3 +16,4 @@ compile_commands.json
 *.midi
 *.dawproj
 *.aupreset
+__pycache__/

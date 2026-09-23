@@ -6,6 +6,10 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Extend the shared offline AU host to SWAM Cello 3. Validate Cocoa startup,
+  explicit CC11 before the first note, actual expression response, state reload
+  and unchanged piano output. Other SWAM instruments and multi-instance routing
+  remain pending. See [SWAM integration](swam.md).
 - Connect the installed Pianoteq 9 AU to the offline engine, with sample-timed
   MIDI, serialized instrument state, stereo WAV export and project reload.
   Verify actual velocity/pedal behavior and fix factory-vs-restored-state level
@@ -135,14 +139,15 @@ timeline edit → deterministic WAV export.
 
 ### M2: production workflow
 
-Extend the first piano host to installed SWAM instruments and per-track routing.
+Extend the piano/SWAM Cello host to the other installed SWAM instruments and per-track routing.
 Validate continuous expression, legato/articulation and saved state per instrument.
 Keep optional synthesized orchestral effects on the same future track/bus path;
 the user's synth-demo screenshots are design references, not audited DSP code.
 
 Add recording/takes, MIDI event scheduling, buses, automation, plugin scanning in a worker,
-latency compensation, stems, and offline bounce. Add a real instrument adapter
-before calling the renderer an orchestral solution.
+latency compensation, stems, and streaming offline bounce. Extend the first real
+instrument adapters to validated per-track orchestral routing before calling
+the renderer an orchestral solution.
 
 ### M3: notation and assisted composition
 

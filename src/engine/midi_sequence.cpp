@@ -8,6 +8,18 @@
 
 namespace daw {
 
+void requireInitialExpression(const MidiSampleSequence& sequence) {
+  std::array<bool, 16> initialized{};
+  for (const auto& event : sequence.events) {
+    const auto channel = static_cast<std::size_t>(event.status & 0x0f);
+    if ((event.status & 0xf0) == 0xb0 && event.data1 == 11) initialized[channel] = true;
+    if ((event.status & 0xf0) == 0x90 && event.data2 != 0 && !initialized[channel]) {
+      throw std::invalid_argument("instrument requires CC11 expression before the first note on MIDI channel " +
+                                  std::to_string(channel + 1));
+    }
+  }
+}
+
 bool isInstrumentSelection(const MidiSampleEvent& event) noexcept {
   return (event.status & 0xf0) == 0xc0 ||
       ((event.status & 0xf0) == 0xb0 && (event.data1 == 0 || event.data1 == 32));

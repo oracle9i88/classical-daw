@@ -1,0 +1,67 @@
+#pragma once
+
+#include "daw/midi.hpp"
+#include "daw/wav.hpp"
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace daw {
+
+enum class InstrumentKind { Pianoteq9, SwamCello3 };
+struct InstrumentDescriptor {
+  std::uint32_t subtype;
+  std::uint32_t manufacturer;
+  const char* id;
+  const char* name;
+  const char* default_preset;
+  const char* component_id;
+  double startup_seconds;
+};
+const InstrumentDescriptor& instrumentDescriptor(InstrumentKind kind);
+
+
+struct InstrumentRenderReport {
+  std::uint64_t sent_messages = 0;
+  std::uint64_t skipped_instrument_selection = 0;
+  std::uint64_t clipped_samples = 0;
+  double peak = 0.0;
+  double rms = 0.0;
+  double last_second_rms = 0.0;
+};
+
+// Local, offline AUv2 host for explicitly supported, separately installed instruments.
+// No plugin UI, audio device, network, license activation or preference writing
+// is requested by this host. Cocoa startup runs on the main thread. Plugin code
+// runs in-process, outside the realtime
+// engine. Each instance renders once; reload uses a new instance and saved state.
+class AudioUnitInstrument {
+ public:
+  explicit AudioUnitInstrument(InstrumentKind kind);
+  ~AudioUnitInstrument();
+  AudioUnitInstrument(const AudioUnitInstrument&) = delete;
+  AudioUnitInstrument& operator=(const AudioUnitInstrument&) = delete;
+
+  const InstrumentDescriptor& descriptor() const;
+  std::vector<std::string> factoryPresets() const;
+  void selectFactoryPreset(const std::string& name);
+  std::string presetName() const;
+  std::uint32_t componentVersion() const;
+  std::vector<std::uint8_t> state() const;
+  void restoreState(const std::vector<std::uint8_t>& bytes);
+
+  // Fixed instrument preset: bank select and program changes are counted and omitted
+  // from playback. All other channel voice bytes and original channels are sent
+  // unchanged. Interpretation depends on the plugin's MIDI mapping. No GM drum
+  // routing, host tempo callbacks, latency compensation or automatic mastering.
+  // Out-of-range samples are counted and clipped for the PCM16 export boundary.
+  AudioBuffer render(const MidiFile& midi, InstrumentRenderReport* report = nullptr,
+                     std::uint32_t rate = 48000, double tail_seconds = 5.0);
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace daw

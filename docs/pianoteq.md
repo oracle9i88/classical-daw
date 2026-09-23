@@ -9,6 +9,11 @@ This is an **offline integration**, not yet the interactive Mac track editor,
 realtime keyboard monitoring, a general plugin scanner, or browser playback.
 The existing CoreAudio diagnostic callback still uses its sine voice.
 
+The implementation now lives in the shared `daw_au_host` target; `daw_pianoteq`
+and `PianoteqAU` remain compatibility adapters. The shared host initializes Cocoa
+on the main thread. [SWAM Cello integration](swam.md) uses this same host with
+an additional bounded startup phase and explicit expression preflight.
+
 ## Usage
 
 ```sh

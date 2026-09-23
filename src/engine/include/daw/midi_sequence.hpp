@@ -35,4 +35,8 @@ MidiSampleSequence makeMidiSampleSequence(
 // The original project/MIDI still retains these messages.
 bool isInstrumentSelection(const MidiSampleEvent& event) noexcept;
 
+// Expressive instruments such as SWAM need CC11 before the first attack on
+// each used MIDI channel. Fail clearly rather than silently invent automation.
+void requireInitialExpression(const MidiSampleSequence& sequence);
+
 }  // namespace daw

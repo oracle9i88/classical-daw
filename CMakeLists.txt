@@ -141,13 +141,20 @@ add_executable(daw_midi_render tools/midi_render.cpp)
 target_link_libraries(daw_midi_render PRIVATE daw_engine)
 
 if(APPLE)
-  add_library(daw_pianoteq STATIC src/platform/macos/pianoteq_au.cpp)
-  target_include_directories(daw_pianoteq PUBLIC src/platform/macos)
-  target_link_libraries(daw_pianoteq PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreFoundation")
-  target_compile_options(daw_pianoteq PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+  enable_language(OBJCXX)
+  add_library(daw_au_host STATIC src/platform/macos/audio_unit_instrument.cpp src/platform/macos/audio_unit_runtime.mm)
+  target_include_directories(daw_au_host PUBLIC src/platform/macos)
+  target_link_libraries(daw_au_host PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreFoundation" "-framework AppKit")
+  target_compile_options(daw_au_host PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+  add_library(daw_pianoteq INTERFACE)
+  target_link_libraries(daw_pianoteq INTERFACE daw_au_host)
 
   add_executable(daw_piano_render tools/piano_render.cpp)
   target_link_libraries(daw_piano_render PRIVATE daw_pianoteq)
+
+  add_executable(daw_instrument_render tools/piano_render.cpp)
+  target_compile_definitions(daw_instrument_render PRIVATE DAW_GENERIC_INSTRUMENT_CLI=1)
+  target_link_libraries(daw_instrument_render PRIVATE daw_au_host)
 
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp

@@ -1,4 +1,4 @@
-#include "pianoteq_au.hpp"
+#include "audio_unit_instrument.hpp"
 #include "daw/midi_sequence.hpp"
 #include "daw/project.hpp"
 #include "daw/score_midi.hpp"
@@ -53,7 +53,7 @@ struct OutputGuard {
     if (!created || complete) return;
     std::error_code ignored;
     for (const auto* name : {"piano.wav", "piano.aupreset", "score.dawproj", "score.dawproj.tmp",
-                             "performance.mid", "performance.mid.tmp", "report.json"}) {
+                             "performance.mid", "performance.mid.tmp", "report.json", "instrument.wav", "instrument.aupreset"}) {
       fs::remove(directory / name, ignored);
     }
     fs::remove(directory, ignored);  // Never recursively delete unexpected content.
@@ -63,20 +63,41 @@ struct OutputGuard {
 
 int main(int argc, char** argv) {
   try {
-    if (argc == 2 && std::string(argv[1]) == "--list-presets") {
-      daw::PianoteqAU piano;
-      for (const auto& name : piano.factoryPresets()) std::cout << name << '\n';
-      return 0;
-    }
-    if ((argc != 3 && argc != 5) ||
-        (argc == 5 && std::string(argv[3]) != "--preset" && std::string(argv[3]) != "--state")) {
-      std::cerr << "Usage: daw_piano_render INPUT.{mid,midi,dawproj,musicxml,xml} NEW_OUTPUT_DIRECTORY\n"
-                   "                        [--preset FACTORY_NAME | --state LOCAL.aupreset]\n"
-                   "       daw_piano_render --list-presets\n"
-                   "Local Pianoteq 9 AU required. Stereo 48 kHz PCM16, 5-second release tail.\n"
-                   "Default preset: NY Steinway D Classical. All parts play through one piano.\n";
+    const bool list = argc >= 2 && std::string(argv[1]) == "--list-presets";
+    daw::InstrumentKind kind = daw::InstrumentKind::Pianoteq9;
+    std::string preset, state_path;
+    bool selected_kind = false;
+    const int option_start = list ? 2 : 3;
+    if ((!list && argc < 3) || (argc - option_start) % 2 != 0) {
+      std::cerr << "Usage: " << argv[0] << " INPUT NEW_OUTPUT_DIRECTORY [--preset NAME | --state FILE]"
+#ifdef DAW_GENERIC_INSTRUMENT_CLI
+                << " [--instrument pianoteq|swam-cello]"
+#endif
+                << "\n       " << argv[0] << " --list-presets [--instrument ID]\n";
       return 2;
     }
+    for (int i = option_start; i < argc; i += 2) {
+      const std::string option = argv[i], value = argv[i + 1];
+      if (!list && option == "--preset" && preset.empty() && state_path.empty() && !value.empty()) preset = value;
+      else if (!list && option == "--state" && state_path.empty() && preset.empty() && !value.empty()) state_path = value;
+#ifdef DAW_GENERIC_INSTRUMENT_CLI
+      else if (option == "--instrument" && !selected_kind) {
+        if (value == "swam-cello") kind = daw::InstrumentKind::SwamCello3;
+        else if (value != "pianoteq") throw std::invalid_argument("supported instruments: pianoteq, swam-cello");
+        selected_kind = true;
+      }
+#endif
+      else throw std::invalid_argument("unknown, duplicate or incompatible option: " + option);
+    }
+    (void)selected_kind;
+    const auto& profile = daw::instrumentDescriptor(kind);
+    if (list) {
+      daw::AudioUnitInstrument instrument(kind);
+      for (const auto& name : instrument.factoryPresets()) std::cout << name << '\n';
+      return 0;
+    }
+    const std::string audio_name = kind == daw::InstrumentKind::Pianoteq9 ? "piano.wav" : "instrument.wav";
+    const std::string state_name = kind == daw::InstrumentKind::Pianoteq9 ? "piano.aupreset" : "instrument.aupreset";
     OutputGuard output{fs::path(argv[2])};
     std::error_code ec;
     const auto status = fs::symlink_status(output.directory, ec);
@@ -102,38 +123,55 @@ int main(int argc, char** argv) {
       if (!daw::scoreToMidiFile(score, &midi, &error)) throw std::runtime_error("score to MIDI: " + error);
     }
     // Reject excessive/invalid timelines before loading third-party plugin code.
-    (void)daw::makeMidiSampleSequence(midi);
+    const auto sequence = daw::makeMidiSampleSequence(midi);
+    if (kind == daw::InstrumentKind::SwamCello3) daw::requireInitialExpression(sequence);
     std::string name;
     std::vector<std::uint8_t> state;
     std::uint32_t version = 0;
     {
-      daw::PianoteqAU setup;
-      if (argc == 5 && std::string(argv[3]) == "--state") setup.restoreState(readState(argv[4]));
-      else setup.selectFactoryPreset(argc == 5 ? argv[4] : "NY Steinway D Classical");
+      daw::AudioUnitInstrument setup(kind);
+      if (!state_path.empty()) {
+        state = readState(state_path);
+        setup.restoreState(state);
+      } else {
+        setup.selectFactoryPreset(preset.empty() ? profile.default_preset : preset);
+        state = setup.state();
+      }
       name = setup.presetName();
-      state = setup.state();
       version = setup.componentVersion();
     }
     // Bounce always consumes the serialized instrument state in a fresh AU.
     // On Pianoteq 9.2.2, direct factory selection and document-state loading
     // produce different audio despite equal exposed parameters/state. Using
     // one restoration path for both first bounce and reload removes that drift.
-    daw::PianoteqAU piano;
+    daw::AudioUnitInstrument piano(kind);
     piano.restoreState(state);
-    if (piano.state() != state) throw std::runtime_error("AU state changed when preparing the bounce");
-    std::cerr << "Rendering local Pianoteq AU: " << name << '\n';
-    daw::PianoRenderReport report;
+    const bool restored_bytes_equal = piano.state() == state;
+    // SWAM refreshes a datetime field in its JUCE state on restoration. Retain
+    // the exact source snapshot in the bundle instead of overwriting it with
+    // transient metadata. Audio equivalence is covered by local integration tests.
+    if (kind == daw::InstrumentKind::Pianoteq9 && !restored_bytes_equal) {
+      throw std::runtime_error("AU state changed when preparing the bounce");
+    }
+    if (piano.presetName() != name) throw std::runtime_error("AU preset changed when preparing the bounce");
+    std::cerr << "Rendering local " << profile.name << " AU: " << name << '\n';
+    daw::InstrumentRenderReport report;
     const auto audio = piano.render(midi, &report);
+    if (report.peak == 0.0 && std::any_of(midi.tracks.begin(), midi.tracks.end(),
+        [](const daw::MidiTrack& track) { return !track.notes.empty(); })) {
+      throw std::runtime_error("AU returned silence for sounding notes; check plugin startup, activation, MIDI mapping and expression");
+    }
     std::ostringstream json;
     json.imbue(std::locale::classic());
     json << std::setprecision(17)
-         << "{\n  \"bundle_version\": 1,\n  \"renderer\": \"Pianoteq 9 AU offline\","
-         << "\n  \"component\": \"aumu/Pt9q/Mdrt\",\n  \"component_version\": " << version
+         << "{\n  \"bundle_version\": 1,\n  \"renderer\": " << jsonString(std::string(profile.name) + " AU offline")
+         << ",\n  \"component\": " << jsonString(profile.component_id) << ",\n  \"component_version\": " << version
          << ",\n  \"preset\": " << jsonString(name)
+         << ",\n  \"restored_state_bytes_equal\": " << (restored_bytes_equal ? "true" : "false")
          << ",\n  \"license_status\": \"not_verified_by_host\","
          << "\n  \"project\": \"score.dawproj\",\n  \"midi\": \"performance.mid\","
-         << "\n  \"instrument_state\": \"piano.aupreset\",\n  \"audio\": \"piano.wav\","
-         << "\n  \"routing\": \"all parts to one fixed piano; preserve MIDI channels\","
+         << "\n  \"instrument_state\": " << jsonString(state_name) << ",\n  \"audio\": " << jsonString(audio_name) << ","
+         << "\n  \"routing\": \"all parts to one fixed instrument; preserve MIDI channels\",\n  \"startup_seconds\": " << profile.startup_seconds << ","
          << "\n  \"sample_rate\": " << audio.sample_rate << ",\n  \"channels\": " << audio.channels
          << ",\n  \"frames\": " << audio.frameCount() << ",\n  \"tail_seconds\": 5,"
          << "\n  \"sent_messages\": " << report.sent_messages
@@ -156,17 +194,17 @@ int main(int argc, char** argv) {
     output.created = true;
     if (!daw::writeProjectFile(score, (output.directory / "score.dawproj").string(), &error) ||
         !daw::writeMidiFile(midi, (output.directory / "performance.mid").string(), &error) ||
-        !daw::writeWavPcm16(audio, (output.directory / "piano.wav").string(), &error)) throw std::runtime_error(error);
-    writeBytes(output.directory / "piano.aupreset", state.data(), state.size());
+        !daw::writeWavPcm16(audio, (output.directory / audio_name).string(), &error)) throw std::runtime_error(error);
+    writeBytes(output.directory / state_name, state.data(), state.size());
     const auto text = json.str();
     writeBytes(output.directory / "report.json", text.data(), text.size());
     output.complete = true;
-    std::cout << "Wrote piano bundle: " << output.directory << "\nPeak " << report.peak
+    std::cout << "Wrote instrument bundle: " << output.directory << "\nPeak " << report.peak
               << "; clipped samples " << report.clipped_samples << "; skipped bank/program messages "
               << report.skipped_instrument_selection << '\n';
     return 0;
   } catch (const std::exception& exception) {
-    std::cerr << "Piano render failed: " << exception.what() << '\n';
+    std::cerr << "Instrument render failed: " << exception.what() << '\n';
     return 1;
   }
 }
