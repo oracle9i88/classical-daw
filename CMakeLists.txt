@@ -17,6 +17,7 @@ add_library(daw_engine STATIC
   src/engine/score_midi.cpp
   src/engine/score_tempo.cpp
   src/engine/session.cpp
+  src/engine/session_bundle.cpp
   src/engine/session_mix.cpp
   src/engine/session_recovery.cpp
   src/engine/streaming_audio.cpp
@@ -148,6 +149,9 @@ add_test(NAME daw_session_tests COMMAND daw_session_tests)
 add_executable(daw_session_routing_tests tests/session_routing_tests.cpp)
 target_link_libraries(daw_session_routing_tests PRIVATE daw_engine)
 add_test(NAME daw_session_routing_tests COMMAND daw_session_routing_tests)
+add_executable(daw_session_bundle_tests tests/session_bundle_tests.cpp)
+target_link_libraries(daw_session_bundle_tests PRIVATE daw_engine)
+add_test(NAME daw_session_bundle_tests COMMAND daw_session_bundle_tests)
 add_executable(daw_session_player_tests tests/session_player_tests.cpp)
 target_link_libraries(daw_session_player_tests PRIVATE daw_engine)
 add_test(NAME daw_session_player_tests COMMAND daw_session_player_tests)
@@ -178,6 +182,8 @@ add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)
 
 add_executable(daw_session_recover tools/session_recover.cpp)
 target_link_libraries(daw_session_recover PRIVATE daw_engine)
+add_executable(daw_session_collect tools/session_collect.cpp)
+target_link_libraries(daw_session_collect PRIVATE daw_engine)
 
 add_executable(daw_session_fixture tools/session_fixture.cpp)
 target_link_libraries(daw_session_fixture PRIVATE daw_engine)

@@ -53,6 +53,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state
   unification remains pending; see the [architecture audit](docs/architecture-audit-20260923.md).
+- Collect a saved frozen session into a new self-contained directory, retaining
+  exact score/state/audio bytes and saved mix targets. Validate staged dependencies
+  before exclusive publication; moved projects reopen without the old source
+  directory. See [collection commands and limits](docs/session-collection.md).
 - Bounded native mix undo/redo with branch handling and revisions. Accepted
   targets, playback commands and history advance together; invalid/full-queue/
   allocation-failed edits leave them unchanged. Saved settings reopen correctly;

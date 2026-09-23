@@ -58,6 +58,12 @@ target state unchanged. The save records accepted targets, not intermediate
 gain-ramp samples. Reopen the new session to restore them; use the offline
 renderer to export WAV. Original source files remain unchanged.
 
+To move that saved mix to another directory, use `daw_session_collect SAVED_SESSION
+NEW_DIRECTORY` outside the player. It copies and validates the referenced score,
+instrument states and frozen audio, keeping the saved mix. Open the resulting
+`session.dawsession`; old exports and history are not copied. Collection does not
+capture unsaved live changes. See [the complete workflow](session-collection.md).
+
 `undo` and `redo` restore accepted mix targets through the same playback queue,
 without seeking or restarting playback. The default history holds the most
 recent 128 single-parameter edits. New edits after undo discard the old redo

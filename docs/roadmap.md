@@ -6,6 +6,12 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Collect saved frozen sessions into independent directories with normalized
+  references, staged validation and exclusive no-overwrite publication. Preserve
+  exact score/state/audio and saved mix; omit old exports and recovery/history.
+  Check relocation, corruption cleanup and competing collectors. Whole live
+  document transactions remain pending. See [session collection](session-collection.md).
+
 - Remove the shared-output MIDI channel guard from independent native session
   planning. Up to 64 authored parts now plan with per-instance channel reuse,
   retaining first-16 defaults and imported explicit channels. Verify part-ID
