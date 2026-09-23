@@ -19,7 +19,10 @@ enum class ProjectLoadSource {
 };
 
 // Persist the editable score state in the versioned line-oriented
-// CLASSICAL_DAW_PROJECT format. Identified scores use version 7 with per-segment
+// CLASSICAL_DAW_PROJECT format. Scores with explicit measure labels use v8:
+// a hex-encoded label follows each number, with the v7 identity fields (zero
+// allocator/IDs allowed for an unidentified v8 score). Labels do not set timing.
+// Identified scores without labels use version 7 with per-segment
 // note IDs and a persisted allocator high water. Legacy/unidentified scores
 // still write version 6; assignNoteIds is the explicit upgrade operation.
 // Version 6 adds an explicit duration after each

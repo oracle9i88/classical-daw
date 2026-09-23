@@ -7,6 +7,12 @@ an initial native frozen-track playback path; it is not a finished DAW.
 
 ## What works in Alpha
 
+- A data-only file entry point now imports supported MusicXML, MIDI or native
+  scores into the performance document. The editor can locate notes by measure,
+  show pitch/staff/voice/time, and create/remove CC lanes with unified undo.
+  This is **not broad MusicXML coverage**: the first unmodified 1,105-file census
+  passes only 9 files through read + mapping + compilation. Grace notes, same-key
+  overlap and other limitations remain. See [real-score entry and evidence](docs/performance-import.md).
 - An internal eight-bar performance-editing slice separates notation IDs from
   performed-note IDs, stores explicit tie mappings and editable pedal/expression
   curves, and uses one delta-command history for notation/performance/curve/gain

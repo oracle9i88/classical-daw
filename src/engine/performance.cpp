@@ -278,6 +278,12 @@ void WorkEditor::apply(const Change& c, bool forward) {
   } else {
     auto take=document_.performances.at(c.take);
     if(c.kind==Kind::Note)update(take,c.id,forward?c.after:c.before);
+    else if(c.kind==Kind::CurveLane) {
+      auto at=std::find_if(take.curves.begin(),take.curves.end(),[&](const auto& curve){return curve.id==c.id;});
+      const auto& value=forward?c.curve_after:c.curve_before;
+      if(at!=take.curves.end()){if(value)*at=*value;else take.curves.erase(at);}
+      else if(value)take.curves.insert(take.curves.begin()+static_cast<std::ptrdiff_t>(c.point),*value);
+    }
     else {
       CurvePoint* found=nullptr;
       for(auto& curve:take.curves)if(curve.id==c.id)for(auto& point:curve.points)if(point.id==c.point)found=&point;
@@ -288,7 +294,7 @@ void WorkEditor::apply(const Change& c, bool forward) {
   }
 }
 bool WorkEditor::commit(Change c) {
-  // Fixed-size delta commands and preallocated history storage: after apply
+  // Fixed-size handles to lane deltas and preallocated history: after apply
   // succeeds, history mutation cannot allocate or fail. No snapshot stack copy.
   static_assert(std::is_nothrow_copy_constructible_v<Change>);
   apply(c,true);history_.resize(cursor_);if(history_.size()==128)history_.erase(history_.begin());
@@ -310,6 +316,18 @@ bool WorkEditor::setCurvePoint(std::uint64_t curve,std::uint64_t point,double va
   Change c;c.kind=Kind::Curve;c.take=document_.active;c.id=curve;c.point=point;c.value_after=value;
   bool found=false;for(const auto& lane:document_.performances[c.take].curves)if(lane.id==curve)for(const auto& p:lane.points)if(p.id==point){found=true;c.value_before=p.value;}
   require(found,"unknown curve/point");if(c.value_before==value)return false;return commit(c);
+}
+bool WorkEditor::putCurve(ControlCurve curve) {
+  Change c;c.kind=Kind::CurveLane;c.take=document_.active;c.id=curve.id;
+  const auto& lanes=document_.performances[c.take].curves;c.point=lanes.size();
+  for(std::size_t i=0;i<lanes.size();++i)if(lanes[i].id==c.id){c.curve_before=std::make_shared<const ControlCurve>(lanes[i]);c.point=i;}
+  c.curve_after=std::make_shared<const ControlCurve>(std::move(curve));return commit(c);
+}
+bool WorkEditor::removeCurve(std::uint64_t id) {
+  Change c;c.kind=Kind::CurveLane;c.take=document_.active;c.id=id;
+  const auto& lanes=document_.performances[c.take].curves;
+  for(std::size_t i=0;i<lanes.size();++i)if(lanes[i].id==id){c.curve_before=std::make_shared<const ControlCurve>(lanes[i]);c.point=i;}
+  require(bool(c.curve_before),"unknown curve");return commit(c);
 }
 bool WorkEditor::setGain(double value) {
   if(value==document_.gain_db)return false;Change c;c.kind=Kind::Gain;c.take=document_.active;c.value_before=document_.gain_db;c.value_after=value;return commit(c);

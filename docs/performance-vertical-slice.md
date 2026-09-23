@@ -1,5 +1,13 @@
 # Native performance editing: the first complete internal slice
 
+**Scope correction (2026-09-24):** the original gate below is synthetic-fixture
+acceptance. It did not establish a file-import product path or general repertoire
+support. [The real-score entry](performance-import.md) adds that path and records
+its low corpus acceptance. The old specialized probe is now named
+`daw_performance_fixture_probe`; `daw_performance_probe` derives IDs from a
+document and has a separate `--data-only` mode. Historical outputs below remain
+historical, not new general-score evidence.
+
 The acceptance target is one eight-bar piano document with a cross-bar tie,
 CC64 pedal and editable CC11 expression curves. Written notation and performed
 sound have separate identities and persistence. One editor history contains
@@ -134,8 +142,9 @@ The measured Pianoteq latency was zero, so no alignment correction was required.
 Limits: one piano part, 4096 attacks, 16 performances, 32 curves, 4096 points per
 curve, 30 minutes including tail, -60..0 dB audition gain. Ambiguous overlapping
 or coincident retriggers on the same MIDI channel/pitch are rejected. Cross-part
-routing, curve-time editing and curve insertion/deletion commands are future
-extensions. No MusicXML/MIDI round-trip guarantee is made for these identities;
+routing remains future work. Curve-time editing and insertion/deletion are now
+available through `curve-put` / `curve-remove` (see the import guide); the original
+gate did not exercise them. No MusicXML/MIDI round-trip guarantee is made for these identities;
 SMF/XML exports remain musical interchange and lose native identity metadata.
 
 ## Gates and evidence, macOS 2026-09-23
@@ -165,9 +174,9 @@ The vertical acceptance is opt-in, never part of CI/CTest:
 ```sh
 build/daw_performance_tests
 python3 scripts/check_performance_cli.py /path/to/eight-bars
-build/daw_performance_probe /path/to/eight-bars /path/to/new-evidence
+build/daw_performance_fixture_probe /path/to/eight-bars /path/to/new-evidence
 # Optional actual speaker output for the edited version:
-build/daw_performance_probe /path/to/eight-bars /path/to/another-new-evidence --audible-edited
+build/daw_performance_fixture_probe /path/to/eight-bars /path/to/another-new-evidence --audible-edited
 ```
 
 The probe plays baseline, edited and reopened data through the real callback,

@@ -147,7 +147,8 @@ bool validateScore(const Score& score, std::string* error) {
     }
     for (std::size_t measure_index = 0; measure_index < part.measures.size(); ++measure_index) {
       const ScoreMeasure& measure = part.measures[measure_index];
-      if (measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes ||
+      if (measure.label.size() > kMaxStringBytes || measure.label.find('\0') != std::string::npos ||
+          measure.number <= 0 || measure.start < 0 || measure.notes.size() > kMaxNotes ||
           measure.notes.size() > kMaxTotalNotes - total_notes) {
         return fail(error, "project measure out of range");
       }
@@ -253,9 +254,13 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
     output.precision(17);
     // Version 6 retains explicit measure extents, including terminal silence.
     // Earlier versions leave those durations unspecified (zero).
-    output << "CLASSICAL_DAW_PROJECT " << (score.next_note_id ? 7 : 6) << "\n";
+    bool labels = false;
+    for (const auto& part : score.parts) for (const auto& measure : part.measures)
+      labels = labels || !measure.label.empty();
+    const int version = labels ? 8 : (score.next_note_id ? 7 : 6);
+    output << "CLASSICAL_DAW_PROJECT " << version << "\n";
     output << "divisions " << score.divisions << "\n";
-    if (score.next_note_id) output << "next_note_id " << score.next_note_id << "\n";
+    if (version >= 7) output << "next_note_id " << score.next_note_id << "\n";
     output << "bpm " << score.bpm << "\n";
     output << "tempo_changes " << score.tempo_changes.size() << "\n";
     for (const TempoChange& change : score.tempo_changes) {
@@ -284,13 +289,14 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
         const ScoreMeasure& measure = part.measures[measure_index];
         output << "measure " << measure_index << "\n";
         output << "number " << measure.number << "\n";
+        if (version >= 8) output << "label " << hexEncode(measure.label) << "\n";
         output << "start " << measure.start << "\n";
         output << "duration " << measure.duration << "\n";
         output << "notes " << measure.notes.size() << "\n";
         for (std::size_t note_index = 0; note_index < measure.notes.size(); ++note_index) {
           const ScoreNote& note = measure.notes[note_index];
           output << "note " << note_index << "\n";
-          if (score.next_note_id) output << "note_id " << note.id << "\n";
+          if (version >= 7) output << "note_id " << note.id << "\n";
           output << "start " << note.start << "\n";
           output << "duration " << note.duration << "\n";
           output << "pitch_step " << note.pitch.step << "\n";
@@ -365,7 +371,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     std::vector<std::string> arguments;
     if (!expectLine(&reader, "CLASSICAL_DAW_PROJECT", 1, &arguments, error)) return false;
     std::uint64_t project_version = 0;
-    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 7) {
+    if (!parseU64(arguments[0], &project_version) || project_version < 1 || project_version > 8) {
       return fail(error, "unsupported project version: " + arguments[0]);
     }
 
@@ -374,7 +380,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
       return fail(error, "invalid project divisions");
     }
     if (project_version >= 7 && (!expectLine(&reader, "next_note_id", 1, &arguments, error) ||
-        !parseU64(arguments[0], &parsed.next_note_id) || !parsed.next_note_id))
+        !parseU64(arguments[0], &parsed.next_note_id) || (project_version == 7 && !parsed.next_note_id)))
       return fail(error, "invalid note ID allocator");
     if (!expectLine(&reader, "bpm", 1, &arguments, error) || !parseDouble(arguments[0], &parsed.bpm)) {
       return fail(error, "invalid project bpm");
@@ -459,6 +465,8 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
         if (!expectLine(&reader, "number", 1, &arguments, error) || !parseSigned(arguments[0], &measure.number)) {
           return fail(error, "invalid project measure number");
         }
+        if (project_version >= 8 && (!expectLine(&reader, "label", 1, &arguments, error) ||
+            !hexDecode(arguments[0], &measure.label, error))) return fail(error, "invalid project measure label");
         if (!expectLine(&reader, "start", 1, &arguments, error) || !parseSigned(arguments[0], &measure.start)) {
           return fail(error, "invalid project measure start");
         }

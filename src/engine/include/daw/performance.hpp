@@ -3,6 +3,7 @@
 #include "daw/midi_sequence.hpp"
 #include <optional>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,10 @@ class WorkEditor {
   bool set(const NotePerformance& value);
   bool setPitch(std::uint64_t notation_id, ScorePitch pitch);
   bool setCurvePoint(std::uint64_t curve_id, std::uint64_t point_id, double value);
+  // Create/replace one explicit CC lane, or remove it, on the same undo stack.
+  // A lane replaces imported messages for that channel/controller at playback.
+  bool putCurve(ControlCurve curve);
+  bool removeCurve(std::uint64_t curve_id);
   bool setGain(double db);
   bool undo();
   bool redo();
@@ -76,12 +81,13 @@ class WorkEditor {
   using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
   void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:
-  enum class Kind { Note, Pitch, Curve, Gain };
+  enum class Kind { Note, Pitch, Curve, Gain, CurveLane };
   struct Change {
     Kind kind = Kind::Note; std::size_t take = 0; std::uint64_t id = 0, point = 0;
     std::optional<NotePerformance> before, after;
     ScorePitch pitch_before{}, pitch_after{};
     double value_before = 0, value_after = 0;
+    std::shared_ptr<const ControlCurve> curve_before, curve_after;
   };
   bool commit(Change change);
   void apply(const Change& change, bool forward);

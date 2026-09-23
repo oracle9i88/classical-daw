@@ -61,6 +61,37 @@ int main(){try{
   daw::savePerformanceDocument(reopened,(temp.root/"reopened").string());
   for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
     require(read(temp.root/"moved"/name)==read(temp.root/"reopened"/name),"document bytes changed on reopen");
+  // Real imports start with no authored lanes. Creation must be reachable,
+  // undoable with score edits, and preserve arbitrary pre-existing lane order.
+  auto bare=d;bare.performances[bare.active].curves.clear();
+  daw::WorkEditor lanes(bare);
+  const daw::ControlCurve pedal{91,0,64,{{10,0,0},{20,1,127},{30,2,0}}};
+  require(lanes.putCurve(pedal),"create lane");
+  require(lanes.setPitch(2,{'F',0,4}),"interleaved pitch");
+  require(lanes.setCurvePoint(91,20,100),"new lane point edit");
+  require(lanes.removeCurve(91),"remove lane");
+  require(lanes.undo()&&lanes.document().performances[bare.active].curves[0].points[1].value==100,"lane delete undo");
+  require(lanes.undo()&&lanes.undo()&&lanes.undo(),"lane/pitch unified order");
+  daw::savePerformanceDocument(bare,(temp.root/"bare").string());
+  daw::savePerformanceDocument(lanes.document(),(temp.root/"bare-undone").string());
+  for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
+    require(read(temp.root/"bare"/name)==read(temp.root/"bare-undone"/name),"lane undo bytes differ");
+  require(lanes.redo(),"lane redo");
+  lanes.setCommitAdmission([](const auto&,auto){throw std::runtime_error("rejected lane");});
+  rejects([&]{lanes.removeCurve(91);});
+  auto replacement=pedal;replacement.points[1].value=60;
+  rejects([&]{lanes.putCurve(replacement);});
+  require(lanes.document().performances[bare.active].curves[0].points[1].value==127,"rejected lane changed data");
+  lanes.setCommitAdmission({});
+  auto invalid_lane=pedal;invalid_lane.id=92;
+  rejects([&]{lanes.putCurve(invalid_lane);}); // duplicate CC lane
+  invalid_lane=pedal;invalid_lane.points[1].seconds=0;
+  rejects([&]{lanes.putCurve(invalid_lane);});
+  require(lanes.redo(),"rejected lane destroyed redo branch");
+  // A deletion/undo must restore insertion order, not sort existing curves.
+  auto unsorted=d;std::swap(unsorted.performances[unsorted.active].curves[0],unsorted.performances[unsorted.active].curves[1]);
+  daw::WorkEditor ordered(unsorted);ordered.removeCurve(2);ordered.undo();
+  require(ordered.document().performances[unsorted.active].curves[0].id==2,"lane undo reordered document");
   const auto revision=editor.revision();
   rejects([&]{editor.set({999,0,1,80});});rejects([&]{editor.set({1,-1,1,80});});
   rejects([&]{editor.setCurvePoint(2,2,128);});rejects([&]{editor.setGain(std::numeric_limits<double>::quiet_NaN());});

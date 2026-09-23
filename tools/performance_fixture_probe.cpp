@@ -1,3 +1,4 @@
+// Synthetic eight-bar fixture ONLY: specialized isolated-onset assertion.
 // Explicit local acceptance. Captures actual CoreAudio callback output, never
 // feeds a rendered WAV back to the player. Default speaker output is silenced.
 #include "performance_audition.hpp"
@@ -17,7 +18,7 @@ std::string read(const fs::path& path){std::ifstream in(path,std::ios::binary);r
 daw::AudioBuffer run(const daw::PerformanceDocument& doc,bool audible) {
   daw::PerformanceAudition source(doc,!audible,true);daw::CoreAudioOutput output;std::string error;
   if(!output.setAudioSource(&source,&error)||!output.start(&error))throw std::runtime_error(error);
-  source.start();const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(static_cast<long long>(daw::compilePerformance(doc.score,doc.performances[doc.active]).frames/48000)+15);
+  source.start();const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(40);
   while(!source.done()&&!source.failed()) {
     if(std::chrono::steady_clock::now()>deadline||!output.checkHealth(&error))throw std::runtime_error("output timeout/failure: "+error);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -26,57 +27,26 @@ daw::AudioBuffer run(const daw::PerformanceDocument& doc,bool audible) {
   std::cout<<"actual_callback_frames="<<source.frame()<<" peak="<<source.peakAfterStop()<<" latency_seconds="<<source.latency()<<" callback_errors="<<output.xrunCount()<<'\n'<<std::flush;
   return {48000,2,source.capturedAfterStop()};
 }
+double rms(const daw::AudioBuffer& audio,std::size_t start,std::size_t end){double e=0;for(auto i=start*2;i<end*2;++i)e+=audio.samples[i]*audio.samples[i];return std::sqrt(e/static_cast<double>((end-start)*2));}
 }
 int main(int argc,char** argv){try{
   const bool audible=argc==4&&std::string(argv[3])=="--audible-edited";
-  const bool data_only=argc==4&&std::string(argv[3])=="--data-only";
-  require(argc==3||audible||data_only,"usage: daw_performance_probe DOCUMENT NEW_DIRECTORY [--audible-edited|--data-only]");
+  require(argc==3||audible,"usage: daw_performance_fixture_probe DOCUMENT NEW_DIRECTORY [--audible-edited]");
   const fs::path root(argv[2]);require(!fs::exists(fs::symlink_status(root))&&fs::create_directory(root),"output must be new");
   auto original=daw::loadPerformanceDocument(argv[1]);
-  const auto& take=original.performances.at(original.active);
-  require(!take.mapping.empty(),"document has no performed attacks");
-  const auto target=take.mapping[take.mapping.size()/2].id;
-  const auto base_sequence=daw::compilePerformance(original.score,take);
-  const daw::TimedMidiEvent* attack=nullptr;
-  for(const auto& event:base_sequence.events)if(event.note_id==target&&(event.status&0xf0)==0x90)attack=&event;
-  require(attack,"mapped attack not found");
-  daw::NotePerformance value{target,0,1,-1};
-  for(const auto& n:take.notes)if(n.note_id==target)value=n;
-  value.velocity=attack->data2==100?99:100;
-  daw::WorkEditor edit(original);
-  edit.set(value);
-  edit.setGain(original.gain_db==-12?-13:-12);
-  if(take.curves.empty()) {
-    require(base_sequence.end_frame>0,"empty score duration");
-    edit.putCurve({1,static_cast<std::uint8_t>(attack->status&15),11,
-      {{1,0,127},{2,static_cast<double>(base_sequence.end_frame)/48000,126}}});
-  } else {
-    const auto& lane=take.curves.front();const auto& point=lane.points.back();
-    edit.setCurvePoint(lane.id,point.id,point.value==100?99:100);
-  }
+  daw::WorkEditor edit(original);edit.setPitch(2,{'F',0,4});edit.set({1,.12,.94,80});edit.setCurvePoint(2,2,105);
   require(edit.undo()&&edit.undo()&&edit.undo(),"unified undo failed");
-  daw::savePerformanceDocument(original,(root/"baseline").string());
-  daw::savePerformanceDocument(edit.document(),(root/"undone").string());
-  for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
-    require(read(root/"baseline"/name)==read(root/"undone"/name),"undo did not restore document bytes");
+  require(edit.document().performances[1].notes.empty()&&edit.document().score.parts[0].measures[0].notes[1].pitch.step=='D',"unified undo incorrect");
   require(edit.redo()&&edit.redo()&&edit.redo(),"unified redo failed");
-  const auto edited_sequence=daw::compilePerformance(edit.document().score,edit.document().performances[edit.document().active]);
-  bool changed=false;
-  for(const auto& event:edited_sequence.events)if(event.note_id==target&&(event.status&0xf0)==0x90){
-    require(event.data2==value.velocity,"velocity edit missing from scheduled MIDI");changed=true;
-  }
-  require(changed,"edited attack disappeared");
-  std::cout<<"probe_scope=document_derived target_performed_id="<<target<<" notation_anchor="<<take.mapping[take.mapping.size()/2].notation_ids.front()
-           <<" selected_channel="<<static_cast<int>(attack->status&15)<<" velocity_before="<<static_cast<int>(attack->data2)<<" velocity_after="<<value.velocity<<'\n';
   daw::savePerformanceDocument(edit.document(),(root/"edited").string());
   auto reopened=daw::loadPerformanceDocument((root/"edited").string());
   daw::savePerformanceDocument(reopened,(root/"reopened").string());
   for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
     require(read(root/"edited"/name)==read(root/"reopened"/name),"saved/reopened hard data gate failed");
-  require(read(root/"baseline"/"score.dawproj")==read(root/"edited"/"score.dawproj"),"performance changes modified notation bytes");
-  if(data_only){std::cout<<"PASS document-derived edit/curve/gain undo/redo, scheduled MIDI, exact save/reopen; plugins_opened=0 output_devices_opened=0\n";return 0;}
   const auto before=run(original,false);const auto after=run(edit.document(),audible);const auto restored=run(reopened,false);
   require(before.samples.size()==after.samples.size()&&after.samples.size()==restored.samples.size(),"audio length changed");
+  const double early_before=rms(before,960,4800),early_after=rms(after,960,4800);
+  require(early_before>1e-5&&early_after<early_before*.01+1e-8&&rms(after,7200,14400)>1e-5,"performed onset edit did not reach callback audio");
   double error=0,energy=0,max_delta=0;
   for(std::size_t i=0;i<after.samples.size();++i){const double delta=after.samples[i]-restored.samples[i];error+=delta*delta;energy+=after.samples[i]*after.samples[i];max_delta=std::max(max_delta,std::abs(delta));}
   const double relative=std::sqrt(error/std::max(energy,1e-20));
@@ -84,8 +54,8 @@ int main(int argc,char** argv){try{
   require(daw::writeWavPcm16(before,(root/"before-callback.wav").string(),&message),"before capture write failed");
   require(daw::writeWavPcm16(after,(root/"edited-callback.wav").string(),&message),"edited capture write failed");
   require(daw::writeWavPcm16(restored,(root/"reopened-callback.wav").string(),&message),"reopened capture write failed");
-  std::cout<<"reopened_relative_rms_error="<<relative<<" reopened_max_sample_delta="<<max_delta<<'\n';
+  std::cout<<"early_rms_before="<<early_before<<" early_rms_after="<<early_after<<" reopened_relative_rms_error="<<relative<<" reopened_max_sample_delta="<<max_delta<<'\n';
   // Declared before measuring: 2% normalized RMS, 0.01 full-scale max error.
   require(relative<=.02&&max_delta<=.01,"reopened audio exceeded declared soft tolerance");
-  std::cout<<"PASS document-derived AU/CoreAudio render and data edits, unified undo/redo, reopened audio tolerance; no isolated-onset or listening verdict\n";
+  std::cout<<"PASS actual AU/CoreAudio edit audition, interleaved unified undo/redo, saved score/performance bytes, reopened audio tolerance\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

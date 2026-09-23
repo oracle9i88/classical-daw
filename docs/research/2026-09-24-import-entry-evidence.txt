@@ -1,0 +1,502 @@
+2026-09-24 — real-score entry repair
+Base revision: 10e6ded. Source changes and evidence committed together.
+No workflow dispatched/retried; no new hardware/audio run; no plugin/device loaded.
+The external review's callback numbers are NOT reproduced by this data-only gate.
+
+Commands (local corpus/state are inputs, never redistributed):
+cmake -S . -B build
+cmake --build build -j 4
+ctest --test-dir build --output-on-failure
+cmake -S . -B build-sanitize
+cmake --build build-sanitize -j 4
+ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-sanitize --output-on-failure
+python3 scripts/check_performance_cli.py out/performance-eight-bars-20260923
+python3 scripts/check_performance_import.py CORPUS/bartok_bagatelles__op06n03.musicxml LOCAL_PIANO_STATE
+ASAN_OPTIONS=detect_leaks=0 python3 scripts/check_performance_import.py CORPUS/bartok_bagatelles__op06n03.musicxml LOCAL_PIANO_STATE --build build-sanitize
+python3 scripts/check_performance_corpus.py CORPUS out/import-entry-20260924/corpus-first.json
+# After correcting one-pass entity decoding and adding a regression:
+python3 scripts/check_performance_corpus.py CORPUS out/import-entry-20260924/corpus-final.json
+
+Corpus: 1105 original files, not stripped or rewritten. SHA-256 before/after
+match for every file. Full results, source hashes and binary hash in adjacent
+2026-09-24-import-corpus.json. 9 accepted, not a claim of musical fidelity.
+No corpus acceptance run preceded these fixes locally: the earlier 6-file result
+belongs to the external reviewer and cannot be used as our measured baseline.
+No failures occurred in the recorded new CTest/CLI runs; the 1096 census failures
+are retained individually, not silently filtered out.
+
+Bartok notation count clarification: 391 total note elements, including 4 rests;
+387 sounding notation segments, 383 performed attacks after 4 tie merges.
+
+Debug CTest
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+      Start  1: daw_performance_tests
+ 1/46 Test  #1: daw_performance_tests .............   Passed    1.65 sec
+      Start  2: daw_live_performance_tests
+ 2/46 Test  #2: daw_live_performance_tests ........   Passed    0.64 sec
+      Start  3: daw_live_session_tests
+ 3/46 Test  #3: daw_live_session_tests ............   Passed    0.68 sec
+      Start  4: daw_parallel_render_graph_tests
+ 4/46 Test  #4: daw_parallel_render_graph_tests ...   Passed    0.67 sec
+      Start  5: daw_callback_timing_tests
+ 5/46 Test  #5: daw_callback_timing_tests .........   Passed    0.57 sec
+      Start  6: daw_tests
+ 6/46 Test  #6: daw_tests .........................   Passed    0.59 sec
+      Start  7: daw_project_tests
+ 7/46 Test  #7: daw_project_tests .................   Passed    0.57 sec
+      Start  8: daw_project_recovery_tests
+ 8/46 Test  #8: daw_project_recovery_tests ........   Passed    0.56 sec
+      Start  9: daw_history_tests
+ 9/46 Test  #9: daw_history_tests .................   Passed    0.60 sec
+      Start 10: daw_project_history_tests
+10/46 Test #10: daw_project_history_tests .........   Passed    0.57 sec
+      Start 11: daw_realtime_event_tests
+11/46 Test #11: daw_realtime_event_tests ..........   Passed    0.58 sec
+      Start 12: daw_score_render_tests
+12/46 Test #12: daw_score_render_tests ............   Passed    0.59 sec
+      Start 13: daw_midi_import_tests
+13/46 Test #13: daw_midi_import_tests .............   Passed    0.58 sec
+      Start 14: daw_score_tie_tests
+14/46 Test #14: daw_score_tie_tests ...............   Passed    0.57 sec
+      Start 15: daw_musicxml_entry_tests
+15/46 Test #15: daw_musicxml_entry_tests ..........   Passed    0.59 sec
+      Start 16: daw_musicxml_dynamics_tests
+16/46 Test #16: daw_musicxml_dynamics_tests .......   Passed    0.59 sec
+      Start 17: daw_musicxml_timing_tests
+17/46 Test #17: daw_musicxml_timing_tests .........   Passed    0.57 sec
+      Start 18: daw_midi_channel_events_tests
+18/46 Test #18: daw_midi_channel_events_tests .....   Passed    0.58 sec
+      Start 19: daw_score_midi_events_tests
+19/46 Test #19: daw_score_midi_events_tests .......   Passed    0.58 sec
+      Start 20: daw_project_midi_events_tests
+20/46 Test #20: daw_project_midi_events_tests .....   Passed    1.77 sec
+      Start 21: daw_midi_render_controls_tests
+21/46 Test #21: daw_midi_render_controls_tests ....   Passed    0.64 sec
+      Start 22: daw_score_tempo_tests
+22/46 Test #22: daw_score_tempo_tests .............   Passed    0.62 sec
+      Start 23: daw_project_tempo_tests
+23/46 Test #23: daw_project_tempo_tests ...........   Passed    0.57 sec
+      Start 24: daw_midi_meter_tests
+24/46 Test #24: daw_midi_meter_tests ..............   Passed    1.24 sec
+      Start 25: daw_score_meter_tests
+25/46 Test #25: daw_score_meter_tests .............   Passed    0.63 sec
+      Start 26: daw_project_meter_tests
+26/46 Test #26: daw_project_meter_tests ...........   Passed    0.58 sec
+      Start 27: daw_musicxml_fractional_tests
+27/46 Test #27: daw_musicxml_fractional_tests .....   Passed    0.60 sec
+      Start 28: daw_musicxml_divisions_tests
+28/46 Test #28: daw_musicxml_divisions_tests ......   Passed    0.64 sec
+      Start 29: daw_musicxml_tempo_tests
+29/46 Test #29: daw_musicxml_tempo_tests ..........   Passed    0.59 sec
+      Start 30: daw_musicxml_meter_tests
+30/46 Test #30: daw_musicxml_meter_tests ..........   Passed    0.61 sec
+      Start 31: daw_project_measure_tests
+31/46 Test #31: daw_project_measure_tests .........   Passed    0.58 sec
+      Start 32: daw_midi_sequence_tests
+32/46 Test #32: daw_midi_sequence_tests ...........   Passed    0.58 sec
+      Start 33: daw_session_tests
+33/46 Test #33: daw_session_tests .................   Passed    0.71 sec
+      Start 34: daw_session_routing_tests
+34/46 Test #34: daw_session_routing_tests .........   Passed    0.70 sec
+      Start 35: daw_session_performance_tests
+35/46 Test #35: daw_session_performance_tests .....   Passed    0.66 sec
+      Start 36: daw_session_bundle_tests
+36/46 Test #36: daw_session_bundle_tests ..........   Passed    1.28 sec
+      Start 37: daw_session_player_tests
+37/46 Test #37: daw_session_player_tests ..........   Passed    0.58 sec
+      Start 38: daw_output_health_tests
+38/46 Test #38: daw_output_health_tests ...........   Passed    0.57 sec
+      Start 39: daw_session_mix_tests
+39/46 Test #39: daw_session_mix_tests .............   Passed    0.60 sec
+      Start 40: daw_session_mix_history_tests
+40/46 Test #40: daw_session_mix_history_tests .....   Passed    0.61 sec
+      Start 41: daw_session_recovery_tests
+41/46 Test #41: daw_session_recovery_tests ........   Passed    0.59 sec
+      Start 42: daw_streaming_audio_tests
+42/46 Test #42: daw_streaming_audio_tests .........   Passed    0.93 sec
+      Start 43: daw_frozen_stream_writer_tests
+43/46 Test #43: daw_frozen_stream_writer_tests ....   Passed    0.59 sec
+      Start 44: daw_wav_stream_writer_tests
+44/46 Test #44: daw_wav_stream_writer_tests .......   Passed    0.58 sec
+      Start 45: daw_frozen_track_tests
+45/46 Test #45: daw_frozen_track_tests ............   Passed    0.57 sec
+      Start 46: daw_swam_state_tests
+46/46 Test #46: daw_swam_state_tests ..............   Passed    0.61 sec
+
+100% tests passed out of 46
+
+Total Test time (real) =  31.57 sec
+
+
+ASan + UBSan CTest (ASAN_OPTIONS=detect_leaks=0)
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+      Start  1: daw_performance_tests
+ 1/46 Test  #1: daw_performance_tests .............   Passed    0.68 sec
+      Start  2: daw_live_performance_tests
+ 2/46 Test  #2: daw_live_performance_tests ........   Passed    0.64 sec
+      Start  3: daw_live_session_tests
+ 3/46 Test  #3: daw_live_session_tests ............   Passed    0.67 sec
+      Start  4: daw_parallel_render_graph_tests
+ 4/46 Test  #4: daw_parallel_render_graph_tests ...   Passed    0.63 sec
+      Start  5: daw_callback_timing_tests
+ 5/46 Test  #5: daw_callback_timing_tests .........   Passed    0.55 sec
+      Start  6: daw_tests
+ 6/46 Test  #6: daw_tests .........................   Passed    0.59 sec
+      Start  7: daw_project_tests
+ 7/46 Test  #7: daw_project_tests .................   Passed    0.62 sec
+      Start  8: daw_project_recovery_tests
+ 8/46 Test  #8: daw_project_recovery_tests ........   Passed    0.58 sec
+      Start  9: daw_history_tests
+ 9/46 Test  #9: daw_history_tests .................   Passed    0.63 sec
+      Start 10: daw_project_history_tests
+10/46 Test #10: daw_project_history_tests .........   Passed    0.56 sec
+      Start 11: daw_realtime_event_tests
+11/46 Test #11: daw_realtime_event_tests ..........   Passed    0.54 sec
+      Start 12: daw_score_render_tests
+12/46 Test #12: daw_score_render_tests ............   Passed    0.61 sec
+      Start 13: daw_midi_import_tests
+13/46 Test #13: daw_midi_import_tests .............   Passed    0.56 sec
+      Start 14: daw_score_tie_tests
+14/46 Test #14: daw_score_tie_tests ...............   Passed    0.59 sec
+      Start 15: daw_musicxml_entry_tests
+15/46 Test #15: daw_musicxml_entry_tests ..........   Passed    0.61 sec
+      Start 16: daw_musicxml_dynamics_tests
+16/46 Test #16: daw_musicxml_dynamics_tests .......   Passed    0.61 sec
+      Start 17: daw_musicxml_timing_tests
+17/46 Test #17: daw_musicxml_timing_tests .........   Passed    0.57 sec
+      Start 18: daw_midi_channel_events_tests
+18/46 Test #18: daw_midi_channel_events_tests .....   Passed    0.58 sec
+      Start 19: daw_score_midi_events_tests
+19/46 Test #19: daw_score_midi_events_tests .......   Passed    0.64 sec
+      Start 20: daw_project_midi_events_tests
+20/46 Test #20: daw_project_midi_events_tests .....   Passed    4.20 sec
+      Start 21: daw_midi_render_controls_tests
+21/46 Test #21: daw_midi_render_controls_tests ....   Passed    0.69 sec
+      Start 22: daw_score_tempo_tests
+22/46 Test #22: daw_score_tempo_tests .............   Passed    0.69 sec
+      Start 23: daw_project_tempo_tests
+23/46 Test #23: daw_project_tempo_tests ...........   Passed    0.58 sec
+      Start 24: daw_midi_meter_tests
+24/46 Test #24: daw_midi_meter_tests ..............   Passed    2.60 sec
+      Start 25: daw_score_meter_tests
+25/46 Test #25: daw_score_meter_tests .............   Passed    0.68 sec
+      Start 26: daw_project_meter_tests
+26/46 Test #26: daw_project_meter_tests ...........   Passed    0.58 sec
+      Start 27: daw_musicxml_fractional_tests
+27/46 Test #27: daw_musicxml_fractional_tests .....   Passed    0.60 sec
+      Start 28: daw_musicxml_divisions_tests
+28/46 Test #28: daw_musicxml_divisions_tests ......   Passed    0.72 sec
+      Start 29: daw_musicxml_tempo_tests
+29/46 Test #29: daw_musicxml_tempo_tests ..........   Passed    0.61 sec
+      Start 30: daw_musicxml_meter_tests
+30/46 Test #30: daw_musicxml_meter_tests ..........   Passed    0.60 sec
+      Start 31: daw_project_measure_tests
+31/46 Test #31: daw_project_measure_tests .........   Passed    0.57 sec
+      Start 32: daw_midi_sequence_tests
+32/46 Test #32: daw_midi_sequence_tests ...........   Passed    0.57 sec
+      Start 33: daw_session_tests
+33/46 Test #33: daw_session_tests .................   Passed    0.56 sec
+      Start 34: daw_session_routing_tests
+34/46 Test #34: daw_session_routing_tests .........   Passed    0.76 sec
+      Start 35: daw_session_performance_tests
+35/46 Test #35: daw_session_performance_tests .....   Passed    0.57 sec
+      Start 36: daw_session_bundle_tests
+36/46 Test #36: daw_session_bundle_tests ..........   Passed    2.11 sec
+      Start 37: daw_session_player_tests
+37/46 Test #37: daw_session_player_tests ..........   Passed    0.68 sec
+      Start 38: daw_output_health_tests
+38/46 Test #38: daw_output_health_tests ...........   Passed    0.56 sec
+      Start 39: daw_session_mix_tests
+39/46 Test #39: daw_session_mix_tests .............   Passed    0.59 sec
+      Start 40: daw_session_mix_history_tests
+40/46 Test #40: daw_session_mix_history_tests .....   Passed    0.64 sec
+      Start 41: daw_session_recovery_tests
+41/46 Test #41: daw_session_recovery_tests ........   Passed    0.59 sec
+      Start 42: daw_streaming_audio_tests
+42/46 Test #42: daw_streaming_audio_tests .........   Passed    1.06 sec
+      Start 43: daw_frozen_stream_writer_tests
+43/46 Test #43: daw_frozen_stream_writer_tests ....   Passed    0.42 sec
+      Start 44: daw_wav_stream_writer_tests
+44/46 Test #44: daw_wav_stream_writer_tests .......   Passed    0.63 sec
+      Start 45: daw_frozen_track_tests
+45/46 Test #45: daw_frozen_track_tests ............   Passed    0.54 sec
+      Start 46: daw_swam_state_tests
+46/46 Test #46: daw_swam_state_tests ..............   Passed    0.54 sec
+
+100% tests passed out of 46
+
+Total Test time (real) =  35.42 sec
+
+
+Existing synthetic CLI regression (no plugins/devices)
+{
+  "result": "PASS",
+  "plugin_loads": 0,
+  "devices_opened": 0,
+  "interleaved_unified_undo_redo": true,
+  "invalid_commands_preserve_revision": true,
+  "score_performance_state_bytes_on_reopen": "identical"
+}
+
+
+Original Bartok CLI + generic data probe (Debug)
+{
+  "result": "PASS",
+  "score_sha256": "95033a911bac0d3b3e8e93dff3ce5dc3d9c72ee8efc74521577658a78be827e8",
+  "import_output": "PASS parts=1 measures=24 notation_elements=391 performed_notes=383 curves=0 frames=1885714 plugins_opened=0 output_devices_opened=0\nScope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.",
+  "probe_output": "probe_scope=document_derived target_performed_id=192 notation_anchor=198 selected_channel=0 velocity_before=100 velocity_after=99\nPASS document-derived edit/curve/gain undo/redo, scheduled MIDI, exact save/reopen; plugins_opened=0 output_devices_opened=0",
+  "contextual_note_lookup": true,
+  "create_curve_edit_delete_undo_redo": true,
+  "byte_exact_roundtrip": true,
+  "source_unchanged": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+
+Original Bartok CLI + generic data probe (ASan + UBSan)
+{
+  "result": "PASS",
+  "score_sha256": "95033a911bac0d3b3e8e93dff3ce5dc3d9c72ee8efc74521577658a78be827e8",
+  "import_output": "PASS parts=1 measures=24 notation_elements=391 performed_notes=383 curves=0 frames=1885714 plugins_opened=0 output_devices_opened=0\nScope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.",
+  "probe_output": "probe_scope=document_derived target_performed_id=192 notation_anchor=198 selected_channel=0 velocity_before=100 velocity_after=99\nPASS document-derived edit/curve/gain undo/redo, scheduled MIDI, exact save/reopen; plugins_opened=0 output_devices_opened=0",
+  "contextual_note_lookup": true,
+  "create_curve_edit_delete_undo_redo": true,
+  "byte_exact_roundtrip": true,
+  "source_unchanged": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+
+Final verification after the entity-decoding fix
+Both corpus scans have identical per-file status/output and unchanged input hashes.
+An independent read-only XML structural count confirms that the first missing
+duration element in all 477 affected files is a grace note, not malformed input.
+No claim of grace-note implementation is made.
+
+Final Debug CTest
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+      Start  1: daw_performance_tests
+ 1/46 Test  #1: daw_performance_tests .............   Passed    1.69 sec
+      Start  2: daw_live_performance_tests
+ 2/46 Test  #2: daw_live_performance_tests ........   Passed    0.67 sec
+      Start  3: daw_live_session_tests
+ 3/46 Test  #3: daw_live_session_tests ............   Passed    0.67 sec
+      Start  4: daw_parallel_render_graph_tests
+ 4/46 Test  #4: daw_parallel_render_graph_tests ...   Passed    0.67 sec
+      Start  5: daw_callback_timing_tests
+ 5/46 Test  #5: daw_callback_timing_tests .........   Passed    0.56 sec
+      Start  6: daw_tests
+ 6/46 Test  #6: daw_tests .........................   Passed    0.59 sec
+      Start  7: daw_project_tests
+ 7/46 Test  #7: daw_project_tests .................   Passed    0.57 sec
+      Start  8: daw_project_recovery_tests
+ 8/46 Test  #8: daw_project_recovery_tests ........   Passed    0.57 sec
+      Start  9: daw_history_tests
+ 9/46 Test  #9: daw_history_tests .................   Passed    0.59 sec
+      Start 10: daw_project_history_tests
+10/46 Test #10: daw_project_history_tests .........   Passed    0.56 sec
+      Start 11: daw_realtime_event_tests
+11/46 Test #11: daw_realtime_event_tests ..........   Passed    0.56 sec
+      Start 12: daw_score_render_tests
+12/46 Test #12: daw_score_render_tests ............   Passed    0.59 sec
+      Start 13: daw_midi_import_tests
+13/46 Test #13: daw_midi_import_tests .............   Passed    0.57 sec
+      Start 14: daw_score_tie_tests
+14/46 Test #14: daw_score_tie_tests ...............   Passed    0.58 sec
+      Start 15: daw_musicxml_entry_tests
+15/46 Test #15: daw_musicxml_entry_tests ..........   Passed    0.60 sec
+      Start 16: daw_musicxml_dynamics_tests
+16/46 Test #16: daw_musicxml_dynamics_tests .......   Passed    0.67 sec
+      Start 17: daw_musicxml_timing_tests
+17/46 Test #17: daw_musicxml_timing_tests .........   Passed    0.58 sec
+      Start 18: daw_midi_channel_events_tests
+18/46 Test #18: daw_midi_channel_events_tests .....   Passed    0.59 sec
+      Start 19: daw_score_midi_events_tests
+19/46 Test #19: daw_score_midi_events_tests .......   Passed    0.66 sec
+      Start 20: daw_project_midi_events_tests
+20/46 Test #20: daw_project_midi_events_tests .....   Passed    1.57 sec
+      Start 21: daw_midi_render_controls_tests
+21/46 Test #21: daw_midi_render_controls_tests ....   Passed    0.63 sec
+      Start 22: daw_score_tempo_tests
+22/46 Test #22: daw_score_tempo_tests .............   Passed    0.61 sec
+      Start 23: daw_project_tempo_tests
+23/46 Test #23: daw_project_tempo_tests ...........   Passed    0.58 sec
+      Start 24: daw_midi_meter_tests
+24/46 Test #24: daw_midi_meter_tests ..............   Passed    1.23 sec
+      Start 25: daw_score_meter_tests
+25/46 Test #25: daw_score_meter_tests .............   Passed    0.62 sec
+      Start 26: daw_project_meter_tests
+26/46 Test #26: daw_project_meter_tests ...........   Passed    0.59 sec
+      Start 27: daw_musicxml_fractional_tests
+27/46 Test #27: daw_musicxml_fractional_tests .....   Passed    0.57 sec
+      Start 28: daw_musicxml_divisions_tests
+28/46 Test #28: daw_musicxml_divisions_tests ......   Passed    0.60 sec
+      Start 29: daw_musicxml_tempo_tests
+29/46 Test #29: daw_musicxml_tempo_tests ..........   Passed    0.56 sec
+      Start 30: daw_musicxml_meter_tests
+30/46 Test #30: daw_musicxml_meter_tests ..........   Passed    0.56 sec
+      Start 31: daw_project_measure_tests
+31/46 Test #31: daw_project_measure_tests .........   Passed    0.55 sec
+      Start 32: daw_midi_sequence_tests
+32/46 Test #32: daw_midi_sequence_tests ...........   Passed    0.54 sec
+      Start 33: daw_session_tests
+33/46 Test #33: daw_session_tests .................   Passed    0.55 sec
+      Start 34: daw_session_routing_tests
+34/46 Test #34: daw_session_routing_tests .........   Passed    0.63 sec
+      Start 35: daw_session_performance_tests
+35/46 Test #35: daw_session_performance_tests .....   Passed    0.55 sec
+      Start 36: daw_session_bundle_tests
+36/46 Test #36: daw_session_bundle_tests ..........   Passed    1.22 sec
+      Start 37: daw_session_player_tests
+37/46 Test #37: daw_session_player_tests ..........   Passed    1.16 sec
+      Start 38: daw_output_health_tests
+38/46 Test #38: daw_output_health_tests ...........   Passed    1.11 sec
+      Start 39: daw_session_mix_tests
+39/46 Test #39: daw_session_mix_tests .............   Passed    1.13 sec
+      Start 40: daw_session_mix_history_tests
+40/46 Test #40: daw_session_mix_history_tests .....   Passed    1.16 sec
+      Start 41: daw_session_recovery_tests
+41/46 Test #41: daw_session_recovery_tests ........   Passed    1.12 sec
+      Start 42: daw_streaming_audio_tests
+42/46 Test #42: daw_streaming_audio_tests .........   Passed    1.61 sec
+      Start 43: daw_frozen_stream_writer_tests
+43/46 Test #43: daw_frozen_stream_writer_tests ....   Passed    0.86 sec
+      Start 44: daw_wav_stream_writer_tests
+44/46 Test #44: daw_wav_stream_writer_tests .......   Passed    1.80 sec
+      Start 45: daw_frozen_track_tests
+45/46 Test #45: daw_frozen_track_tests ............   Passed    1.07 sec
+      Start 46: daw_swam_state_tests
+46/46 Test #46: daw_swam_state_tests ..............   Passed    1.12 sec
+
+100% tests passed out of 46
+
+Total Test time (real) =  36.90 sec
+
+Final ASan + UBSan CTest
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+      Start  1: daw_performance_tests
+ 1/46 Test  #1: daw_performance_tests .............   Passed    0.73 sec
+      Start  2: daw_live_performance_tests
+ 2/46 Test  #2: daw_live_performance_tests ........   Passed    1.11 sec
+      Start  3: daw_live_session_tests
+ 3/46 Test  #3: daw_live_session_tests ............   Passed    1.17 sec
+      Start  4: daw_parallel_render_graph_tests
+ 4/46 Test  #4: daw_parallel_render_graph_tests ...   Passed    1.23 sec
+      Start  5: daw_callback_timing_tests
+ 5/46 Test  #5: daw_callback_timing_tests .........   Passed    0.89 sec
+      Start  6: daw_tests
+ 6/46 Test  #6: daw_tests .........................   Passed    1.28 sec
+      Start  7: daw_project_tests
+ 7/46 Test  #7: daw_project_tests .................   Passed    1.11 sec
+      Start  8: daw_project_recovery_tests
+ 8/46 Test  #8: daw_project_recovery_tests ........   Passed    1.32 sec
+      Start  9: daw_history_tests
+ 9/46 Test  #9: daw_history_tests .................   Passed    1.73 sec
+      Start 10: daw_project_history_tests
+10/46 Test #10: daw_project_history_tests .........   Passed    1.03 sec
+      Start 11: daw_realtime_event_tests
+11/46 Test #11: daw_realtime_event_tests ..........   Passed    1.09 sec
+      Start 12: daw_score_render_tests
+12/46 Test #12: daw_score_render_tests ............   Passed    0.61 sec
+      Start 13: daw_midi_import_tests
+13/46 Test #13: daw_midi_import_tests .............   Passed    0.58 sec
+      Start 14: daw_score_tie_tests
+14/46 Test #14: daw_score_tie_tests ...............   Passed    0.60 sec
+      Start 15: daw_musicxml_entry_tests
+15/46 Test #15: daw_musicxml_entry_tests ..........   Passed    0.62 sec
+      Start 16: daw_musicxml_dynamics_tests
+16/46 Test #16: daw_musicxml_dynamics_tests .......   Passed    0.62 sec
+      Start 17: daw_musicxml_timing_tests
+17/46 Test #17: daw_musicxml_timing_tests .........   Passed    0.68 sec
+      Start 18: daw_midi_channel_events_tests
+18/46 Test #18: daw_midi_channel_events_tests .....   Passed    0.58 sec
+      Start 19: daw_score_midi_events_tests
+19/46 Test #19: daw_score_midi_events_tests .......   Passed    0.57 sec
+      Start 20: daw_project_midi_events_tests
+20/46 Test #20: daw_project_midi_events_tests .....   Passed    4.06 sec
+      Start 21: daw_midi_render_controls_tests
+21/46 Test #21: daw_midi_render_controls_tests ....   Passed    0.76 sec
+      Start 22: daw_score_tempo_tests
+22/46 Test #22: daw_score_tempo_tests .............   Passed    0.70 sec
+      Start 23: daw_project_tempo_tests
+23/46 Test #23: daw_project_tempo_tests ...........   Passed    0.59 sec
+      Start 24: daw_midi_meter_tests
+24/46 Test #24: daw_midi_meter_tests ..............   Passed    2.67 sec
+      Start 25: daw_score_meter_tests
+25/46 Test #25: daw_score_meter_tests .............   Passed    0.69 sec
+      Start 26: daw_project_meter_tests
+26/46 Test #26: daw_project_meter_tests ...........   Passed    0.58 sec
+      Start 27: daw_musicxml_fractional_tests
+27/46 Test #27: daw_musicxml_fractional_tests .....   Passed    0.61 sec
+      Start 28: daw_musicxml_divisions_tests
+28/46 Test #28: daw_musicxml_divisions_tests ......   Passed    0.72 sec
+      Start 29: daw_musicxml_tempo_tests
+29/46 Test #29: daw_musicxml_tempo_tests ..........   Passed    0.60 sec
+      Start 30: daw_musicxml_meter_tests
+30/46 Test #30: daw_musicxml_meter_tests ..........   Passed    0.61 sec
+      Start 31: daw_project_measure_tests
+31/46 Test #31: daw_project_measure_tests .........   Passed    0.57 sec
+      Start 32: daw_midi_sequence_tests
+32/46 Test #32: daw_midi_sequence_tests ...........   Passed    0.56 sec
+      Start 33: daw_session_tests
+33/46 Test #33: daw_session_tests .................   Passed    0.59 sec
+      Start 34: daw_session_routing_tests
+34/46 Test #34: daw_session_routing_tests .........   Passed    0.78 sec
+      Start 35: daw_session_performance_tests
+35/46 Test #35: daw_session_performance_tests .....   Passed    0.58 sec
+      Start 36: daw_session_bundle_tests
+36/46 Test #36: daw_session_bundle_tests ..........   Passed    2.09 sec
+      Start 37: daw_session_player_tests
+37/46 Test #37: daw_session_player_tests ..........   Passed    0.59 sec
+      Start 38: daw_output_health_tests
+38/46 Test #38: daw_output_health_tests ...........   Passed    0.55 sec
+      Start 39: daw_session_mix_tests
+39/46 Test #39: daw_session_mix_tests .............   Passed    0.58 sec
+      Start 40: daw_session_mix_history_tests
+40/46 Test #40: daw_session_mix_history_tests .....   Passed    0.64 sec
+      Start 41: daw_session_recovery_tests
+41/46 Test #41: daw_session_recovery_tests ........   Passed    0.59 sec
+      Start 42: daw_streaming_audio_tests
+42/46 Test #42: daw_streaming_audio_tests .........   Passed    1.08 sec
+      Start 43: daw_frozen_stream_writer_tests
+43/46 Test #43: daw_frozen_stream_writer_tests ....   Passed    0.58 sec
+      Start 44: daw_wav_stream_writer_tests
+44/46 Test #44: daw_wav_stream_writer_tests .......   Passed    0.56 sec
+      Start 45: daw_frozen_track_tests
+45/46 Test #45: daw_frozen_track_tests ............   Passed    0.55 sec
+      Start 46: daw_swam_state_tests
+46/46 Test #46: daw_swam_state_tests ..............   Passed    0.69 sec
+
+100% tests passed out of 46
+
+Total Test time (real) =  41.75 sec
+
+Final original Bartok CLI (Debug)
+{
+  "result": "PASS",
+  "score_sha256": "95033a911bac0d3b3e8e93dff3ce5dc3d9c72ee8efc74521577658a78be827e8",
+  "import_output": "PASS parts=1 measures=24 notation_elements=391 performed_notes=383 curves=0 frames=1885714 plugins_opened=0 output_devices_opened=0\nScope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.",
+  "probe_output": "probe_scope=document_derived target_performed_id=192 notation_anchor=198 selected_channel=0 velocity_before=100 velocity_after=99\nPASS document-derived edit/curve/gain undo/redo, scheduled MIDI, exact save/reopen; plugins_opened=0 output_devices_opened=0",
+  "contextual_note_lookup": true,
+  "create_curve_edit_delete_undo_redo": true,
+  "byte_exact_roundtrip": true,
+  "source_unchanged": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+Final original Bartok CLI (ASan + UBSan)
+{
+  "result": "PASS",
+  "score_sha256": "95033a911bac0d3b3e8e93dff3ce5dc3d9c72ee8efc74521577658a78be827e8",
+  "import_output": "PASS parts=1 measures=24 notation_elements=391 performed_notes=383 curves=0 frames=1885714 plugins_opened=0 output_devices_opened=0\nScope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.",
+  "probe_output": "probe_scope=document_derived target_performed_id=192 notation_anchor=198 selected_channel=0 velocity_before=100 velocity_after=99\nPASS document-derived edit/curve/gain undo/redo, scheduled MIDI, exact save/reopen; plugins_opened=0 output_devices_opened=0",
+  "contextual_note_lookup": true,
+  "create_curve_edit_delete_undo_redo": true,
+  "byte_exact_roundtrip": true,
+  "source_unchanged": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}

@@ -2,6 +2,12 @@
 
 2026-09-24; preceding design commit `8bd118d`.
 
+**Priority update:** real-score [import and editing entry](performance-import.md)
+now precedes further two-AU integration. Existing mailbox/PDC tests are retained;
+their acceptance did not establish repertoire importability. The one-part
+`PerformanceDocument` limitation is separate from the planned two-live-AU cap;
+the existing offline session route model already supports multiple parts.
+
 **Subsequent implementation:** [whole-session publication](live-session.md) is
 now coded and tested; the old single-track API delegates to it. Also see the
 [48-case SWAM attack-response table](swam-attack-response.md), including the

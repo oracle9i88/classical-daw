@@ -345,9 +345,8 @@ void rejectedReaderFixtures(const std::filesystem::path& path) {
   reject(document({measure("1", time(4, 4) + xmlNote(960), " non-controlling='yes'")}),
          "non-controlling measure");
   reject(document({measure("1", time(4, 4), " implicit='yes'")}), "an empty implicit measure with no duration");
-  for (const auto& number : {"0", "-1", "pickup", "1.5"}) {
-    reject(document({measure(number, time(4, 4) + xmlNote(960))}), "unsupported measure number");
-  }
+  // Non-numeric/zero labels are covered by musicxml_entry_tests.
+
 
   const auto changes = measure("1", time(4, 4) + xmlNote(960)) + measure("2", time(3, 4) + xmlNote(960));
   const auto stays = measure("1", time(4, 4) + xmlNote(960)) + measure("2", xmlNote(960));

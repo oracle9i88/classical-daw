@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -31,6 +32,62 @@ std::string trim(std::string value) {
   const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char c) { return std::isspace(c) != 0; }).base();
   if (first >= last) return {};
   return std::string(first, last);
+}
+
+// Accept a declaration, not a DTD parser: no resolver, network/file access,
+// internal subset, entity declaration or expansion. Strip comments lexically
+// before the small element parser so apparent tags inside them stay inert.
+std::string xmlWithoutDeclarations(const std::string& source) {
+  std::string result;
+  result.reserve(source.size());
+  bool seen_element = false, seen_doctype = false;
+  std::size_t i = source.compare(0, 3, "\xef\xbb\xbf") == 0 ? 3 : 0;
+  while (i < source.size()) {
+    if (source[i] != '<') { result += source[i++]; continue; }
+    if (source.compare(i, 4, "<!--") == 0) {
+      const auto end = source.find("-->", i + 4);
+      if (end == std::string::npos || source.substr(i + 4, end - i - 4).find("--") != std::string::npos)
+        throw std::runtime_error("invalid MusicXML comment");
+      i = end + 3; continue;
+    }
+    char quote = 0;
+    std::size_t end = i + 1;
+    for (; end < source.size(); ++end) {
+      const char c = source[end];
+      if (quote) { if (c == quote) quote = 0; }
+      else if (c == '\'' || c == '"') quote = c;
+      else if (c == '>') break;
+    }
+    if (end == source.size()) throw std::runtime_error("unterminated MusicXML markup");
+    if (source.compare(i, 9, "<!DOCTYPE") == 0) {
+      if (seen_element || seen_doctype) throw std::runtime_error("misplaced/duplicate MusicXML DOCTYPE");
+      seen_doctype = true;
+      const auto body = source.substr(i + 9, end - i - 9);
+      if (body.empty() || !std::isspace(static_cast<unsigned char>(body.front())))
+        throw std::runtime_error("invalid MusicXML DOCTYPE");
+      std::istringstream in(body);
+      std::string name, kind; in >> name;
+      if (name != "score-partwise") throw std::runtime_error("DOCTYPE root must be score-partwise");
+      in >> std::ws;
+      if (!in.eof()) {
+        in >> kind;
+        if (kind != "PUBLIC" && kind != "SYSTEM") throw std::runtime_error("DTD subsets/entities are unsupported");
+        for (int count = 0; count < (kind == "PUBLIC" ? 2 : 1); ++count) {
+          in >> std::ws; char delimiter = 0; in.get(delimiter);
+          if (!in || (delimiter != '\'' && delimiter != '"')) throw std::runtime_error("invalid DTD external identifier");
+          std::string ignored; std::getline(in, ignored, delimiter);
+          if (!in) throw std::runtime_error("unterminated DTD external identifier");
+        }
+        in >> std::ws;
+        if (!in.eof()) throw std::runtime_error("DTD subsets/entities are unsupported");
+      }
+      i = end + 1; continue;
+    }
+    if (source.compare(i, 2, "<!") == 0) throw std::runtime_error("unsupported MusicXML declaration/CDATA");
+    if (source.compare(i, 2, "<?") != 0) seen_element = true;
+    result.append(source, i, end - i + 1); i = end + 1;
+  }
+  return result;
 }
 
 // MusicXML's tempo is an XML Schema decimal, which has no exponent notation.
@@ -163,14 +220,18 @@ std::string attribute(const std::string& opening, const std::string& name, bool*
 std::string unescape(std::string value) {
   const std::pair<const char*, const char*> entities[] = {
       {"&amp;", "&"}, {"&lt;", "<"}, {"&gt;", ">"}, {"&quot;", "\""}, {"&apos;", "'"}};
-  for (const auto& entity : entities) {
-    std::size_t position = 0;
-    while ((position = value.find(entity.first, position)) != std::string::npos) {
-      value.replace(position, std::char_traits<char>::length(entity.first), entity.second);
-      position += std::char_traits<char>::length(entity.second);
+  std::string result;
+  for (std::size_t position = 0; position < value.size();) {
+    bool matched = false;
+    if (value[position] == '&') for (const auto& entity : entities) {
+      const auto length = std::char_traits<char>::length(entity.first);
+      if (value.compare(position, length, entity.first) == 0) {
+        result += entity.second; position += length; matched = true; break;
+      }
     }
+    if (!matched) result += value[position++];
   }
-  return value;
+  return result; // Decode once: &amp;lt; is the text "&lt;", not "<".
 }
 
 void validateEntities(const std::string& xml) {
@@ -658,7 +719,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
         const ScoreMeasure& measure = part.measures[measure_index];
         const auto meter = notationMeterAt(meters, measure.start);
         const Tick span = measure_spans[part_index][measure_index];
-        output << "    <measure number=\"" << measure.number << '\"';
+        output << "    <measure number=\"" << escape(measure.label.empty() ? std::to_string(measure.number) : measure.label) << '\"';
         if (span < measureLength(meter)) output << " implicit=\"yes\"";
         output << ">\n";
         const auto at_start = std::lower_bound(meters.begin(), meters.end(), measure.start,
@@ -762,12 +823,10 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
   try {
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("cannot open MusicXML file");
-    const std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     if (xml.size() > 16 * 1024 * 1024) throw std::runtime_error("MusicXML file exceeds Alpha size limit");
-    if (xml.find('\0') != std::string::npos || xml.find("<!--") != std::string::npos || xml.find("<![CDATA[") != std::string::npos ||
-        xml.find("<!DOCTYPE") != std::string::npos) {
-      throw std::runtime_error("MusicXML comments, CDATA, and external entities are unsupported in Alpha");
-    }
+    if (xml.find('\0') != std::string::npos) throw std::runtime_error("MusicXML contains a NUL byte");
+    xml = xmlWithoutDeclarations(xml);
     validateEntities(xml);
     std::size_t processing_instruction = xml.find("<?");
     while (processing_instruction != std::string::npos) {
@@ -833,12 +892,15 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       for (const XmlBlock& measure_block : measures) {
       ScoreMeasure measure;
       const std::string number = attribute(measure_block.opening, "number");
-      const auto numeric_number = number.empty() ? static_cast<std::int64_t>(parsed_part.measures.size() + 1)
-                                                  : integerText(number, "measure number");
-      if (numeric_number <= 0 || numeric_number > std::numeric_limits<int>::max()) {
-        throw std::runtime_error("MusicXML measure numbers must be positive integers in this score model");
+      measure.number = static_cast<int>(parsed_part.measures.size() + 1);
+      if (!number.empty()) {
+        int numeric = 0;
+        const auto parsed_number = std::from_chars(number.data(), number.data() + number.size(), numeric);
+        if (parsed_number.ec == std::errc{} && parsed_number.ptr == number.data() + number.size() && numeric > 0)
+          measure.number = numeric;
+        const auto decoded = unescape(number);
+        if (decoded != std::to_string(measure.number)) measure.label = decoded;
       }
-      measure.number = static_cast<int>(numeric_number);
       measure.start = measure_start;
       bool implicit_present = false, noncontrolling_present = false;
       const auto implicit = attribute(measure_block.opening, "implicit", &implicit_present);

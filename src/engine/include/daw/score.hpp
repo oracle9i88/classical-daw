@@ -55,6 +55,9 @@ struct ScoreMeasure {
   // Explicit notated extent, including trailing silence. Zero is the legacy
   // unspecified value: infer from the next measure or the active meter.
   Tick duration = 0;
+  // MusicXML's printed token (e.g. "0", "X1", "01"). Empty uses number.
+  // This never determines chronological order or playback time.
+  std::string label;
 };
 
 struct ScorePart {
