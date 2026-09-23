@@ -6,6 +6,10 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Connect the installed Pianoteq 9 AU to the offline engine, with sample-timed
+  MIDI, serialized instrument state, stereo WAV export and project reload.
+  Verify actual velocity/pedal behavior and fix factory-vs-restored-state level
+  drift by bouncing a saved snapshot in a fresh AU. See [piano integration](pianoteq.md).
 - Support MusicXML n/d changes at stored measure starts, synchronized part maps,
   partial/empty bars and trailing silence. Persist explicit measure extents in
   project v6, including final partial bars; read v1–5 with legacy unspecified extents.
@@ -130,6 +134,11 @@ recovery sidecar. The first user-facing vertical slice is MusicXML import →
 timeline edit → deterministic WAV export.
 
 ### M2: production workflow
+
+Extend the first piano host to installed SWAM instruments and per-track routing.
+Validate continuous expression, legato/articulation and saved state per instrument.
+Keep optional synthesized orchestral effects on the same future track/bus path;
+the user's synth-demo screenshots are design references, not audited DSP code.
 
 Add recording/takes, MIDI event scheduling, buses, automation, plugin scanning in a worker,
 latency compensation, stems, and offline bounce. Add a real instrument adapter

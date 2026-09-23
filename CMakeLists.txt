@@ -6,6 +6,7 @@ enable_testing()
 
 add_library(daw_engine STATIC
   src/engine/midi.cpp
+  src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
   src/engine/history.cpp
   src/engine/project.cpp
@@ -129,6 +130,10 @@ add_test(NAME daw_project_measure_tests COMMAND daw_project_measure_tests)
 add_executable(daw_midi_inspect tools/midi_inspect.cpp)
 target_link_libraries(daw_midi_inspect PRIVATE daw_engine)
 
+add_executable(daw_midi_sequence_tests tests/midi_sequence_tests.cpp)
+target_link_libraries(daw_midi_sequence_tests PRIVATE daw_engine)
+add_test(NAME daw_midi_sequence_tests COMMAND daw_midi_sequence_tests)
+
 add_executable(daw_midi_roundtrip tools/midi_roundtrip.cpp)
 target_link_libraries(daw_midi_roundtrip PRIVATE daw_engine)
 
@@ -136,6 +141,14 @@ add_executable(daw_midi_render tools/midi_render.cpp)
 target_link_libraries(daw_midi_render PRIVATE daw_engine)
 
 if(APPLE)
+  add_library(daw_pianoteq STATIC src/platform/macos/pianoteq_au.cpp)
+  target_include_directories(daw_pianoteq PUBLIC src/platform/macos)
+  target_link_libraries(daw_pianoteq PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreFoundation")
+  target_compile_options(daw_pianoteq PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+
+  add_executable(daw_piano_render tools/piano_render.cpp)
+  target_link_libraries(daw_piano_render PRIVATE daw_pianoteq)
+
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp
   )

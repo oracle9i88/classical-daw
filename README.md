@@ -7,6 +7,11 @@ validating score timing and audio rendering before platform integration.
 
 ## What works in Alpha
 
+- A local macOS Pianoteq 9 AU host renders MIDI/MusicXML/native projects to real
+  stereo piano audio, with saved instrument state, fixed-preset protection,
+  sample-timed MIDI controls and a reloadable output bundle. This is offline;
+  the Mac realtime callback and browser do not yet use the plugin. See
+  [Pianoteq setup and verification](docs/pianoteq.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.
