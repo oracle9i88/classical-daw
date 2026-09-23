@@ -7,11 +7,21 @@
 
 namespace daw {
 
+enum class ScoreMidiChannelPolicy {
+  SharedOutput,
+  // Only for hosts that send each part to a separate instrument instance.
+  // Unspecified channels use part_index % 16 (preserving the first 16 defaults).
+  // Explicit channels and all controller bytes remain unchanged. Up to 64 parts.
+  // The result must be split by track before playback; it is NOT a multi-port SMF.
+  IndependentParts
+};
+
 // Convert the score interchange model into a Standard MIDI File model. Each
 // ordered ScorePart becomes one MIDI track; voices and staves remain independent
 // note events within that track. Imported notes retain their explicit MIDI
-// channels; newly authored notes use the part index. More than 16 parts require
-// explicit channels for every sounding note and some routed playback content.
+// channels. Under the default SharedOutput policy, newly authored notes use the
+// part index; more than 16 parts require explicit channels for every sounding
+// note and some routed playback content. IndependentParts is for isolated hosts.
 // Rests are omitted, while note start, duration, pitch, attack/release velocity,
 // source event order, and part MIDI channel events are retained. Tuplet metadata
 // has no separate MIDI representation and uses the resolved tick durations.
@@ -26,7 +36,8 @@ namespace daw {
 // tempo_changes are validated and retained, including changes during ties.
 // The initial time signature and every later meter change retain all four
 // SMF fields (numerator, denominator, clocks per click, and notation ratio).
-bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr);
+bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nullptr,
+                     ScoreMidiChannelPolicy policy = ScoreMidiChannelPolicy::SharedOutput);
 
 // Convert a Standard MIDI File model into the score interchange model. Each
 // ordered non-empty MIDI track becomes one ScorePart. Tracks containing only

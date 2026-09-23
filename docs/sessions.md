@@ -65,6 +65,14 @@ output symlinks. The format is bounded to 1 MiB, 64 routes, 16 MiB per state and
 64 MiB of state data in total. These limits are not an assertion that a 64-part
 orchestra has been performance-tested.
 
+Authored scores can now use all 64 independent routes: unspecified note channels
+use score part index modulo 16, while explicit imported channels are retained.
+The first 16 defaults are unchanged. Reuse of a channel is safe here because
+each routed track goes to a different instrument instance. MIDI event channels
+are never guessed or remapped; a SWAM route still needs CC11 on its note channel.
+Ordinary shared-output MIDI export retains its stricter rules. See
+[the routing correction and round-trip tests](independent-part-routing.md).
+
 ## Audio and saved bundle
 
 Every stem uses the complete shared tempo map, the same sample-zero origin and

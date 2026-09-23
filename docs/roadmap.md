@@ -6,6 +6,14 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Remove the shared-output MIDI channel guard from independent native session
+  planning. Up to 64 authored parts now plan with per-instance channel reuse,
+  retaining first-16 defaults and imported explicit channels. Verify part-ID
+  routing, ties, tempo/meter maps, controller isolation, project/stem-MIDI reopen
+  and the performance-free MusicXML notation slice. Keep standard SMF export
+  checks unchanged. This is not a 64-plugin performance benchmark or multi-port
+  MIDI support. See [independent part routing](independent-part-routing.md).
+
 - Add control-thread output health polling and explicit paused reconnect. Device,
   format and callback faults latch; stop/join before draining accepted commands,
   keeping position/mix/history and clearing stale transition audio. Verify

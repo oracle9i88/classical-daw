@@ -45,6 +45,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   pauses with position and mix edits retained, and supports explicit `reconnect`.
   Reconnection stays paused until `play`; physical unplug/sleep-wake testing
   remains outstanding. See [output recovery and test evidence](docs/output-recovery.md).
+- Independent native instrument planning now accepts up to 64 authored score
+  parts without requiring manual note-channel assignment beyond part 16.
+  Controllers remain isolated by part ID; ordinary shared-output MIDI export
+  keeps its existing checks. See [routing policy and verified limits](docs/independent-part-routing.md).
 - Shared mix-edit state for offline and native playback controls. Inspect accepted
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state

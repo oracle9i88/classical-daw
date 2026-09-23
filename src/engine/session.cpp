@@ -115,9 +115,11 @@ SessionPlan planSession(const Session& session, const Score& score, std::uint32_
   require(mode == SessionPlanMode::Buffered || mode == SessionPlanMode::Streaming, "unknown session plan mode");
   require(mode != SessionPlanMode::Streaming || rate == 48000, "streaming sessions require 48000 Hz");
   validateSession(session);
+  require(score.parts.size() == session.routes.size(), "every score part must have exactly one instrument route");
   MidiFile full;
   std::string error;
-  if (!scoreToMidiFile(score, &full, &error)) throw std::invalid_argument("session score: " + error);
+  if (!scoreToMidiFile(score, &full, &error, ScoreMidiChannelPolicy::IndependentParts))
+    throw std::invalid_argument("session score: " + error);
   require(score.parts.size() == session.routes.size() && full.tracks.size() == score.parts.size(),
           "every score part must have exactly one instrument route");
   std::map<std::string, std::size_t> parts;

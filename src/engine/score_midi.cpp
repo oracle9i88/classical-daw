@@ -82,12 +82,16 @@ std::filesystem::path temporaryPath(const std::string& destination) {
 
 }  // namespace
 
-bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
+bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error, ScoreMidiChannelPolicy policy) {
   if (midi == nullptr) {
     if (error) *error = "MIDI output pointer is null";
     return false;
   }
   try {
+    if (policy != ScoreMidiChannelPolicy::SharedOutput && policy != ScoreMidiChannelPolicy::IndependentParts)
+      throw std::invalid_argument("unknown score MIDI channel policy");
+    const bool independent = policy == ScoreMidiChannelPolicy::IndependentParts;
+    if (independent && score.parts.size() > 64) throw std::invalid_argument("independent MIDI planning supports at most 64 parts");
     if (score.parts.empty()) throw std::invalid_argument("MIDI export requires at least one score part");
     if (score.divisions != kTicksPerQuarter) {
       throw std::invalid_argument("score divisions must be 960 ticks per quarter");
@@ -133,7 +137,7 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
             if (note.tie_start || note.tie_stop) throw std::invalid_argument("score rest cannot carry a tie");
             continue;
           }
-          if (note.midi_channel == -1 && (score.parts.size() > 16 || part_index >= 16)) {
+          if (!independent && note.midi_channel == -1 && (score.parts.size() > 16 || part_index >= 16)) {
             throw std::invalid_argument("MIDI export of more than 16 score parts requires explicit note channels");
           }
           has_playback_content = true;
@@ -151,7 +155,7 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
       for (const ScoreNote* source : ordered_notes) {
         const ScoreNote& note = *source;
         const std::uint8_t pitch = toMidiPitch(note.pitch);
-        const auto channel = note.midi_channel == -1 ? static_cast<std::uint8_t>(part_index)
+        const auto channel = note.midi_channel == -1 ? static_cast<std::uint8_t>(part_index % 16)
                                                      : static_cast<std::uint8_t>(note.midi_channel);
         const TieKey key{note.staff, note.voice, pitch, channel};
         const auto tie = active_ties.find(key);
@@ -197,7 +201,7 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error) {
     // A larger imported arrangement has explicit routes even when several
     // tracks share one channel. Preserve the previous guard for a bare score
     // with no routed playback content at all.
-    if (score.parts.size() > 16 && !has_playback_content) {
+    if (!independent && score.parts.size() > 16 && !has_playback_content) {
       throw std::invalid_argument("MIDI export supports at most 16 empty score parts");
     }
     *midi = std::move(converted);

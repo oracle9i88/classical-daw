@@ -45,6 +45,9 @@ std::vector<bool> audibleSessionRoutes(const Session& session);
 
 // Exactly one independent instrument per score part, matched by stable part ID,
 // never by UI route order or MIDI channel. No cross-part controller inheritance.
+// Authored notes without explicit MIDI channels use score part index % 16;
+// reusing a channel is safe only because each route has an independent instance.
+// Existing first-16 defaults and all explicit imported channels stay unchanged.
 // Shares the complete tempo/meter map and preserves explicit terminal silence.
 enum class SessionPlanMode { Buffered, Streaming };
 // Buffered (default): 256 MiB per stereo audio buffer. Streaming: fixed 48 kHz,
