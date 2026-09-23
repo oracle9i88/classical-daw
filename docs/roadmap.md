@@ -6,6 +6,15 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add uninterrupted single-take live plan exchange, held-key ownership and
+  controller chase to the real AU path, with transactional command admission
+  and no callback plan destruction. Balance variable device slices to avoid
+  tiny render remainders. Add polyphony, callback allocation and concurrent
+  exchange gates; [evidence and limits](live-performance.md).
+- Remove legacy ScoreHistory's repeated deep copies of retained states using
+  immutable shared snapshots; allocation-volume and failure-injection tests
+  guard it. This is not a claim of full legacy command migration.
+
 - Prioritize the creative vertical slice: persistent notation IDs, separate
   performed IDs and explicit tie correspondences, editable/persisted CC64/CC11
   curves, and one delta history covering notation, performance, curve and gain.

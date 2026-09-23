@@ -14,11 +14,17 @@ int main(int argc,char** argv) {
     daw::WorkEditor editor(daw::loadPerformanceDocument(argv[1]));
     std::unique_ptr<daw::PerformanceAudition> audition;
     daw::CoreAudioOutput output;std::string error;
-    auto stop=[&]{output.stop();output.setAudioSource(nullptr);audition.reset();};
-    auto play=[&]{stop();audition=std::make_unique<daw::PerformanceAudition>(editor.document());
+    auto stop=[&]{output.stop();output.setAudioSource(nullptr);
+      if(audition && audition->suppressedConflictsAfterStop())
+        std::cout<<"Held keys preserved; conflicting attacks skipped this pass="<<audition->suppressedConflictsAfterStop()<<'\n';
+      audition.reset();};
+    auto play=[&]{stop();audition=std::make_unique<daw::PerformanceAudition>(editor.document(),false,false,editor.revision());
       if(!output.setAudioSource(audition.get(),&error)||!output.start(&error)){stop();throw std::runtime_error(error);}
       audition->start();std::cout<<"Playing actual realtime Pianoteq; latency="<<audition->latency()<<"s\n";
     };
+    editor.setCommitAdmission([&](const auto& document,auto revision){
+      if(output.running() && audition)audition->submit(document,revision);
+    });
     std::cout<<"Commands: play | stop | take INDEX | notes | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curve CURVE_ID POINT_ID VALUE | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
@@ -41,10 +47,10 @@ int main(int argc,char** argv) {
           if(command=="stop"){end();stop();continue;}
           if(command=="save"){std::string path;in>>std::quoted(path);parsed();daw::savePerformanceDocument(editor.document(),path);std::cout<<"Saved "<<path<<'\n';continue;}
           if(command=="notes"){end();for(const auto& map:editor.document().performances[editor.document().active].mapping){std::cout<<"performed="<<map.id<<" notation=";for(auto id:map.notation_ids)std::cout<<id<<',';std::cout<<'\n';}continue;}
-          if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active<<" frame="<<(audition?audition->frame():0)<<'\n';continue;}
-          // Compile/validate edits while the old immutable audition remains valid.
-          // Only after successful commit stop it and replace the run on control thread.
-          const bool resume=output.running();
+          if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active<<" frame="<<(audition?audition->frame():0)
+            <<" applied_revision="<<(audition?audition->appliedRevision():editor.revision())<<" applied_frame="<<(audition?audition->appliedFrame():0)<<'\n';continue;}
+          // Admission prepares/publishes a plan before history acceptance. Full
+          // mailbox or invalid live updates leave BOTH document and playback intact.
           if(command=="edit"){daw::NotePerformance note;in>>note.note_id>>note.onset_seconds>>note.duration_scale>>note.velocity;parsed();note.onset_seconds/=1000;editor.set(note);}
           else if(command=="pitch"){std::uint64_t id;daw::ScorePitch pitch;in>>id>>pitch.step>>pitch.alter>>pitch.octave;parsed();editor.setPitch(id,pitch);}
           else if(command=="curve"){std::uint64_t curve,point;double value;in>>curve>>point>>value;parsed();editor.setCurvePoint(curve,point,value);}
@@ -53,7 +59,7 @@ int main(int argc,char** argv) {
           else if(command=="undo"){end();editor.undo();}
           else if(command=="redo"){end();editor.redo();}
           else throw std::runtime_error("unknown command");
-          stop();std::cout<<"Accepted revision="<<editor.revision()<<'\n';if(resume)play();
+          std::cout<<"Accepted revision="<<editor.revision()<<'\n';
         }catch(const std::exception& e){std::cout<<"Command failed: "<<e.what()<<'\n';}
       }
     }

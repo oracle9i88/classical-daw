@@ -9,6 +9,7 @@ add_library(daw_engine STATIC
   src/engine/midi.cpp
   src/engine/note_identity.cpp
   src/engine/performance.cpp
+  src/engine/live_performance.cpp
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
   src/engine/history.cpp
@@ -41,6 +42,9 @@ add_executable(daw_tests tests/test_engine.cpp)
 add_executable(daw_performance_tests tests/performance_tests.cpp)
 target_link_libraries(daw_performance_tests PRIVATE daw_engine)
 add_test(NAME daw_performance_tests COMMAND daw_performance_tests)
+add_executable(daw_live_performance_tests tests/live_performance_tests.cpp)
+target_link_libraries(daw_live_performance_tests PRIVATE daw_engine)
+add_test(NAME daw_live_performance_tests COMMAND daw_live_performance_tests)
 target_link_libraries(daw_tests PRIVATE daw_engine)
 add_test(NAME daw_tests COMMAND daw_tests)
 
@@ -250,6 +254,8 @@ if(APPLE)
   target_link_libraries(daw_performance_play PRIVATE daw_coreaudio daw_au_host)
   add_executable(daw_performance_probe tools/performance_probe.cpp)
   target_link_libraries(daw_performance_probe PRIVATE daw_coreaudio daw_au_host)
+  add_executable(daw_performance_live_probe tools/performance_live_probe.cpp)
+  target_link_libraries(daw_performance_live_probe PRIVATE daw_coreaudio daw_au_host)
 
   add_library(daw_coremidi STATIC
     src/platform/macos/coremidi_host.cpp

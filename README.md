@@ -14,6 +14,12 @@ an initial native frozen-track playback path; it is not a finished DAW.
   preserves data exactly, with audio checked under a declared tolerance. This
   is a one-part CLI workflow, not the complete DAW UI. See
   [commands, acceptance evidence and boundaries](docs/performance-vertical-slice.md).
+- Live edits now publish a prepared revision at the next audio quantum without
+  restarting Pianoteq or the transport. A key-ownership ledger preserves held
+  notes and their releases; CC64/CC11 changes chase the current playhead. The
+  same command stack handles live undo/redo, with rejection rollback and
+  bounded plan retirement. See [live semantics and load gates](docs/live-performance.md)
+  for already-played attacks, same-key conflicts and single-take limits.
 - A local macOS Pianoteq 9 AU host renders MIDI/MusicXML/native projects to real
   stereo piano audio, with saved instrument state, fixed-preset protection,
   sample-timed MIDI controls and a reloadable output bundle. This export path is

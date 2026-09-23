@@ -3,24 +3,30 @@
 #include "daw/score.hpp"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace daw {
 
 // UI/control-thread history for editable Score state.  The history owns
-// copies of scores and is deliberately separate from the realtime audio
-// path; callers must not use it from an audio callback or other hard realtime
-// thread.
+// immutable snapshots of scores and is deliberately separate from the realtime
+// audio path; callers must not use it from an audio callback or other hard
+// realtime thread.
 class ScoreHistory {
  public:
-  // The initial score is always retained as the first state.  A zero limit is
+  // The initial score starts the history; oldest states are evicted at the
+  // configured bound. A zero limit is
   // normalized to one so the history remains usable and strictly bounded.
   explicit ScoreHistory(Score initial, std::size_t max_states = 64U);
 
   // Commit a new editable state.  A successful commit discards the redo
-  // branch.  On failure, including allocation failure, the history is left
-  // unchanged.
+  // branch. Only the incoming Score is deeply copied; retaining old states
+  // copies snapshot handles, not their notes. With N score data and K retained
+  // states, copied/allocated data is O(N + K), while snapshot storage remains
+  // O(N * K). Reclaiming discarded redo snapshots still visits their owned data.
+  // This compatibility API is not the WorkEditor's incremental command stack.
+  // On failure, including allocation failure, the history is left unchanged.
   bool commit(const Score& score, std::string* error = nullptr);
 
   // Move the current position and copy the selected state into score.  A
@@ -49,7 +55,7 @@ class ScoreHistory {
   bool clear(std::string* error = nullptr);
 
  private:
-  std::vector<Score> states_;
+  std::vector<std::shared_ptr<const Score>> states_;
   std::size_t cursor_ = 0U;
   std::size_t max_states_ = 1U;
   std::uint64_t note_id_high_water_ = 0;

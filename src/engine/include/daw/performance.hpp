@@ -2,6 +2,7 @@
 #include "daw/score.hpp"
 #include "daw/midi_sequence.hpp"
 #include <optional>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,12 @@ class WorkEditor {
   bool undo();
   bool redo();
   std::uint64_t revision() const noexcept { return revision_; }
+  // Optional control-thread admission, after validation and before command
+  // acceptance. Throwing must publish nothing; the document/history roll back.
+  // A successful sink must perform no later fallible work (e.g. publish one
+  // prepared live plan as its final operation). Never called from the callback.
+  using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
+  void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:
   enum class Kind { Note, Pitch, Curve, Gain };
   struct Change {
@@ -77,5 +84,6 @@ class WorkEditor {
   std::vector<Change> history_;
   std::size_t cursor_ = 0;
   std::uint64_t revision_ = 0;
+  CommitAdmission admission_;
 };
 }

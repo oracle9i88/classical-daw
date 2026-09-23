@@ -1,0 +1,37 @@
+Local macOS / installed licensed Pianoteq acceptance, 2026-09-23
+All hardware probes silenced speaker output. No GitHub workflow was run.
+
+Polyphonic workload before balanced splitting (FAIL, exit 1)
+mode=polyphonic duration_seconds=30 scheduled_events=1230 max_pressed_keys=10 max_pedal_latched_keys=20 max_sounding_midi_keys=20 pedal_cycle_seconds=4 pedal_hold_seconds=3 cc11_events_per_second=20 budget_limit=0.5
+frames=1441680 sent=1230 peak=0.786535 callback_errors=0 deadline_misses=0 headroom_misses=3 render_blocks=7761 min_block_frames=45 max_block_frames=256 max_callback_seconds=0.00207933 max_render_block_budget_ratio=0.723957 reported_plugin_latency_seconds=0
+real AU callback acceptance failed (requires every render block below 50% of its frame budget)
+
+Same workload after balanced splitting (PASS, exit 0)
+mode=polyphonic duration_seconds=30 scheduled_events=1230 max_pressed_keys=10 max_pedal_latched_keys=20 max_sounding_midi_keys=20 pedal_cycle_seconds=4 pedal_hold_seconds=3 cc11_events_per_second=20 budget_limit=0.5
+frames=1442238 sent=1230 peak=0.78658 callback_errors=0 deadline_misses=0 headroom_misses=0 render_blocks=7764 min_block_frames=185 max_block_frames=186 max_callback_seconds=0.00189254 max_render_block_budget_ratio=0.488398 reported_plugin_latency_seconds=0
+PASS 30 seconds real Pianoteq in CoreAudio callbacks, note/release offsets, CC64 and CC11; speaker output silenced
+
+Final uninterrupted live-edit hardware gate (PASS, exit 0)
+measured_callback_frames=1008000 callback_errors=0 peak=0.0516299 deadline_misses=0 worst_render_block_budget_ratio=0.311882
+au_instances=1 output_starts=1 output_stops=1 speaker_output=silenced
+callback_frames=1008000 callback_errors=0 peak=0.05162993819 reported_plugin_latency_seconds=0
+deadline_misses=0 worst_render_block_budget_ratio=0.3118818065 budget_limit=0.5
+applied_live_updates=3 suppressed_conflicts=0
+tie_performed_id=8 note_on_count=1 note_off_count=1 on_frame=168000 off_frame=220500
+future_performed_id=10 edited_on_frame=245760
+revision=1 submit_begin_frame=173128 submit_return_frame=173314 applied_frame=173314 before_rms=0.01572812404 across_rms=0.01538015399 after_rms=0.01514734192 minimum_10ms_rms=0.01507299577 longest_silent_frames=0
+revision=2 submit_begin_frame=182602 submit_return_frame=182787 applied_frame=182787 before_rms=0.01027448822 across_rms=0.009981855832 after_rms=0.009754785819 minimum_10ms_rms=0.00960754 longest_silent_frames=0
+revision=3 submit_begin_frame=192076 submit_return_frame=192261 applied_frame=192261 before_rms=0.00595045799 across_rms=0.005782610654 after_rms=0.005626650621 minimum_10ms_rms=0.0055294065 longest_silent_frames=0
+PASS one uninterrupted AU/CoreAudio run, three live revisions, future onset and CC11 delivered, one sustained tie attack/release, nonzero callback audio across swaps
+
+Full normal and ASan/UBSan CTest suites: 42/42 each.
+Final same-frame-order and end-of-capture regressions: normal and ASan/UBSan live_performance_tests passed.
+Interactive CLI exact-byte/undo/rejection checker: PASS in both builds.
+1000 two-thread plan exchanges: standalone ThreadSanitizer PASS, no race report.
+
+Final previous-gate regression: save/reopen (PASS, exit 0)
+actual_callback_frames=1008000 peak=0.0516318 latency_seconds=0 callback_errors=0
+actual_callback_frames=1008000 peak=0.0622742 latency_seconds=0 callback_errors=0
+actual_callback_frames=1008000 peak=0.0622742 latency_seconds=0 callback_errors=0
+early_rms_before=0.0154885 early_rms_after=5.28827e-05 reopened_relative_rms_error=0.000536848 reopened_max_sample_delta=0.000169983
+PASS actual AU/CoreAudio edit audition, interleaved unified undo/redo, saved score/performance bytes, reopened audio tolerance

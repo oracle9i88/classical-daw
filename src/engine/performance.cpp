@@ -240,17 +240,32 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
 WorkEditor::WorkEditor(PerformanceDocument d) : document_(std::move(d)) {
   validatePerformanceDocument(document_); history_.reserve(129);
 }
-void WorkEditor::select(std::size_t take) { require(take < document_.performances.size(),"unknown performance"); document_.active = take; }
+void WorkEditor::select(std::size_t take) {
+  require(take < document_.performances.size(),"unknown performance");
+  if (take == document_.active) return;
+  const auto previous = document_.active; document_.active = take;
+  try { if (admission_) admission_(document_,revision_+1); }
+  catch (...) { document_.active = previous; throw; }
+  ++revision_;
+}
 void WorkEditor::apply(const Change& c, bool forward) {
+  const auto prior_active = document_.active;
+  auto admit = [&] {
+    document_.active = c.take;
+    try { if (admission_) admission_(document_,revision_+1); }
+    catch (...) { document_.active = prior_active; throw; }
+  };
   if(c.kind==Kind::Pitch) {
     ScoreNote* found=nullptr;
     for(auto& p:document_.score.parts)for(auto& m:p.measures)for(auto& n:m.notes)if(n.id==c.id)found=&n;
     require(found,"unknown notation element");const auto previous=found->pitch;
     found->pitch=forward?c.pitch_after:c.pitch_before;
-    try{validatePerformanceDocument(document_);}catch(...){found->pitch=previous;throw;}
+    try{validatePerformanceDocument(document_);admit();}catch(...){found->pitch=previous;throw;}
   } else if(c.kind==Kind::Gain) {
     const auto value=forward?c.value_after:c.value_before;
-    require(std::isfinite(value)&&value>=-60&&value<=0,"invalid gain");document_.gain_db=value;
+    require(std::isfinite(value)&&value>=-60&&value<=0,"invalid gain");
+    const auto previous = document_.gain_db; document_.gain_db=value;
+    try { admit(); } catch (...) { document_.gain_db = previous; throw; }
   } else {
     auto take=document_.performances.at(c.take);
     if(c.kind==Kind::Note)update(take,c.id,forward?c.after:c.before);
@@ -260,8 +275,8 @@ void WorkEditor::apply(const Change& c, bool forward) {
       require(found,"unknown curve/point");found->value=forward?c.value_after:c.value_before;
     }
     (void)compilePerformance(document_.score,take);std::swap(document_.performances[c.take],take);
+    try { admit(); } catch (...) { std::swap(document_.performances[c.take],take); throw; }
   }
-  document_.active=c.take;
 }
 bool WorkEditor::commit(Change c) {
   // Fixed-size delta commands and preallocated history storage: after apply

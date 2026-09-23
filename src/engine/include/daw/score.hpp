@@ -42,7 +42,9 @@ struct ScoreNote {
   std::uint64_t midi_off_order = 0;
   std::uint8_t midi_release_velocity = 0;
   // Persistent notation-segment identity. Zero is an unassigned legacy/import
-  // note. A sounding tie chain is addressed by its first segment's ID.
+  // note. The MIDI bridge uses a tie's first segment as its notation anchor
+  // when makePerformance builds the initial correspondence. Performed-note IDs
+  // come from a separate allocator; the anchor is not a performed-note ID.
   std::uint64_t id = 0;
 };
 

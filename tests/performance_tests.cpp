@@ -68,6 +68,32 @@ int main(){try{
   daw::WorkEditor timing_only(d);timing_only.set({2,.06,1,-1});timing_only.setCurvePoint(2,2,110);
   daw::savePerformanceDocument(timing_only.document(),(temp.root/"timing").string());
   require(read(temp.root/"base"/"score.dawproj")==read(temp.root/"timing"/"score.dawproj"),"performance edit changed written score");
+  // A live mailbox admission is part of command acceptance, not a later best
+  // effort. Rejection must not commit data, history, take selection or revision.
+  daw::WorkEditor admitted(d);
+  admitted.setCommitAdmission([](const auto&,auto){throw std::runtime_error("mailbox full");});
+  rejects([&]{admitted.setPitch(2,{'F',0,4});});
+  rejects([&]{admitted.set({2,.04,.94,85});});
+  rejects([&]{admitted.setCurvePoint(2,2,100);});
+  rejects([&]{admitted.setGain(-15);});rejects([&]{admitted.select(0);});
+  require(admitted.revision()==0 && !admitted.undo(),"rejected live admission changed history");
+  daw::savePerformanceDocument(admitted.document(),(temp.root/"admission-rejected").string());
+  for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
+    require(read(temp.root/"base"/name)==read(temp.root/"admission-rejected"/name),"live rejection changed document bytes");
+  admitted.setCommitAdmission({});admitted.setPitch(2,{'F',0,4});
+  admitted.setCommitAdmission([](const auto&,auto){throw std::runtime_error("mailbox full");});
+  rejects([&]{admitted.undo();});
+  require(admitted.revision()==1 && admitted.document().score.parts[0].measures[0].notes[1].pitch.step=='F',"rejected undo changed revision/data");
+  admitted.setCommitAdmission({});require(admitted.undo(),"admitted undo lost cursor");
+  admitted.setCommitAdmission([](const auto&,auto){throw std::runtime_error("mailbox full");});
+  rejects([&]{admitted.setGain(-15);});rejects([&]{admitted.redo();});
+  admitted.setCommitAdmission({});require(admitted.redo(),"rejected new branch destroyed redo");
+  // Stored onset offsets are elapsed seconds, invariant under tempo-map edits.
+  auto seconds_take=d.performances[1];seconds_take.notes.push_back({2,.1,1,-1});
+  const auto original_tempo=daw::compilePerformance(d.score,seconds_take);
+  auto slower=d.score;slower.bpm=60;const auto slower_tempo=daw::compilePerformance(slower,seconds_take);
+  auto onset=[](const auto& sequence){for(const auto& e:sequence.events)if(e.note_id==2&&e.status==0x90)return e.frame;throw std::runtime_error("missing timing note");};
+  require(onset(original_tempo)==28800 && onset(slower_tempo)==52800 && seconds_take.notes[0].onset_seconds==.1,"seconds policy silently rescaled with tempo");
   auto invalid=d.score;invalid.parts[0].measures[0].notes[1].id=1;
   rejects([&]{daw::assignNoteIds(invalid);});std::string error;
   require(!daw::writeProjectFile(invalid,(temp.root/"bad").string(),&error),"duplicate ID saved");

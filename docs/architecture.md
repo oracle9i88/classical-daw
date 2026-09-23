@@ -24,17 +24,40 @@ and the score history remain separate from it.
   individually rounded, avoiding accumulated timing drift.
 - `SampleIndex` is the audio domain. `Timeline` converts between ticks and
   samples through a piecewise-constant `TempoMap`.
-- Tempo-map edits must keep conversions deterministic and must never let a
-  UI floating-point value become the source of truth for audio scheduling.
+- Tempo-map edits keep the tick-to-sample conversion deterministic. UI display
+  floats are not scheduling authority. The explicit exception is a persisted,
+  validated Performance value in seconds: `onset_seconds` is an elapsed-time
+  offset added AFTER tempo conversion and rounded once to the nearest sample.
+  Changing tempo preserves that absolute offset (100 ms stays 100 ms), while
+  `duration_scale` multiplies the newly tempo-converted duration. Controller
+  curve times are also absolute elapsed seconds and do not automatically warp
+  with tempo. Musical-position-relative humanization would require a separate
+  explicit mode/schema; it must not silently reinterpret saved takes.
 
 ## Realtime boundary
 
-The CoreAudio callback must only consume preallocated buffers and a
+The host's CoreAudio callback must only consume preallocated buffers and a
 bounded stream of timestamped events. It must not allocate memory, take a
 contended lock, read files, parse JSON, scan plugins, or make network calls.
 Project edits will be represented as commands and applied at an audio-block
 boundary. Disk reads belong in a worker plus a ring buffer; peak generation and
 autosave belong outside the callback.
+
+The in-process third-party AU call is a recorded exception to what the host can
+certify: plugin internals may allocate or lock, even though our dispatch path
+does neither. Actual Pianoteq runs provide measured load/latency evidence, not
+a proof of hard realtime safety for any plugin. This trust/crash boundary is a
+reason to pursue plugin process isolation with preallocated IPC and a declared
+latency budget; isolation itself would not make plugin DSP deadline-safe.
+
+Live Performance plans are compiled/indexed on the control thread and exchanged
+at the next engine quantum after release publication. The same AU, sample clock
+and actual-key ledger survive the exchange. Only the control thread destroys
+retired plans. Two ownership slots give explicit backpressure: a busy mailbox
+rejects the edit without changing document/history; it never overwrites a plan
+in use. Controller state is chased at the boundary, and keys keep their pending
+releases by performed identity. See [live editing semantics and gates](live-performance.md)
+for already-sounded attacks, sustain, same-key conflicts and capacity limits.
 
 ## Project and engine split
 
@@ -45,8 +68,8 @@ serializer provides a versioned score save/reload boundary; a full project
 package will eventually add MIDI data, media, peak caches, autosave snapshots,
 and plugin state.
 
-`ScoreHistory` is the UI/control-thread edit-history boundary around this score
-state. It owns bounded copies, retains the initial state, clears the redo
+`ScoreHistory` is the legacy UI/control-thread history boundary around this score
+state. It owns bounded immutable shared snapshots, retains the initial state, clears the redo
 branch after a successful commit, and leaves the history unchanged on a failed
 operation. Its current state can be copied into an atomic `.recovery` sidecar
 and loaded into a new clean history; the full undo/redo stack is still an
@@ -54,6 +77,15 @@ in-memory concern. It must never be called from the realtime callback. The
 project loader checks the primary file, a `.recovery` sidecar, and an
 interrupted `.tmp` candidate in that order, while recovery writes use the same
 atomic replacement boundary and never run from realtime code.
+
+Commit copies the new Score once and retains prior snapshots by handle; it no
+longer deep-copies every historical Score. This removes the O(history × score)
+copy amplification, but not the O(history × score) resident storage or the need
+to migrate legacy editing. The new `WorkEditor` instead owns one delta-command
+stack for notation/performance/curve/gain changes. Its final admission step
+prepares and publishes the live plan; a failure rolls back data and leaves the
+history cursor/revision unchanged, including undo/redo. No extra audio-edit undo
+stack exists. This is not yet global unification with `SessionMixState`.
 
 The current score boundary is intentionally small: `Score -> Part -> Measure ->
 ScoreNote` keeps written pitch spelling, tick onset/duration, velocity, rests,

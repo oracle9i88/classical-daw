@@ -6,6 +6,11 @@ sound have separate identities and persistence. One editor history contains
 notation, performed timing/velocity, curve point and gain edits in occurrence
 order. Pianoteq generates audio from CoreAudio callbacks, not from a WAV cache.
 
+This records the first gate at commit `49e5ac7`. The following
+[live revision gate](live-performance.md) replaces restart-on-edit with an
+uninterrupted AU run; its current semantics and evidence take precedence for
+the interactive player.
+
 ## Use
 
 Build normally on macOS with an installed/licensed Pianoteq 9 AU. A valid saved
@@ -42,10 +47,11 @@ and MIDI value 0..127. `notes` shows the explicit correspondence. `take 0` and
 `status` reports the editor revision and playback frame. Save requires a new
 directory and preserves the original document.
 
-Valid edits made during playback restart audition from the beginning using a
-fresh prepared AU. Invalid edits preserve the old document/run. Stop/dispose and
-state restoration happen on the control thread, after output callbacks stop;
-this is not seamless live revision switching. Device faults stop playback; the
+The first gate restarted audition on valid edits. The current player publishes
+ready immutable plans to the next engine quantum using the same AU and sample
+clock. Invalid/busy submissions preserve the document, history and playing run.
+Take/instrument-state changes require stopped playback. Stop/dispose and state
+restoration still happen only on the control thread. Device faults stop playback; the
 accepted document remains saveable. The CLI uses a bounded input buffer and
 polls output health while awaiting input. EOF exits; newline-terminated commands
 are the supported scripting interface.
@@ -115,7 +121,7 @@ uses fixed buffers and has no host allocation, file I/O, property queries or
 locks. AU failures latch and produce silence. Third-party internal allocations
 are not certified. Only Pianoteq realtime hosting has been validated here;
 SWAM realtime support, multi-instrument delay compensation, CoreMIDI recording,
-voice editing while sustaining and graphical editing are outside this slice.
+arbitrary plugin voice-parameter editing and graphical editing remain outside.
 The measured Pianoteq latency was zero, so no alignment correction was required.
 
 Limits: one piano part, 4096 attacks, 16 performances, 32 curves, 4096 points per
@@ -139,6 +145,9 @@ callback errors **0**, measured callback deadline misses **0**, worst callback
 1.20517 ms, plugin-reported latency **0 s**. Samples were measured before being
 silenced at speaker output. Callback errors and measured processing deadlines
 are observations from this run, not a claim to detect every possible OS glitch.
+This was a **one-key-at-a-time** workload, not a polyphony benchmark; its margin
+does not establish capacity for pedal-held chords or an orchestra. The later
+live gate adds a ten-key pedal workload and a strict <50% per-quantum budget.
 
 The vertical acceptance is opt-in, never part of CI/CTest:
 

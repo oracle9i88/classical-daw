@@ -61,14 +61,16 @@ int main() {
     rejects([] { daw::outputSliceCapacity(512, 44100, std::numeric_limits<double>::quiet_NaN(), 256); });
     rejects([] { daw::outputSliceCapacity(512, 44100, 48000, 0); });
     // Variable hardware slices must never truncate frames or desynchronize the
-    // two channels. Count every callback quantum, including the short final one.
-    for (const unsigned frames : {1U, 255U, 256U, 279U, 512U, 558U, 4459U}) {
+    // two channels. Balanced quanta avoid pathological one-frame remainders
+    // while retaining the same minimum number of render calls and exact data.
+    for (const unsigned frames : {1U, 255U, 256U, 257U, 279U, 512U, 557U, 558U, 4459U}) {
       std::vector<float> output(static_cast<std::size_t>(frames) * 2 + 2, -9);
-      unsigned position = 0, calls = 0;
+      unsigned position = 0, calls = 0, smallest = 256, largest = 0;
       in_audio = true;
       daw::renderOutputBlocks(output.data() + 1, frames, 2, 256,
           [&](float* dest, unsigned count) noexcept {
             if (count > 256 || !count) std::abort();
+            smallest = std::min(smallest,count); largest = std::max(largest,count);
             ++calls;
             for (unsigned i = 0; i < count; ++i) {
               dest[2 * i] = static_cast<float>(position);
@@ -77,6 +79,7 @@ int main() {
           });
       in_audio = false;
       require(position == frames && calls == (frames + 255) / 256, "hardware slice lost frames");
+      require(largest-smallest <= 1 && smallest == frames/calls, "hardware split left a tiny tail quantum");
       require(output.front() == -9 && output.back() == -9, "hardware slice overwrote guard");
       for (unsigned i = 0; i < frames; ++i) {
         near(output[1 + 2 * i], i, "hardware slice left alignment");

@@ -239,7 +239,8 @@ bool AudioUnitInstrument::renderRealtime(const TimedMidiEvent* events, std::size
                                          float* output, std::uint32_t frames) noexcept {
   if (!output || frames > kBlock) return false;
   std::fill(output,output+frames*2,0.F);
-  if (!impl_->realtime || impl_->realtime_failed || !frames || count > 4096 || (count && !events)) return false;
+  // Up to 4096 source events plus bounded live-plan reconciliation messages.
+  if (!impl_->realtime || impl_->realtime_failed || !frames || count > 16384 || (count && !events)) return false;
   auto fail = [&] { impl_->realtime_failed = true; std::fill(output,output+frames*2,0.F); return false; };
   for (std::size_t i=0; i<count; ++i) {
     const auto& e=events[i]; const auto type=e.status & 0xf0;
