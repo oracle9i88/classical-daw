@@ -17,6 +17,7 @@ compile_commands.json
 *.dawproj
 *.aupreset
 *.dawfreeze
+*.dawfreeze.writing/
 __pycache__/
 
 # Local per-run mix recovery data

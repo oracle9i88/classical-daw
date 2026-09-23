@@ -88,7 +88,7 @@ Crash isolation/atomic directory transactions remain outside this slice.
 
 The internal `DAWFRZ01` format is not a WAV replacement for other DAWs; use the
 exported WAV stems for interchange. It retains values above unity before faders
-without clipping. Audio is limited to 32 Mi frames per track; score input is
+without clipping. Buffered mixing here is limited to 32 Mi frames per track; score input is
 bounded to 64 MiB, AU state to 16 MiB per track / 64 MiB total, and frozen identity
 to 81 MiB. Each file stores its own source binding, so large scores/states add
 disk and temporary memory overhead. Reuse currently reads one complete track,
@@ -130,3 +130,8 @@ The bounce/editor above provide saved **offline mixing**. A separate native
 [frozen-track player](session-playback.md) now exposes realtime transport, shared
 CLI mix controls and new-session saving. Live instrument-plugin audition, graphical editing
 and audio-device recovery remain future integration work.
+
+The separate streaming reader/chunk writer now support up to two hours at
+48 kHz including tail in the same DAWFRZ01 layout. This does not lift the
+buffered offline mixing limit above. See [long-track playback and writer
+boundaries](session-playback.md) for usage, compatibility and test evidence.

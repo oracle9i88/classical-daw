@@ -182,9 +182,14 @@ is terminal for that open stream: pause/stop still work, then reopen after fixin
 the files. This avoids musical-position drift but can create an audible gap and
 wall-clock delay. It is not a guarantee of dropout-free streaming.
 
-Current frozen format/score planning still cap each track at 32 Mi frames,
-about 11.65 minutes including tail at 48 kHz; 64 tracks is still the track limit.
-Offline AU rendering and WAV bounce remain buffer-based. The stream is fixed
+Streaming score planning and `FrozenTrackReader` now allow **two hours per
+track including release tail**, at fixed 48 kHz stereo (345,600,000 frames).
+The existing DAWFRZ01 uint32 frame field already accommodates this duration;
+no file-layout migration is needed, and byte offsets use 64-bit arithmetic.
+The 64-track limit is unchanged. Buffer-based APIs and offline AU session
+rendering/WAV bounce still retain the old 32 Mi-frame session budget (about
+11.65 minutes including tail). Longer playback does not yet mean a complete
+long-form instrument-render/export workflow. The stream is fixed
 48 kHz stereo frozen audio, not realtime AU instruments, recording or editable
 clips. Browser/native document integration and GUI controls remain separate work.
 
@@ -305,3 +310,51 @@ cmake -S . -B build-stream-tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-f
 cmake --build build-stream-tsan --target daw_streaming_audio_tests --parallel 4
 build-stream-tsan/daw_streaming_audio_tests
 ```
+
+## Long-track write and planning boundary
+
+`SessionPlanMode::Streaming` separates the duration budget from buffered audio
+allocation. It is selected by all native `--stream*` modes; ordinary render and
+resident-playback callers retain the buffered default. Both modes share the
+same tempo mapping, score-part routing and common release/tail boundary. A
+streaming plan over two hours (including tail), or a non-48-kHz request, fails
+before audio is allocated. The limit is a supported budget, not a two-hour
+hardware-soak-test claim.
+
+`FrozenTrackWriter` provides a control/worker-thread chunk API for future
+streamed render/export producers. Declare total frames, append at most 8192
+stereo frames per call, then call `finish()`. The exact count must match. Each
+chunk is checked for finite values before writing, retaining float headroom and
+precision. CRC32 is accumulated as chunks arrive. Output is first written into
+an exclusively reserved `OUTPUT.writing/audio.tmp`; only a complete footer and
+closed stream can be published by a no-overwrite hard link. Existing outputs,
+dangling symlinks, competing writers and stale staging are not overwritten.
+A failed disk write/publication closes the writer to further use; invalid input
+before I/O leaves its count unchanged. Destruction cleans only owned staging.
+An interrupted process may leave its staging directory; no power-loss/fsync
+guarantee is made. The ordinary whole-buffer writer/reader keep their existing
+allocation guards. Short files from both writers are byte-identical.
+
+The long-track iteration passed **35/35 normal + 35/35 ASan/UBSan tests**,
+including exact two-hour planning, rejection one tick beyond it, common
+per-part release times, writer abort/incomplete/competing-output behavior and
+old-reader compatibility. An opt-in **45-minute synthetic** file contains
+129,600,000 frames and occupies 1,036,800,068 bytes. It is generated and
+checksummed in bounded blocks, opened with two independent readers, and tested
+at 12 minutes, 30 minutes, near EOF and backwards. Both tracks match the expected
+samples/clock with 262,144 bytes of page storage and no buffering after explicit
+control-thread prefetch. Normal and ASan/UBSan runs passed. The temporary file
+is removed by the test. This is random-access/duration verification, not 45
+minutes of uninterrupted wall-clock hardware playback or a real orchestral
+render. The existing real piano/cello bundle still produces matching resident
+and streamed numerical output.
+
+```sh
+build/daw_frozen_stream_writer_tests --long
+ASAN_OPTIONS=detect_leaks=0 build-sanitize/daw_frozen_stream_writer_tests --long
+```
+
+Next producer work: connect chunked AU rendering and streamed master/stem WAV
+export to the new writer, then verify real long works and sustained storage
+performance. The native CLI currently consumes already-produced frozen audio;
+it does not create a long instrument performance through this API by itself.

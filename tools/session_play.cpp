@@ -66,7 +66,8 @@ int main(int argc, char** argv) {
     daw::Score score;
     std::string error;
     if (!daw::readProjectFile((root / session.score_file).string(), &score, &error)) throw std::runtime_error(error);
-    const auto plan = daw::planSession(session, score);
+    const auto plan = daw::planSession(session, score, 48000, 5,
+        streaming ? daw::SessionPlanMode::Streaming : daw::SessionPlanMode::Buffered);
     if (!streaming && plan.frames > daw::SessionPlayer::kMaxAudioBytes / sizeof(float) / 2 / session.routes.size())
       throw std::runtime_error("playback audio exceeds 512 MiB; use --stream");
     std::vector<daw::AudioBuffer> audio;

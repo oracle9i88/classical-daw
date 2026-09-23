@@ -6,12 +6,19 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Separate streaming duration from buffered-render allocation limits: allow
+  two hours including tail in 48 kHz stream plans/readers, retaining old buffer
+  guards. Add an incremental, checksum-preserving frozen writer with exclusive
+  atomic publication. Verify a 45-minute synthetic file, long seeks and shared
+  EOF without whole-waveform allocation. AU rendering and WAV export still need
+  chunked producer integration before claiming complete long-form production.
+
 - Add optional disk-streamed frozen playback: bounded block reader with full
   startup validation, one prefetch worker and four owned pages, shared transport/
   mix/history/recovery controls. Verify page handoff with ThreadSanitizer,
   resident sample parity, seek/EOF/disk-failure behavior, 64-route capacity and
-  real output callbacks. Long-duration/slow-storage performance, longer frozen
-  files, streaming offline bounce and live instruments remain pending.
+  real output callbacks. Long-duration/slow-storage performance, streaming
+  offline bounce and live instruments remain pending.
 
 - Automatically checkpoint native mix edits/undo/redo to isolated per-run
   recovery directories. Add source-bound, checksummed recovery to a new sibling,

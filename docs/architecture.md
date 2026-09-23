@@ -315,4 +315,21 @@ pages beyond the requested one and rechecks changed requests between page reads.
 Read errors publish a terminal fault without publishing partially filled data.
 Stop/join and file destruction happen after callbacks stop. This is a first
 bounded streaming path; long-session storage stress, live AU audio, clip edits,
-per-track extended duration and streamed offline export are still separate gates.
+streamed offline export and live instrument production are still separate gates.
+
+## Duration budget versus allocation budget
+
+`audio_limits.hpp` defines a 32 Mi-frame buffer budget and a separate 345,600,000
+frame stream budget (two hours at 48 kHz, including tail). `planSession` defaults
+to Buffered, preserving existing render/allocator guards; Streaming schedules
+longer events without allocating waveform storage. Native stream modes select
+that policy explicitly. Both branches call the same sample-sequence planner.
+
+DAWFRZ01 already stores a uint32 frame count, which fits the new stream budget.
+Bounded readers keep full upfront identity/CRC/sample validation; 64-bit offsets
+cover files over 2 GiB. `FrozenTrackWriter` appends bounded stereo chunks with
+incremental CRC and publishes only the exact declared frame count through an
+exclusive hard link from owned staging. Invalid chunks are rejected before I/O;
+I/O failure poisons the writer. Byte-for-byte short-file compatibility and
+45-minute random-access verification are covered by tests. This API supplies a
+long-track producer boundary; existing AU/WAV producers remain buffer-based.

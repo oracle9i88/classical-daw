@@ -1,4 +1,5 @@
 #include "daw/frozen_track.hpp"
+#include "daw/audio_limits.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -10,7 +11,9 @@
 
 namespace daw {
 namespace {
-constexpr std::size_t max_frames = 32U * 1024U * 1024U;
+constexpr std::size_t max_frames = kMaxBufferedAudioFrames;
+static_assert(kMaxStreamAudioFrames <= std::numeric_limits<std::uint32_t>::max(), "frozen frame count must fit u32");
+static_assert(sizeof(std::streamoff) >= 8, "long frozen audio requires 64-bit offsets");
 constexpr std::size_t max_identity = 81U * 1024U * 1024U;
 void require(bool ok, const char* error) { if (!ok) throw std::runtime_error(error); }
 static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559, "freeze requires IEEE float32");
@@ -177,10 +180,10 @@ struct FrozenTrackReader::Impl {
   }
 };
 FrozenTrackReader::FrozenTrackReader(const std::string& path, const std::string& identity, std::size_t frames) {
-  require(!identity.empty() && identity.size() <= max_identity && frames > 0 && frames <= max_frames,
+  require(!identity.empty() && identity.size() <= max_identity && frames > 0 && frames <= kMaxStreamAudioFrames,
           "invalid expected frozen identity/frames");
   require(std::filesystem::is_regular_file(std::filesystem::symlink_status(path)), "frozen audio must be a regular file, not a symlink");
-  require(std::filesystem::file_size(path) <= max_identity + max_frames * 8ULL + 8192, "frozen audio exceeds file size limit");
+  require(std::filesystem::file_size(path) <= max_identity + kMaxStreamAudioFrames * 8ULL + 8192, "frozen audio exceeds file size limit");
   impl_ = std::make_unique<Impl>(path, identity, frames);
 }
 FrozenTrackReader::~FrozenTrackReader() = default;
@@ -200,5 +203,66 @@ void FrozenTrackReader::readFrames(std::size_t start, std::size_t count, float* 
     require(std::isfinite(sample), "non-finite frozen audio after validation");
     stereo[i] = sample;
   }
+}
+
+struct FrozenTrackWriter::Impl {
+  struct Staging {
+    std::filesystem::path path;
+    explicit Staging(const std::filesystem::path& output) : path(output.string() + ".writing") {
+      require(std::filesystem::create_directory(path), "frozen staging already exists");
+    }
+    ~Staging() {
+      std::error_code ec;
+      std::filesystem::remove(path / "audio.tmp", ec);
+      std::filesystem::remove(path, ec);
+    }
+  };
+  std::filesystem::path output;
+  Staging staging;
+  Writer writer;
+  std::size_t frames = 0, written = 0;
+  bool failed = false, finished = false;
+  Impl(const std::string& path, const std::string& identity, const std::string& preset,
+       std::uint32_t version, std::size_t total)
+      : output(path), staging(output), writer((staging.path / "audio.tmp").string()), frames(total) {
+    writer.bytes("DAWFRZ01", 8); writer.text(identity); writer.text(preset); writer.u32(version);
+    writer.u32(48000); writer.u32(2); writer.u32(static_cast<std::uint32_t>(frames));
+  }
+};
+FrozenTrackWriter::FrozenTrackWriter(const std::string& path, const std::string& identity,
+                                   const std::string& preset, std::uint32_t version, std::size_t frames) {
+  require(!identity.empty() && identity.size() <= max_identity && preset.size() <= 4096 &&
+          frames > 0 && frames <= kMaxStreamAudioFrames, "invalid frozen stream metadata/frames");
+  require(!path.empty() && !std::filesystem::exists(std::filesystem::symlink_status(path)), "frozen output already exists or is empty");
+  impl_ = std::make_unique<Impl>(path, identity, preset, version, frames);
+}
+FrozenTrackWriter::~FrozenTrackWriter() = default;
+std::size_t FrozenTrackWriter::writtenFrames() const noexcept { return impl_->written; }
+void FrozenTrackWriter::appendFrames(const float* stereo, std::size_t count) {
+  auto& w = *impl_;
+  require(!w.finished && !w.failed, "frozen writer is closed or failed");
+  require(count <= FrozenTrackReader::kReadFrames && count <= w.frames - w.written && (!count || stereo),
+          "frozen append out of bounds");
+  std::array<char, 65536> bytes{};
+  for (std::size_t i = 0; i < count * 2; ++i) {
+    require(std::isfinite(stereo[i]), "non-finite frozen audio");
+    std::uint32_t bits; std::memcpy(&bits, stereo + i, 4);
+    const auto b = encoded(bits); std::copy(b.begin(), b.end(), bytes.begin() + static_cast<std::ptrdiff_t>(i * 4));
+  }
+  // Bounds/finite-value validation precedes I/O; only I/O failures poison state.
+  w.failed = true;
+  w.writer.bytes(bytes.data(), count * 8);
+  w.written += count; w.failed = false;
+}
+void FrozenTrackWriter::finish() {
+  auto& w = *impl_;
+  require(!w.finished && !w.failed, "frozen writer is closed or failed");
+  require(w.written == w.frames, "frozen writer frame count incomplete");
+  w.failed = true;
+  const auto checksum = encoded(w.writer.crc.value ^ 0xffffffffU);
+  w.writer.stream.write(checksum.data(), 4); w.writer.stream.close();
+  require(bool(w.writer.stream), "frozen stream final write failed");
+  std::filesystem::create_hard_link(w.staging.path / "audio.tmp", w.output);
+  w.finished = true; w.failed = false;
 }
 }  // namespace daw

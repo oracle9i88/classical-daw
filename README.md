@@ -35,7 +35,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   Fixed audio pages use 8 MiB at 64 tracks, independent of duration, while the
   existing resident path retains its 512 MiB limit. Missing data freezes the
   shared clock and reports buffering; seek and mixing use the same player.
-  See [streaming limits and validation](docs/session-playback.md).
+  Stream plans/readers accept up to two hours including tail; a new chunked
+  frozen writer avoids whole-waveform allocation. A 45-minute synthetic file
+  passes random-access checks. Offline AU/WAV producers still use their old
+  buffered limits. See [streaming limits and validation](docs/session-playback.md).
 - Shared mix-edit state for offline and native playback controls. Inspect accepted
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state

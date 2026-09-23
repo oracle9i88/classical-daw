@@ -1,4 +1,5 @@
 #include "daw/session.hpp"
+#include "daw/audio_limits.hpp"
 #include "daw/midi_sequence.hpp"
 #include "daw/score_midi.hpp"
 
@@ -110,7 +111,9 @@ std::string serializeSession(const Session& session) {
   return output.str();
 }
 
-SessionPlan planSession(const Session& session, const Score& score, std::uint32_t rate, double tail) {
+SessionPlan planSession(const Session& session, const Score& score, std::uint32_t rate, double tail, SessionPlanMode mode) {
+  require(mode == SessionPlanMode::Buffered || mode == SessionPlanMode::Streaming, "unknown session plan mode");
+  require(mode != SessionPlanMode::Streaming || rate == 48000, "streaming sessions require 48000 Hz");
   validateSession(session);
   MidiFile full;
   std::string error;
@@ -131,7 +134,7 @@ SessionPlan planSession(const Session& session, const Score& score, std::uint32_
     for (const auto& note : track.notes) plan.end_tick = std::max(plan.end_tick, note.end());
     for (const auto& event : track.channel_events) plan.end_tick = std::max(plan.end_tick, event.tick);
   }
-  constexpr std::size_t frame_limit = 32U * 1024U * 1024U;
+  const auto frame_limit = mode == SessionPlanMode::Streaming ? kMaxStreamAudioFrames : kMaxBufferedAudioFrames;
   plan.frames = makeMidiSampleSequence(full, rate, tail, frame_limit, plan.end_tick).frames;
   for (const auto& route : session.routes) {
     auto found = parts.find(route.part_id);

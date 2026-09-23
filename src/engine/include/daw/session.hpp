@@ -46,9 +46,12 @@ std::vector<bool> audibleSessionRoutes(const Session& session);
 // Exactly one independent instrument per score part, matched by stable part ID,
 // never by UI route order or MIDI channel. No cross-part controller inheritance.
 // Shares the complete tempo/meter map and preserves explicit terminal silence.
-// At most 256 MiB per stereo audio buffer (mix + one rendered track ~512 MiB).
+enum class SessionPlanMode { Buffered, Streaming };
+// Buffered (default): 256 MiB per stereo audio buffer. Streaming: fixed 48 kHz,
+// at most two hours including tail; only schedules events, no audio allocation.
 SessionPlan planSession(const Session& session, const Score& score,
-                        std::uint32_t rate = 48000, double tail = 5.0);
+                        std::uint32_t rate = 48000, double tail = 5.0,
+                        SessionPlanMode mode = SessionPlanMode::Buffered);
 
 struct MixReport {
   double peak = 0;
