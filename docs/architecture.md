@@ -2,6 +2,12 @@
 
 This document records the boundaries that keep the audio engine safe to extend.
 
+The next multi-instrument iteration is specified in the
+[pre-implementation graph/PDC design](multi-instrument-realtime-design.md).
+It fixes one whole-session publication/ACK, independent musical track offsets,
+three timing domains, latency-change/seek lifecycle and serial live/frozen
+capacity policy. These are implementation gates, not current capabilities.
+
 See the [2026-09-23 framework audit](architecture-audit-20260923.md) for current
 cross-layer gaps, severity and acceptance gates. `SessionMixState` now supplies
 shared control-thread mix edits and new-session saving to both the offline CLI

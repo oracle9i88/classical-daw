@@ -4,6 +4,17 @@ The public repository is an Alpha engine, not a commercial-ready DAW. Each
 stage below has a concrete acceptance gate; a feature list or screenshot does
 not count as completion.
 
+## Next: multi-instrument realtime graph (design, not implemented)
+
+Follow the [whole-session/PDC decisions and four gates](multi-instrument-realtime-design.md):
+minimal renderer boundary, then one atomic multi-track plan with synthetic
+nonzero-latency verification, then real Pianoteq/SWAM, then the general registry.
+Musical route offset and algorithmic latency stay separate. Initially render
+serially with at most two live AUs; an over-budget configuration must use fewer
+live instances or explicitly validated frozen tracks. Device presentation is
+labelled estimated/unknown until its clock mapping is established. Returned
+plugin errors are isolated by lane; process crashes/hangs are not isolated yet.
+
 ## Completed in this iteration
 
 - Add uninterrupted single-take live plan exchange, held-key ownership and
