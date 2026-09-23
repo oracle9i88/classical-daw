@@ -20,11 +20,13 @@ validating score timing and audio rendering before platform integration.
 - A deliberately limited MusicXML `score-partwise` slice: multiple ordered
   parts with multiple voices/staves, 960-PPQ notes and rests, chords, ties, tuplets,
   meter, step-tempo changes, note velocity, and one escaped lyric text per note with deterministic
-  import/export. MusicXML import accepts positive integral source divisions,
+  import/export. MusicXML import accepts positive decimal source divisions,
   inherits them per part, and supports changes at measure starts. Durations and
   playback offsets must convert exactly to the internal 960-tick grid; export
-  remains at 960 divisions. Fractional source values and mid-measure resolution
-  changes are explicitly unsupported.
+  remains at 960 divisions. Source decimals are parsed as exact fractions, with
+  at most 18 fractional places after trimming trailing zeros and a signed-64-bit
+  mantissa. Values outside these bounds, nonintegral internal ticks and mid-measure
+  resolution changes are explicitly rejected.
 - A deterministic Score-to-SMF bridge for exporting ordered score parts as a
   Type 1 MIDI track per part, retaining note timing, pitch, velocity, voices as
   events, and the complete step-tempo and meter maps. Imported notes retain their original MIDI channels and
@@ -126,8 +128,8 @@ The current MusicXML notation export omits raw MIDI channel events, note routing
 source-message order and release velocity; `MusicXmlExportReport` counts these
 omissions. Step tempos are retained at exact ticks, including changes during held notes.
 The reader respects playback offsets and accepts simple numeric metronome marks;
-repeat-specific tempos, metric modulation, fractional playback offsets and offsets
-crossing measure boundaries fail explicitly. Tempo changes outside the stored
+repeat-specific tempos, metric modulation, offsets not exactly representable as
+internal ticks and offsets crossing measure boundaries fail explicitly. Tempo changes outside the stored
 score extent fail export. No change is silently moved to the start of a measure.
 Meter n/d changes at measure starts are retained; nonstandard notation
 ratios (`bb != 8`), unrebared changes and conflicting part timelines fail explicitly.
@@ -207,6 +209,8 @@ documents intra-measure speed changes, offset rules and exact tempo-map checks
 on the three real MIDI files.
 The [MusicXML divisions record](docs/research/2026-09-23-musicxml-divisions-normalization.md)
 covers exact source-unit conversion and equivalent mixed-resolution corpus fixtures.
+The [fractional timing record](docs/research/2026-09-23-musicxml-fractional-timing.md)
+extends the source units to bounded, exactly parsed decimals.
 
 ## Planned macOS slices
 

@@ -266,37 +266,74 @@ double tempoValue(const std::string& value) {
   return bpm;
 }
 
-Tick integerTimingText(const std::string& text, const std::string& field) {
+// Exact decimal source units, kept separate from the integer engine timeline.
+// Bounds are explicit: <=18 fractional decimal places after trimming trailing zeros,
+// and a signed-64-bit magnitude. No binary floating point participates in timing.
+struct XmlTiming {
+  std::uint64_t numerator = 0;
+  std::uint64_t denominator = 1;
+  bool negative = false;
+
+  bool operator==(const XmlTiming& other) const {
+    return numerator == other.numerator && denominator == other.denominator && negative == other.negative;
+  }
+  bool operator!=(const XmlTiming& other) const { return !(*this == other); }
+};
+
+XmlTiming timingText(const std::string& text, const std::string& field) {
   auto value = decimalText(text, field);
+  XmlTiming result;
+  if (value.front() == '+' || value.front() == '-') {
+    result.negative = value.front() == '-';
+    value.erase(0, 1);
+  }
   const auto point = value.find('.');
+  std::size_t places = 0;
   if (point != std::string::npos) {
-    if (value.find_first_not_of('0', point + 1) != std::string::npos) {
-      throw std::runtime_error("fractional MusicXML " + field + " is unsupported; use integer source units");
+    places = value.size() - point - 1;
+    while (places > 0 && value.back() == '0') { value.pop_back(); --places; }
+    value.erase(point, 1);
+  }
+  if (places > 18) throw std::runtime_error("MusicXML " + field + " exceeds 18 fractional decimal places");
+  for (std::size_t i = 0; i < places; ++i) result.denominator *= 10;
+  const auto limit = static_cast<std::uint64_t>(std::numeric_limits<Tick>::max()) + (result.negative ? 1U : 0U);
+  for (const char digit : value) {
+    const auto number = static_cast<std::uint64_t>(digit - '0');
+    if (result.numerator > (limit - number) / 10) throw std::runtime_error("MusicXML " + field + " decimal magnitude exceeds range");
+    result.numerator = result.numerator * 10 + number;
+  }
+  const auto common = std::gcd(result.numerator, result.denominator);
+  result.numerator /= common;
+  result.denominator /= common;
+  if (result.numerator == 0) result.negative = false;
+  return result;
+}
+
+// raw / divisions * 960. Cancel all factors before multiplication, including
+// decimal scales; large ratios may fit even when intermediate products do not.
+Tick normalizeXmlTicks(const XmlTiming& raw, const XmlTiming& divisions, const std::string& field) {
+  if (raw.numerator == 0) return 0;
+  std::uint64_t numerators[]{raw.numerator, divisions.denominator, kTicksPerQuarter};
+  std::uint64_t denominators[]{raw.denominator, divisions.numerator};
+  for (auto& denominator : denominators) {
+    for (auto& numerator : numerators) {
+      const auto common = std::gcd(numerator, denominator);
+      numerator /= common;
+      denominator /= common;
     }
-    value.erase(point);
+    if (denominator != 1) throw std::runtime_error("MusicXML " + field + " cannot be represented exactly at 960 ticks per quarter");
   }
-  if (value.empty() || value == "+" || value == "-") value += '0';
-  return integerText(value, field);
+  const auto limit = static_cast<std::uint64_t>(std::numeric_limits<Tick>::max()) + (raw.negative ? 1U : 0U);
+  std::uint64_t ticks = 1;
+  for (const auto numerator : numerators) {
+    if (ticks > limit / numerator) throw std::runtime_error("MusicXML " + field + " conversion overflows tick range");
+    ticks *= numerator;
+  }
+  if (raw.negative && ticks == limit) return std::numeric_limits<Tick>::min();
+  return raw.negative ? -static_cast<Tick>(ticks) : static_cast<Tick>(ticks);
 }
 
-// Reduce first: raw * 960 could overflow even when the result fits. Require
-// exact ticks instead of independently rounding durations and drifting voices.
-Tick normalizeXmlTicks(Tick raw, Tick divisions, const std::string& field) {
-  const Tick common = std::gcd(divisions, kTicksPerQuarter);
-  const Tick denominator = divisions / common;
-  const Tick numerator = kTicksPerQuarter / common;
-  if (raw % denominator != 0) {
-    throw std::runtime_error("MusicXML " + field + " cannot be represented exactly at 960 ticks per quarter");
-  }
-  const Tick units = raw / denominator;
-  if (units > std::numeric_limits<Tick>::max() / numerator ||
-      units < std::numeric_limits<Tick>::min() / numerator) {
-    throw std::runtime_error("MusicXML " + field + " conversion overflows tick range");
-  }
-  return units * numerator;
-}
-
-Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool direction, Tick divisions) {
+Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool direction, const XmlTiming& divisions) {
   Tick result = 0;
   bool seen = false;
   for (const auto& child : childElements(xml, parent.content_start, parent.content_end)) {
@@ -307,7 +344,7 @@ Tick playbackOffset(const std::string& xml, const XmlBlock& parent, bool directi
     const auto sound = attribute(child.opening, "sound", &present);
     if (present && sound != "yes" && sound != "no") throw std::runtime_error("invalid MusicXML offset sound flag");
     if (!direction || sound == "yes") {
-      const auto raw = integerTimingText(xml.substr(child.content_start, child.content_end - child.content_start), "tempo offset");
+      const auto raw = timingText(xml.substr(child.content_start, child.content_end - child.content_start), "tempo offset");
       result = normalizeXmlTicks(raw, divisions, "tempo offset");
     } else (void)decimalText(xml.substr(child.content_start, child.content_end - child.content_start), "visual offset");
   }
@@ -788,7 +825,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       Tick measure_start = 0;
       // Legacy files with no declaration use 960. Explicit declarations are
       // inherited within this part only, never from a preceding part.
-      Tick source_divisions = kTicksPerQuarter;
+      XmlTiming source_divisions{static_cast<std::uint64_t>(kTicksPerQuarter), 1, false};
       TimeSignature active_meter{};
       NotationMeters local_meters{{0, active_meter}};
       const auto measures = findBlocks(xml, "measure", part_block.content_start, part_block.content_end);
@@ -845,9 +882,9 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
               throw std::runtime_error("MusicXML divisions declarations must precede timed events in a measure");
             }
             const auto& declaration = divisions.front();
-            const Tick value = integerTimingText(xml.substr(declaration.content_start,
+            const auto value = timingText(xml.substr(declaration.content_start,
                 declaration.content_end - declaration.content_start), "divisions");
-            if (value <= 0) throw std::runtime_error("MusicXML divisions must be positive");
+            if (value.negative || value.numerator == 0) throw std::runtime_error("MusicXML divisions must be positive");
             if (have_measure_divisions && value != source_divisions) {
               throw std::runtime_error("conflicting MusicXML divisions at measure start");
             }
@@ -936,7 +973,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           continue;  // Directions never advance the note cursor or bar extent.
         }
         have_timed_event = true;
-        const Tick raw_duration = integerTimingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
+        const auto raw_duration = timingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
         const Tick duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
         if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
         if (event.tag == "backup") {

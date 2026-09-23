@@ -50,14 +50,16 @@ velocity as a percentage of MIDI forte 90; this is not a hairpin/direction model
 The MusicXML adapter runs outside the
 realtime path and normalizes multiple ordered parts into the 960-PPQ core,
 retaining multiple voices/staves inside each measure. Each part inherits its own
-positive integral source divisions; an undeclared part retains the legacy 960
+positive decimal source divisions; an undeclared part retains the legacy 960
 fallback. Leading declarations can change at measure boundaries but must precede
 notes, cursor moves and playback-tempo events. Durations and playback offsets
-convert by exact integer ratio: reduce divisions against 960 before multiplying,
-reject a nonintegral result, and check signed overflow before multiplication.
-No duration rounding is performed. This deliberately rejects fractional source
-divisions/durations/playback offsets and mid-measure resolution declarations.
-Integral decimal spellings such as `24.000` are accepted. The stored Score and
+convert by exact rational arithmetic. Parse each decimal as numerator/denominator
+without binary floating point; trim trailing fractional zeros, allow at most 18
+remaining fractional places and require its unscaled mantissa to fit signed 64 bits.
+Reduce all factors of `raw / divisions * 960` before multiplying; reject a nonintegral
+result or signed tick overflow. Canonical fractions also make declarations such as
+`+.50` and `0.5000` compare equal. No duration rounding is performed. Mid-measure
+resolution declarations remain unsupported. The stored Score and
 MusicXML writer remain at 960 units, so no project version change is needed. It can be replaced by a full XML reader later
 without changing the callback or transport contracts.
 
@@ -168,8 +170,8 @@ identical BPM declarations coalesce; conflicting BPM values fail. Marks never
 advance the note cursor, split held notes or extend a measure. A first mark after
 tick zero leaves the initial default at 120 BPM. Numeric metronomes without an
 explicit sound tempo support beat units maxima through 1024th and up to three
-dots. Text/ranges, metric modulation, repeat-specific tempos, fractional playback
-offsets and offsets across a measure boundary are refused. Sound tempo is
+dots. Text/ranges, metric modulation, repeat-specific tempos, playback offsets not exactly representable as
+internal ticks and offsets across a measure boundary are refused. Sound tempo is
 authoritative when both sound and metronome are present. `omitted_tempo_changes`
 remains in the API and is zero on successful export. No project version change
 is needed: v6 already retains these tempo fields.

@@ -108,7 +108,7 @@ void equivalence(const std::filesystem::path& path) {
 }
 void failures(const std::filesystem::path& path) {
   std::vector<std::string> bodies;
-  for (const std::string& invalid : {"0","-1","0.5","1e3","9223372036854775808",""}) bodies.push_back(attribute(invalid)+note("960"));
+  for (const std::string& invalid : {"0","-1","0.0000000000000000001","1e3","9223372036854775808",""}) bodies.push_back(attribute(invalid)+note("960"));
   bodies.push_back("<attributes><divisions/></attributes>"+note("1"));
   bodies.push_back("<attributes><divisions>24</divisions><divisions>48</divisions></attributes>"+note("24"));
   bodies.push_back(attribute("24")+attribute("48")+note("24"));
@@ -122,7 +122,7 @@ void failures(const std::filesystem::path& path) {
   bodies.push_back(attribute("1920")+note("1"));
   bodies.push_back(attribute("1")+note(value(std::numeric_limits<Tick>::max())));
   bodies.push_back(attribute("1")+"<sound tempo='90'><offset>"+value(std::numeric_limits<Tick>::min())+"</offset></sound>");
-  bodies.push_back(attribute("24")+note("0.5"));
+  bodies.push_back(attribute("24")+note("0.01"));
   bodies.push_back(attribute("24")+note("0"));
   daw::Score destination; destination.bpm = 71; destination.tempo_changes = {{123,47}};
   destination.parts={{"sentinel","Original",{{1,0,{},960}}}};

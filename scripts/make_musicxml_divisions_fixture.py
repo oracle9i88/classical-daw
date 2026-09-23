@@ -12,7 +12,15 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
-def generate(source, destination):
+def format_units(amount, fractional):
+    if not fractional:
+        return str(amount)
+    magnitude = abs(amount)
+    value = f"{magnitude // 1000}.{magnitude % 1000:03d}".rstrip("0").rstrip(".")
+    return ("-" if amount < 0 else "") + value
+
+
+def generate(source, destination, fractional=False):
     raw = source.read_bytes()
     if any(marker in raw for marker in (b"<!DOCTYPE", b"<!ENTITY", b"<!--", b"<![CDATA[")):
         raise ValueError("expected canonical XML without declarations/comments/entities")
@@ -33,12 +41,12 @@ def generate(source, destination):
             # integral multiple elsewhere. Vary independently in every part.
             common = math.gcd(960, *amounts)
             divisions = 960 // common if (part_index + measure_index) % 2 == 0 else 20160
-            units.add(divisions)
+            units.add(format_units(divisions, True) if fractional else divisions)
             for node, amount in zip(nodes, amounts):
                 scaled, remainder = divmod(amount * divisions, 960)
                 if remainder:
                     raise AssertionError("fixture generator would alter a musical position")
-                node.text = str(scaled)
+                node.text = format_units(scaled, fractional)
             attributes = measure.find("attributes")
             if attributes is None:
                 attributes = ET.Element("attributes")
@@ -47,24 +55,26 @@ def generate(source, destination):
             if declaration is None:
                 declaration = ET.Element("divisions")
                 attributes.insert(0, declaration)
-            declaration.text = str(divisions)
+            declaration.text = format_units(divisions, fractional)
             counts += 1
     encoded = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     with destination.open("xb") as output:
         output.write(encoded)
     return {"source": str(source), "source_sha256": hashlib.sha256(raw).hexdigest(),
             "output": str(destination), "output_sha256": hashlib.sha256(encoded).hexdigest(),
-            "measures": counts, "divisions": sorted(units)}
+            "measures": counts, "divisions": sorted(units), "fractional": fractional}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fractional", action="store_true",
+                        help="divide all generated units by 1000 using exact decimal spellings")
     parser.add_argument("output_directory", type=Path)
     parser.add_argument("sources", type=Path, nargs="+")
     args = parser.parse_args()
     args.output_directory.mkdir()  # Refuse overwrite/reuse.
     for index, source in enumerate(args.sources, 1):
-        result = generate(source, args.output_directory / f"mixed-{index}.musicxml")
+        result = generate(source, args.output_directory / f"mixed-{index}.musicxml", args.fractional)
         print(json.dumps(result, ensure_ascii=False))
 
 

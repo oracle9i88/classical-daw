@@ -62,8 +62,8 @@ not count as completion.
 - Add a first MusicXML vertical slice: multiple ordered `score-partwise` parts
   with multiple voices/staves, notes, rests, chords, ties, tuplets, meter,
   tempo, and 960-PPQ internal timing/export, including one lyric text per note.
-  Normalize positive integral MusicXML divisions independently per part and at
-  measure starts; reject unrepresentable ticks instead of rounding the score.
+  Normalize positive decimal MusicXML divisions independently per part and at
+  measure starts using bounded exact fractions; reject unrepresentable ticks instead of rounding the score.
 - Add a validated Score-to-SMF bridge that exports ordered multi-part scores to
   deterministic Type 1 MIDI tracks, retains explicit channels or assigns the
   default part channel, and does not damage an existing destination on conversion
@@ -115,7 +115,7 @@ locks, and that a 48 kHz / 256-frame stream survives a device switch.
 
 ### M1: classical editing slice
 
-Prioritize MusicXML measure-label support, fractional source timing, richer tempo notation and
+Prioritize MusicXML measure-label support, richer tempo notation and
 editing commands for re-barring after a meter change, then
 extend the offline controller support to realtime playback and add an instrument/port routing layer
 (including GM percussion and orchestras spanning multiple MIDI ports).

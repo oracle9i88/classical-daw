@@ -1,5 +1,8 @@
 # MusicXML 源时间单位归一化：2026-09-23
 
+后续：[小数时间单位](2026-09-23-musicxml-fractional-timing.md) 已扩展本文当时的整数
+输入限制。下面保留该轮的实现范围与验证记录。
+
 本轮让 MusicXML 导入不再局限于 `<divisions>960</divisions>`。正整数源精度可在
 各 part 独立设置、沿用或在小节开头改变；音符、休止符、backup、forward、声音速度
 偏移统一精确换算到内部 960 tick 网格。工程格式仍为 v6，导出仍使用 960 divisions。
