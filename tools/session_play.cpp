@@ -42,7 +42,7 @@ void end(std::istringstream& input) {
 void help() {
   std::cout << "play | pause | stop | seek SECONDS | master DB\n"
                "gain PART DB | balance PART -1..1 | mute PART 0|1 | solo PART 0|1\n"
-               "mix | save NEW_FILENAME | status | help | quit\n"
+               "undo | redo | mix | save NEW_FILENAME | status | help | quit\n"
                "Starts paused. Save writes a new sibling session; originals are never overwritten.\n";
 }
 }
@@ -130,6 +130,15 @@ int main(int argc, char** argv) {
         if (word.empty()) continue;
         if (word == "quit") { end(input); break; }
         if (word == "help") { end(input); help(); continue; }
+        if (word == "undo" || word == "redo") {
+          end(input);
+          if (word == "undo" ? !mix.canUndo() : !mix.canRedo())
+            throw std::runtime_error(word == "undo" ? "no mix edit to undo" : "no mix edit to redo");
+          if (!(word == "undo" ? mix.undo(&player) : mix.redo(&player)))
+            throw std::runtime_error("command queue full; history and mix unchanged");
+          std::cout << (word == "undo" ? "Undid" : "Redid") << " mix edit; revision=" << mix.revision() << '\n';
+          continue;
+        }
         if (word == "mix") {
           end(input);
           std::cout << daw::serializeSession(mix.current());
@@ -150,7 +159,8 @@ int main(int argc, char** argv) {
           end(input); const auto s = player.status();
           std::cout << (s.playing ? "Playing " : "Paused ") << static_cast<double>(s.frame) / 48000
                     << "s, last-block peak=" << s.block_peak << ", clipped samples=" << s.clipped_samples
-                    << ", rejected commands=" << s.rejected_commands << ", callback errors=" << output.xrunCount() << '\n';
+                    << ", rejected commands=" << s.rejected_commands << ", callback errors=" << output.xrunCount()
+                    << ", mix revision=" << mix.revision() << ", undo=" << mix.canUndo() << ", redo=" << mix.canRedo() << '\n';
           continue;
         }
         daw::PlaybackCommand command;

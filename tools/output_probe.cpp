@@ -2,6 +2,7 @@
 // an observing wrapper replaces their samples with silence before the speaker.
 #include "coreaudio_output.hpp"
 #include "daw/session_player.hpp"
+#include "daw/session_mix.hpp"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -46,6 +47,7 @@ int main() {
     buffers.push_back({48000, 2, std::vector<float>(48000 * 2 * 10, .1F)});
     buffers.push_back({48000, 2, std::vector<float>(48000 * 2 * 10, .2F)});
     daw::SessionPlayer player(session, std::move(buffers));
+    daw::SessionMixState mix(session);
     SilentObserver observer(player);
     daw::CoreAudioOutput output;
     std::string error;
@@ -62,11 +64,16 @@ int main() {
     };
     send(A::Play); level(.3);
     require(player.status().frame > 0, "playback clock not advancing");
-    send(A::Solo, 1, 1); level(.2);
-    send(A::Mute, 1, 1); level(0);
-    send(A::Solo, 0, 1); level(.1);
-    send(A::Gain, 0, -20 * std::log10(2.)); level(.05);
-    send(A::Master, 0, -20 * std::log10(2.)); level(.025);
+    using P = daw::MixParameter;
+    require(mix.apply({P::Solo, "cello", 1}, &player), "solo rejected"); level(.2);
+    require(mix.apply({P::Mute, "cello", 1}, &player), "mute rejected"); level(0);
+    require(mix.apply({P::Solo, "piano", 1}, &player), "solo rejected"); level(.1);
+    require(mix.apply({P::Gain, "piano", -20 * std::log10(2.)}, &player), "gain rejected"); level(.05);
+    require(mix.apply({P::Master, "", -20 * std::log10(2.)}, &player), "master rejected"); level(.025);
+    require(mix.undo(&player), "master undo rejected"); level(.05);
+    require(mix.undo(&player), "gain undo rejected"); level(.1);
+    require(mix.redo(&player), "gain redo rejected"); level(.05);
+    require(mix.redo(&player), "master redo rejected"); level(.025);
     send(A::Pause);
     until([&] { return !player.status().playing; }, "pause not applied"); level(0);
     const auto paused_at = player.status().frame;
@@ -90,7 +97,7 @@ int main() {
     require(output.xrunCount() == 0 && player.status().clipped_samples == 0 &&
         player.status().rejected_commands == 0, "errors during restart");
     require(output.setAudioSource(nullptr, &error), "stopped source detach failed");
-    std::cout << "PASS: actual hardware callbacks, play/pause/seek/stop, gain, master, mute/solo, restart; speaker output silenced\n";
+    std::cout << "PASS: actual hardware callbacks, play/pause/seek/stop, gain, master, mute/solo, undo/redo, restart; speaker output silenced\n";
     return 0;
   } catch (const std::exception& e) { std::cerr << "Output probe failed: " << e.what() << '\n'; return 1; }
 }

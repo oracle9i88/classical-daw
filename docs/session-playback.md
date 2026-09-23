@@ -24,6 +24,8 @@ solo cello 1
 gain cello -3
 balance cello 0.2
 master -6
+undo
+redo
 pause
 seek 12
 play
@@ -50,8 +52,22 @@ score, state and frozen audio. Existing files are never overwritten, including
 dangling symlinks. Invalid edits or a full audio command queue leave the saved
 target state unchanged. The save records accepted targets, not intermediate
 gain-ramp samples. Reopen the new session to restore them; use the offline
-renderer to export WAV. Original source files remain unchanged. Mix undo/redo,
-scheduled autosave and whole-project transactions remain pending.
+renderer to export WAV. Original source files remain unchanged.
+
+`undo` and `redo` restore accepted mix targets through the same playback queue,
+without seeking or restarting playback. The default history holds the most
+recent 128 single-parameter edits. New edits after undo discard the old redo
+branch; setting an already-current value is a no-op and preserves that branch.
+Invalid edits, queue overflow or preparation/allocation failure leave targets,
+history and revision unchanged. Track mute/solo priority remains the same.
+`status` reports the mix revision and available undo/redo directions. Successful
+edits, undo and redo increment the revision; transport and no-ops do not.
+
+Saving keeps the current target settings and leaves the in-memory history
+available. Reopening starts a new history at revision zero. The undo stack is
+not serialized, nor is it yet unified with score edits. Multi-parameter grouped
+edits, drag coalescing, scheduled autosave and whole-project transactions remain
+pending. Gain ramps still take 5 ms to reach restored targets.
 
 New-session saving writes a complete staged file and atomically publishes it
 with an exclusive hard link. Unsupported filesystems fail explicitly; no
@@ -125,6 +141,8 @@ replacing them with zeros sent to the speaker. It tests play/pause/seek/stop,
 mute/solo/gain/master, source/device replacement guards and output restart.
 `check_session_live_save.py` additionally tests native commands, save/reopen,
 invalid edits and overwrite protection on a temporary copy while staying paused.
+It also saves an undone mix, a redone mix and a new history branch, checks their
+reopened audio level ratios, and verifies a fresh history after reopening.
 These opt-in hardware checks are deliberately outside CTest and GitHub CI.
 They do not capture microphone input or change system volume.
 
@@ -138,3 +156,12 @@ with **zero callback errors and LastRenderError=0**, and all controls passed.
 These are actual hardware-callback and numerical checks, not a claim of human
 listening approval, sample-perfect device resampling, long-duration stability,
 allocation interception for every C library, or realtime instrument-plugin support.
+
+The history iteration passed **32/32 normal + 32/32 ASan/UBSan tests**. The new
+tests cover all five mix parameters, bounded-history eviction, branch semantics,
+no-op preservation, queue-full rollback and injected C++ allocation failures
+during edit/undo/redo (including unchanged audio targets after failure).
+The actual hardware probe also verified undo/redo levels through the shared
+mix controller, with 10,032 frames before restart and zero callback errors;
+speaker output remained silenced. The native save/reopen checker passed the
+undo/redo/branch checks on the real piano/cello bundle without modifying it.

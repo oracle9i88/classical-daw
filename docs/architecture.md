@@ -7,6 +7,12 @@ cross-layer gaps, severity and acceptance gates. `SessionMixState` now supplies
 shared control-thread mix edits and new-session saving to both the offline CLI
 and the native player. It records accepted target settings only after successful
 queue submission; it is not yet a unified Score/Session/media undo document.
+Its bounded history now stores forward/inverse single-parameter mix edits by
+stable part ID. Edit preparation and allocation complete before queue submission;
+only successful submissions advance targets, cursor and monotonic revision.
+Undo/redo use one inverse/forward command, retaining the same failure guarantee.
+No-op edits preserve redo. Reopen resets this in-memory history; source media
+and the score history remain separate from it.
 
 ## Time domains
 

@@ -35,6 +35,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state
   unification remains pending; see the [architecture audit](docs/architecture-audit-20260923.md).
+- Bounded native mix undo/redo with branch handling and revisions. Accepted
+  targets, playback commands and history advance together; invalid/full-queue/
+  allocation-failed edits leave them unchanged. Saved settings reopen correctly;
+  history itself remains in memory and separate from score history.
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.

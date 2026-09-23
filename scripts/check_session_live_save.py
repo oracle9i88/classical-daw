@@ -32,24 +32,41 @@ def main():
         root = Path(temp) / "bundle"
         shutil.copytree(source, root)
         session = root / "session.dawsession"
-        commands = ("solo cello 1\ngain cello -2\nbalance cello -0.3\nmaster -1\n"
+        commands = ("undo\nsolo cello 1\ngain cello -2\nbalance cello -0.3\nmaster -1\n"
                     "gain missing 2\nmute piano 0.5\nmix\n"
-                    "save live.dawsession\nsave live.dawsession\nstatus\nquit\n")
+                    "undo\nsave undone.dawsession\nredo\nsave live.dawsession\nsave live.dawsession\n"
+                    "undo\nmaster -3\nredo\nundo\ngain cello -4\nredo\nsave branch.dawsession\nstatus\nquit\n")
         live = run("daw_session_play", session, stdin=commands)
         assert "Saved accepted mix settings:" in live.stdout
         assert "Paused 0s" in live.stdout and "callback errors=0" in live.stdout
         assert "unknown part ID" in live.stderr and "mute/solo must be 0 or 1" in live.stderr
         assert "destination session already exists" in live.stderr
+        assert "no mix edit to undo" in live.stderr and "no mix edit to redo" in live.stderr
+        assert "mix revision=10, undo=1, redo=0" in live.stdout
         run("daw_session_edit", session, root / "expected.dawsession", "--solo", "cello", 1,
             "--gain", "cello", -2, "--balance", "cello", -0.3, "--master", -1)
         assert (root / "live.dawsession").read_bytes() == (root / "expected.dawsession").read_bytes()
+        run("daw_session_edit", session, root / "expected-undone.dawsession", "--solo", "cello", 1,
+            "--gain", "cello", -2, "--balance", "cello", -0.3)
+        assert (root / "undone.dawsession").read_bytes() == (root / "expected-undone.dawsession").read_bytes()
+        run("daw_session_edit", session, root / "expected-branch.dawsession", "--solo", "cello", 1,
+            "--gain", "cello", -4, "--balance", "cello", -0.3)
+        assert (root / "branch.dawsession").read_bytes() == (root / "expected-branch.dawsession").read_bytes()
         reopened = json.loads(run("daw_session_play", "--check", root / "live.dawsession").stdout)
         assert reopened["rms"] > 0 and reopened["clipped_samples"] == 0 and not reopened["playing"]
         assert reopened["final_frame"] == reopened["frames"]
+        undone = json.loads(run("daw_session_play", "--check", root / "undone.dawsession").stdout)
+        branch = json.loads(run("daw_session_play", "--check", root / "branch.dawsession").stdout)
+        assert abs(undone["rms"] / reopened["rms"] - 10 ** (-2 / 20)) < 1e-8
+        assert abs(branch["rms"] / undone["rms"] - 10 ** (-2 / 20)) < 1e-8
+        reopened_cli = run("daw_session_play", root / "undone.dawsession", stdin="status\nundo\nquit\n")
+        assert "mix revision=0, undo=0, redo=0" in reopened_cli.stdout
+        assert "no mix edit to undo" in reopened_cli.stderr
         assert not list(root.glob("*.saving")), "staging residue left behind"
     assert before == hashes(), "source bundle modified"
     print(json.dumps({"result": "PASS", "saved_settings_match_offline_editor": True,
-                      "native_start_paused": True, "reopened": reopened}, indent=2))
+                      "native_start_paused": True, "undo_redo_branch_save_reload": "PASS",
+                      "reopened": reopened}, indent=2))
 
 
 if __name__ == "__main__":
