@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -88,7 +89,7 @@ void describe(const Workload& workload, bool polyphonic) {
             << " max_sounding_midi_keys=" << workload.max_sounding_keys
             << " pedal_cycle_seconds=" << (polyphonic ? 4 : 2)
             << " pedal_hold_seconds=" << (polyphonic ? 3 : 1)
-            << " cc11_events_per_second=20 budget_limit=" << kBudgetLimit << '\n';
+            << " cc11_events_per_second=20 complete_callback_budget_limit=" << kBudgetLimit << '\n';
 }
 
 class Probe final : public daw::AudioOutputSource {
@@ -116,8 +117,9 @@ class Probe final : public daw::AudioOutputSource {
     position += frames;
     sent += n;
     const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    // CoreAudioOutput can split a hardware callback into short render blocks.
-    // Compare every block against its OWN duration, never a fixed 256/rate.
+    // Subdivision ratios are diagnostic only. Fixed per-call cost exaggerates
+    // a short tail's ratio; only CoreAudioOutput's COMPLETE callback timer is
+    // used for the headroom/deadline acceptance gate.
     const auto budget_ratio = seconds / (static_cast<double>(frames) / kRate);
     max_seconds = std::max(max_seconds, seconds);
     max_budget_ratio = std::max(max_budget_ratio, budget_ratio);
@@ -173,26 +175,39 @@ int main(int argc, char** argv) {
     Probe probe(au, workload);
     daw::CoreAudioOutput output;
     std::string error;
-    if (!output.setAudioSource(&probe, &error) || !output.start(&error)) throw std::runtime_error(error);
-    probe.armed.store(true);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(35);
-    while (probe.frame.load() < kSeconds * kRate && !probe.failed.load()) {
-      if (std::chrono::steady_clock::now() > deadline || !output.checkHealth(&error)) {
-        throw std::runtime_error("output failure/timeout: " + error);
+    std::exception_ptr run_failure;
+    try {
+      if (!output.setAudioSource(&probe, &error) || !output.start(&error)) throw std::runtime_error(error);
+      probe.armed.store(true);
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(35);
+      while (probe.frame.load() < kSeconds * kRate && !probe.failed.load()) {
+        if (std::chrono::steady_clock::now() > deadline || !output.checkHealth(&error)) {
+          throw std::runtime_error("output failure/timeout: " + error);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    } catch (...) { run_failure = std::current_exception(); }
+    const auto output_diagnostics = output.diagnostics(); // device properties, control thread, before stop.
     output.stop();
+    const auto timing = output.callbackTimingAfterStop();
+    // Emit every measured field BEFORE either a workload or timing gate can
+    // fail. Preserve the original failed run's log; do not keep only PASS.
+    std::cout << output_diagnostics << '\n' << daw::formatCallbackTiming(timing) << '\n';
     std::cout << "frames=" << probe.position << " sent=" << probe.sent << " peak=" << probe.peak
-              << " callback_errors=" << output.xrunCount() << " deadline_misses=" << probe.deadline_misses
-              << " headroom_misses=" << probe.headroom_misses << " render_blocks=" << probe.blocks
-              << " min_block_frames=" << probe.min_block_frames << " max_block_frames=" << probe.max_block_frames
-              << " max_callback_seconds=" << probe.max_seconds
+              << " callback_errors=" << output.xrunCount()
+              << " render_block_ratio_ge_1_count=" << probe.deadline_misses
+              << " render_block_ratio_ge_0_5_count=" << probe.headroom_misses << " render_blocks=" << probe.blocks
+              << " min_render_block_frames=" << probe.min_block_frames << " max_render_block_frames=" << probe.max_block_frames
+              << " max_render_block_seconds=" << probe.max_seconds
               << " max_render_block_budget_ratio=" << probe.max_budget_ratio
-              << " reported_plugin_latency_seconds=" << au.realtimeLatencySeconds() << '\n';
-    if (probe.failed.load() || probe.peak <= 0 || probe.sent != workload.events.size() || output.xrunCount() ||
-        probe.deadline_misses || probe.max_budget_ratio >= kBudgetLimit) {
-      throw std::runtime_error("real AU callback acceptance failed (requires every render block below 50% of its frame budget)");
+              << " reported_plugin_latency_seconds=" << au.realtimeLatencySeconds() << '\n' << std::flush;
+    if (run_failure) std::rethrow_exception(run_failure);
+    if (probe.failed.load() || probe.peak <= 0 || probe.sent != workload.events.size() || output.xrunCount()) {
+      throw std::runtime_error("real AU callback acceptance failed (workload, audio or callback error)");
+    }
+    if (!timing.callback_count || timing.invalid_budget_callbacks || timing.deadline_misses ||
+        timing.max_callback_budget_ratio >= kBudgetLimit) {
+      throw std::runtime_error("real AU callback acceptance failed (requires every complete client callback below 50% of its frame budget; excludes surrounding HAL/driver work)");
     }
     std::cout << "PASS 30 seconds real Pianoteq in CoreAudio callbacks, note/release offsets, CC64 and CC11; speaker output silenced\n";
   } catch (const std::exception& e) {

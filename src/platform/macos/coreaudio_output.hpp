@@ -3,6 +3,7 @@
 #include "daw/realtime.hpp"
 #include "daw/audio_output_source.hpp"
 #include "daw/output_health.hpp"
+#include "daw/callback_timing.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
 
@@ -60,6 +61,11 @@ class CoreAudioOutput {
   // Control-thread diagnostic only; reads AU/device properties, never called
   // by renderCallback. Does not change the system sample rate or buffer size.
   std::string diagnostics() const;
+  // Control thread only, after stop() has returned. Throws if an AU still
+  // exists, so no caller may race the callback's plain statistics fields.
+  // Covers the complete client render callback, excluding surrounding output
+  // AU conversion/HAL/driver work. A new start attempt resets the statistics.
+  [[nodiscard]] CallbackTimingStats callbackTimingAfterStop() const;
   [[nodiscard]] std::uint32_t currentDeviceId() const noexcept { return current_device_id_; }
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
   [[nodiscard]] std::uint64_t xrunCount() const noexcept { return callback_errors_.load(std::memory_order_relaxed); }
@@ -85,6 +91,7 @@ class CoreAudioOutput {
   std::atomic<bool> running_{false};
   std::atomic<std::uint64_t> callback_errors_{0};
   std::atomic<std::uint64_t> rendered_frames_{0};
+  CallbackTimingStats callback_timing_;
   std::uint32_t current_device_id_ = 0;
   std::uint32_t maximum_callback_frames_ = 0;
 };

@@ -10,7 +10,11 @@ not count as completion.
   controller chase to the real AU path, with transactional command admission
   and no callback plan destruction. Balance variable device slices to avoid
   tiny render remainders. Add polyphony, callback allocation and concurrent
-  exchange gates; [evidence and limits](live-performance.md).
+  exchange checks. Historical load receipts used a subblock proxy; the current
+  headroom gate measures the complete client callback instead. Reject already-
+  processed onset edits (sent or conflict-suppressed) at the audio boundary
+  before accepting editor history, including undo/redo;
+  [policy, corrected measurement scope and evidence](live-performance.md).
 - Remove legacy ScoreHistory's repeated deep copies of retained states using
   immutable shared snapshots; allocation-volume and failure-injection tests
   guard it. This is not a claim of full legacy command migration.

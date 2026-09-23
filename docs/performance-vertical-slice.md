@@ -50,6 +50,13 @@ directory and preserves the original document.
 The first gate restarted audition on valid edits. The current player publishes
 ready immutable plans to the next engine quantum using the same AU and sample
 clock. Invalid/busy submissions preserve the document, history and playing run.
+An onset edit for a note already processed in this pass is rejected in full.
+This covers sent attacks, including notes since released, and attacks skipped
+because of a same-key conflict; a skipped attack is not claimed to have sounded.
+The per-run onset lock is not cleared by repitching. The audio thread decides at
+the exchange boundary and the editor waits for acknowledgement before accepting
+the command. The visible rejection leaves saved data and undo/redo unchanged;
+stop playback before making that onset change.
 Take/instrument-state changes require stopped playback. Stop/dispose and state
 restoration still happen only on the control thread. Device faults stop playback; the
 accepted document remains saveable. The CLI uses a bounded input buffer and
@@ -141,13 +148,17 @@ build/daw_au_realtime_probe /path/to/piano.aupreset
 
 One real Pianoteq instance received 690 messages (notes, releases, CC64 and CC11)
 under actual CoreAudio callbacks for 30 seconds. Result: 1,443,909 frames,
-callback errors **0**, measured callback deadline misses **0**, worst callback
-1.20517 ms, plugin-reported latency **0 s**. Samples were measured before being
-silenced at speaker output. Callback errors and measured processing deadlines
-are observations from this run, not a claim to detect every possible OS glitch.
+host callback errors **0**, measured subblock budget overruns **0**, worst
+render-subblock duration 1.20517 ms, plugin-reported latency **0 s**. The original
+receipt called this `max_callback_seconds`, but timing was inside the source's
+subblock render method. Samples were measured before being silenced at speaker
+output. These counters do not independently observe OS xruns or the complete
+DefaultOutput/HAL processing duration.
 This was a **one-key-at-a-time** workload, not a polyphony benchmark; its margin
 does not establish capacity for pedal-held chords or an orchestra. The later
-live gate adds a ten-key pedal workload and a strict <50% per-quantum budget.
+live gate adds a ten-key pedal workload. Its original <50% per-quantum proxy
+has been replaced with a <50% complete-client-callback budget gate; see the
+[measurement correction](live-performance.md#corrected-load-gate-the-complete-client-callback).
 
 The vertical acceptance is opt-in, never part of CI/CTest:
 

@@ -357,6 +357,229 @@ void rejectInvalidLivePlansAtomically() {
   r.exactly(1,0,160); r.exactly(2,256,384);
 }
 
+void guardedOnsetDecisionsAreAtomic() {
+  using Decision = daw::LivePerformanceStream::Decision;
+  Recorder held(plan({{1,32,400}},768,{cc(0,64,127),cc(0,11,70)}));
+  held.read();
+  const auto before = held.events.size();
+  const auto original_end = held.stream.endFrame();
+  const auto candidate = plan({{1,320,600}},1024,{cc(0,64,0),cc(0,11,12)});
+  const auto ticket = held.stream.submit(candidate,.125,1,{1});
+  const auto pending = held.stream.receipt(ticket);
+  require(pending.decision == Decision::Pending && pending.ticket == ticket &&
+          pending.publish_begin_frame == 128 && pending.publish_end_frame == 128 &&
+          held.stream.hasPendingUpdate() && held.stream.appliedRevision() == 0,
+          "guarded publication was mistaken for callback acceptance");
+  rejects([&]{held.stream.submit(candidate,.25,2,{1});},
+          "pending guarded request was overwritten before its decision");
+  const auto unchanged = held.read();
+  const auto rejected = held.stream.waitForDecision(ticket,std::chrono::milliseconds(0));
+  require(rejected.decision == Decision::RejectedStartedOnset && rejected.ticket == ticket &&
+          rejected.revision == 1 && rejected.note_id == 1 && rejected.frame == 128 &&
+          rejected.publish_begin_frame == 128 && rejected.publish_end_frame == 128,
+          "held onset edit lacked its precise rejection receipt");
+  require(unchanged.revision == 0 && unchanged.gain == .5 && held.stream.appliedRevision() == 0 &&
+          held.stream.appliedFrame() == 0 && held.stream.endFrame() == original_end &&
+          !held.stream.hasPendingUpdate() && held.events.size() == before &&
+          held.stream.liveUpdateCountAfterStop() == 0,
+          "guard rejection changed notes, controllers, gain, tail or applied revision");
+  require(!held.stream.cancelPending(ticket), "accepted rejection could still be cancelled");
+
+  // Rejection consumes a mailbox ticket, not an editor revision. The same
+  // rejected revision can be retried, with no ABA from its old receipt.
+  const auto retry = held.stream.submit(candidate,.125,1,{1,1});
+  require(retry > ticket, "retry reused an old request identity");
+  rejects([&]{(void)held.stream.receipt(ticket);}, "stale request receipt was accepted after retry");
+  held.read();
+  require(held.stream.waitForDecision(retry).decision == Decision::RejectedStartedOnset &&
+          held.stream.appliedRevision() == 0 && held.events.size() == before,
+          "repeated guard rejection consumed editor revision or emitted candidate controls");
+  held.read();
+  held.exactly(1,32,400);
+  const auto accepted = held.stream.submit(plan({{1,32,400}},768,{cc(0,64,127),cc(0,11,70)}),.25,1);
+  require(accepted > retry, "unguarded retry did not receive an independent ticket");
+  const auto accepted_block = held.read();
+  const auto applied = held.stream.waitForDecision(accepted);
+  require(applied.decision == Decision::Applied && applied.revision == 1 && applied.note_id == 0 &&
+          applied.frame == 512 && accepted_block.revision == 1 && accepted_block.gain == .25 &&
+          applied.publish_begin_frame == 512 && applied.publish_end_frame == 512 &&
+          held.stream.appliedRevision() == 1 && held.stream.liveUpdateCountAfterStop() == 1,
+          "valid retry after rejection failed to accept the same editor revision");
+  held.exactly(1,32,400);
+
+  Recorder released(plan({{1,16,64}},768,{cc(0,11,70)}));
+  released.read();
+  const auto released_before = released.events.size();
+  const auto released_ticket = released.stream.submit(plan({{1,320,480}},768,{cc(0,11,10)}),.1,1,{1});
+  released.read();
+  require(released.stream.waitForDecision(released_ticket).decision == Decision::RejectedStartedOnset &&
+          released.stream.appliedRevision() == 0 && released.events.size() == released_before,
+          "released onset guard checked only held voices and resurrected old history");
+  released.read(256);
+  released.exactly(1,16,64);
+
+  Recorder future(plan({{1,512,640}},768,{cc(0,11,70)}));
+  future.read();
+  const auto future_ticket = future.stream.submit(plan({{1,256,384}},768,{cc(0,11,90)}),.25,1,{1});
+  const auto future_block = future.read();
+  const auto future_receipt = future.stream.waitForDecision(future_ticket);
+  require(future_receipt.decision == Decision::Applied && future_receipt.frame == 128 &&
+          future_receipt.publish_begin_frame == 128 && future_receipt.publish_end_frame == 128 &&
+          future_block.revision == 1 && future_block.gain == .25 && future.notes(1,true).empty() &&
+          future.events.back().frame == 128 && future.events.back().data1 == 11 && future.events.back().data2 == 90,
+          "unstarted guarded onset edit was rejected or failed to apply atomically");
+  future.read(256);
+  future.exactly(1,256,384);
+}
+
+void guardedCancellationReclaimsOnlyUnclaimedPlans() {
+  using Decision = daw::LivePerformanceStream::Decision;
+  Recorder r(plan({{1,256,512}},768,{cc(0,11,70)}));
+  rejects([&]{r.stream.submit(plan({{1,256,512}},768),.5,1,{99});},
+          "unknown guarded identity was admitted");
+  require(!r.stream.hasPendingUpdate(), "invalid guard published an unacknowledgeable request");
+  const auto ticket = r.stream.submit(plan({{1,128,384}},768,{cc(0,11,5)}),.1,1,{1});
+  const auto releases_before = total_releases;
+  const auto receipt = r.stream.waitForDecision(ticket,std::chrono::milliseconds(0));
+  require(receipt.decision == Decision::Cancelled && receipt.ticket == ticket &&
+          receipt.revision == 1 && receipt.note_id == 0 && receipt.frame == 0 &&
+          receipt.publish_begin_frame == 0 && receipt.publish_end_frame == 0 &&
+          !r.stream.hasPendingUpdate() && r.stream.appliedRevision() == 0 && total_releases > releases_before,
+          "zero-timeout unclaimed cancellation failed to reclaim on the control thread");
+  require(!r.stream.cancelPending(ticket), "cancelled candidate was reclaimed twice");
+  r.read(); r.read(); r.read(); r.read(); r.read();
+  r.exactly(1,256,512);
+  require(std::none_of(r.events.begin(),r.events.end(),[](const auto& event) {
+    return event.status == 0xb0 && event.data1 == 11 && event.data2 == 5;
+  }), "cancelled candidate later reached the callback");
+  const auto retry = r.stream.submit(plan({{1,256,512}},768,{cc(0,11,70)}),.25,1);
+  require(retry > ticket, "cancelled revision retry reused its mailbox ticket");
+  r.read();
+  require(r.stream.waitForDecision(retry,std::chrono::milliseconds(0)).decision == Decision::Applied &&
+          !r.stream.cancelPending(retry), "already applied request was retroactively cancelled");
+}
+
+void guardedOnsetLockSurvivesRepitchAndSuppression() {
+  using Decision = daw::LivePerformanceStream::Decision;
+  {
+    Recorder r(plan({{1,0,1000,60}},1200));
+    r.read(256);
+    // This low-level repitch is already over at the swap. It releases the
+    // real C4 and clears replay ownership, but cannot erase the fact that ID 1
+    // has consumed its attack in this transport pass.
+    r.stream.submit(plan({{1,0,100,62}},1200),.5,1);
+    r.read();
+    r.exactly(1,0,256);
+    const auto ticket = r.stream.submit(plan({{1,512,800,62}},1200),.5,2,{1});
+    r.read();
+    const auto decision = r.stream.waitForDecision(ticket);
+    require(decision.decision == Decision::RejectedStartedOnset && decision.note_id == 1 &&
+            r.stream.appliedRevision() == 1,
+            "repitch/shortening reset allowed a previously played ID to bypass the onset guard");
+    r.read(256); r.read(256);
+    r.exactly(1,0,256);
+  }
+  {
+    Recorder r(plan({{1,0,512},{2,640,800}},1024));
+    r.read(256);
+    r.stream.submit(plan({{1,400,600},{2,128,320}},1024),.5,1);
+    r.read(256);
+    require(r.stream.suppressedConflictsAfterStop() == 1 && r.notes(2,true).empty(),
+            "guard suppression fixture did not consume an unplayed conflicting attack");
+    const auto ticket = r.stream.submit(plan({{1,400,600},{2,700,900}},1024),.5,2,{2});
+    r.read(256);
+    const auto decision = r.stream.waitForDecision(ticket);
+    require(decision.decision == Decision::RejectedStartedOnset && decision.note_id == 2 &&
+            r.stream.appliedRevision() == 1 && r.notes(2,true).empty() && r.notes(2,false).empty(),
+            "suppressed but consumed onset bypassed the conservative live-edit guard");
+    r.exactly(1,0,600);
+    require(r.stream.suppressedConflictsAfterStop() == 1,
+            "rejected suppressed-ID edit created another conflict");
+  }
+}
+
+void concurrentGuardRejectionAndRetry() {
+  using Decision = daw::LivePerformanceStream::Decision;
+  constexpr std::uint64_t revisions = 300;
+  constexpr std::size_t musical_end = 48000U * 60 * 29;
+  daw::LivePerformanceStream stream(plan({{1,0,musical_end-512}},musical_end,{cc(0,11,70)}),.5);
+  std::atomic<bool> stop{false}, started{false};
+  std::atomic<unsigned> failure{0};
+  std::atomic<std::size_t> allocations{0}, releases{0}, attacks{0}, accepted_controls{0}, leaked_controls{0};
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+  std::thread audio([&] {
+    std::size_t next_frame = 0;
+    std::uint64_t previous_revision = 0;
+    while (!stop.load(std::memory_order_acquire) && !failure.load(std::memory_order_relaxed)) {
+      if (std::chrono::steady_clock::now() >= deadline) { failure.store(1); break; }
+      in_callback = true;
+      const auto block = stream.nextBlock(256);
+      in_callback = false;
+      if (stream.failed() || block.frame != next_frame || block.frames > 256 ||
+          block.revision < previous_revision || block.revision > previous_revision+1 ||
+          block.gain != (block.revision ? .25 : .5)) { failure.store(2); break; }
+      previous_revision = block.revision;
+      next_frame += block.frames;
+      for (std::size_t i = 0; i < block.count; ++i) {
+        const auto& event = block.events[i];
+        if (event.frame >= block.frames) { failure.store(3); break; }
+        if (attack(event) && event.note_id == 1) attacks.fetch_add(1);
+        if (event.status == 0xb0 && event.data1 == 11 && event.data2 == 1) leaked_controls.fetch_add(1);
+        if (event.status == 0xb0 && event.data1 == 11 && (event.data2 == 80 || event.data2 == 81))
+          accepted_controls.fetch_add(1);
+      }
+      if (callback_allocations || callback_releases) { failure.store(4); break; }
+      started.store(true,std::memory_order_release);
+      std::this_thread::yield();
+    }
+    allocations.store(callback_allocations);
+    releases.store(callback_releases);
+  });
+  bool completed = false;
+  try {
+    while (!started.load(std::memory_order_acquire) && !failure.load() &&
+           std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+    require(started.load() && !failure.load(), "guard concurrent fixture never attacked its held note");
+    std::uint64_t prior_ticket = 0;
+    for (std::uint64_t revision = 1; revision <= revisions; ++revision) {
+      const auto rejected_ticket = stream.submit(plan({{1,256,musical_end-512}},musical_end,{cc(0,11,1)}),.1,revision,{1});
+      const auto rejected = stream.waitForDecision(rejected_ticket);
+      require(rejected_ticket > prior_ticket && rejected.decision == Decision::RejectedStartedOnset &&
+              rejected.ticket == rejected_ticket && rejected.revision == revision && rejected.note_id == 1 &&
+              stream.appliedRevision() == revision-1 && !stream.hasPendingUpdate(),
+              "concurrent rejection mutated applied revision or returned an unrelated ACK");
+      require(rejected.publish_begin_frame <= rejected.publish_end_frame &&
+              rejected.frame >= rejected.publish_begin_frame && rejected.frame <= rejected.publish_end_frame+256,
+              "concurrent rejection missed the next block after publication (excluding compile/ACK wait)");
+      const auto retry_ticket = stream.submit(plan({{1,0,musical_end-512}},musical_end,
+          {cc(0,11,static_cast<std::uint8_t>(80+revision%2))}),.25,revision);
+      const auto accepted = stream.waitForDecision(retry_ticket);
+      require(retry_ticket > rejected_ticket && accepted.decision == Decision::Applied &&
+              accepted.ticket == retry_ticket && accepted.revision == revision &&
+              stream.appliedRevision() == revision && !stream.hasPendingUpdate(),
+              "concurrent retry failed to accept the rejected editor revision on a new ticket");
+      require(accepted.publish_begin_frame <= accepted.publish_end_frame &&
+              accepted.frame >= accepted.publish_begin_frame && accepted.frame <= accepted.publish_end_frame+256,
+              "concurrent accepted retry missed the next block after publication (excluding compile/ACK wait)");
+      prior_ticket = retry_ticket;
+      if (failure.load() || std::chrono::steady_clock::now() >= deadline) break;
+      completed = revision == revisions;
+    }
+  } catch (...) {
+    stop.store(true,std::memory_order_release);
+    audio.join();
+    throw;
+  }
+  stop.store(true,std::memory_order_release);
+  audio.join();
+  stream.collectRetired();
+  require(completed && failure.load() == 0 && allocations.load() == 0 && releases.load() == 0,
+          "concurrent guard rejection/retry lost order, timed out or allocated on callback");
+  require(attacks.load() == 1 && leaked_controls.load() == 0 && accepted_controls.load() == revisions &&
+          stream.liveUpdateCountAfterStop() == revisions,
+          "rejected candidate leaked an attack/controller or lost an accepted retry");
+}
+
 void concurrentPublicationAndReclamation() {
   constexpr std::uint64_t revisions = 1000;
   constexpr std::size_t musical_end = 48000U * 60 * 29;
@@ -412,8 +635,9 @@ void concurrentPublicationAndReclamation() {
       while (!published && !failure.load() && std::chrono::steady_clock::now() < deadline) {
         try { stream.submit(next,.5,revision); published = true; }
         catch (const std::invalid_argument&) {
-          // appliedRevision is published before the old plan retirement. An
-          // acknowledged block may still momentarily leave both slots owned.
+          // Seeing appliedRevision alone does not wait for the complete
+          // receipt/retirement ACK. Backpressure persists until that decision
+          // is published and the control thread can reclaim its retired plan.
           std::this_thread::yield();
         }
       }
@@ -472,10 +696,14 @@ int main() {
     shorteningKeepsExistingAudioTail();
     completedRunAppliesSameLengthRevisionSilently();
     rejectInvalidLivePlansAtomically();
+    guardedOnsetDecisionsAreAtomic();
+    guardedCancellationReclaimsOnlyUnclaimedPlans();
+    guardedOnsetLockSurvivesRepitchAndSuppression();
+    concurrentGuardRejectionAndRetry();
     concurrentPublicationAndReclamation();
     require(callback_allocations == 0 && callback_releases == 0, "callback allocation audit failed");
     std::cout << "Live plan identity, hanging-note ownership, controller chase, block boundary, "
-                 "backpressure, retirement and allocation tests passed\n";
+                 "guarded ACK/rejection/cancellation, backpressure, retirement and allocation tests passed\n";
     return 0;
   } catch (const std::exception& e) {
     in_callback = false;

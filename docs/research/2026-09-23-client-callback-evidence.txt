@@ -1,0 +1,110 @@
+Local macOS arm64 / licensed Pianoteq 9 acceptance, 2026-09-23
+Build: CMake Debug; no sanitizer during hardware timing. Engine rate 48000 Hz.
+Base commit: 956dd13, plus this change set. No GitHub workflow was run or retried.
+
+Timing boundary: complete CoreAudio DefaultOutput client render callback,
+including validation, all subdivisions and host dispatch. Excludes outer AU
+conversion/HAL/driver work and the small post-timestamp metric accounting.
+No OS xrun observer is claimed. callback_errors are host buffer/error counters.
+Measured ratio >= 0.5 fails our headroom gate; >= 1 is a measured budget overrun.
+Each maximum has its own paired frame count, duration and budget ratio.
+
+Correction to old record (preserved unchanged in
+2026-09-23-live-performance-evidence.txt): old max_callback_seconds measured a
+render subblock. 72.4% -> 48.84% was a proxy-ratio change, not a 33% CPU reduction.
+Both old runs reported zero subblock >=100% counts and zero callback errors;
+that is not independent evidence of zero OS xruns. The ~9% difference between
+observed maxima does not establish a causal speedup. Device 44.1k/512 was only
+an inference from the old logs; it is explicitly read in today's logs below.
+
+There was one polyphonic measurement, one A/B collision pair, and one continuous
+live-edit measurement in this change set. Every hardware attempt is retained.
+No settings, hardware buffer size or system volume were changed.
+
+30-second polyphonic complete callback gate (exit 0; speakers silenced)
+mode=polyphonic duration_seconds=30 scheduled_events=1230 max_pressed_keys=10 max_pedal_latched_keys=20 max_sounding_midi_keys=20 pedal_cycle_seconds=4 pedal_hold_seconds=3 cc11_events_per_second=20 complete_callback_budget_limit=0.5
+device=76 client_rate=48000 processed_frames=1441124 callback_errors=0 last_render_error=0 au_maximum_frames=4459 device_buffer_frames=512 device_rate=44100
+output_timing_scope=complete_client_render_callback output_callback_count=2586 output_valid_budget_callbacks=2586 output_invalid_budget_callbacks=0 output_total_frames=1441124 output_total_seconds=5.9902447430000061 output_max_callback_seconds=0.0040019579999999999 output_max_seconds_frames=557 output_max_seconds_budget_ratio=0.34487250269299818 output_max_callback_budget_ratio=0.34487250269299818 output_max_ratio_seconds=0.0040019579999999999 output_max_ratio_frames=557 output_deadline_misses=0 output_headroom_misses=0
+frames=1440566 sent=1230 peak=0.786579 callback_errors=0 render_block_ratio_ge_1_count=0 render_block_ratio_ge_0_5_count=0 render_blocks=7755 min_render_block_frames=185 max_render_block_frames=186 max_render_block_seconds=0.00192837 max_render_block_budget_ratio=0.497645 reported_plugin_latency_seconds=0
+PASS 30 seconds real Pianoteq in CoreAudio callbacks, note/release offsets, CC64 and CC11; speaker output silenced
+
+Forced collision A/B (exit 0; both runs audible)
+Starting reference: C4 held until 3 s; independent C4 at 4 s; speaker output enabled
+Starting injected-conflict: C4 held until 3 s; independent C4 at 4 s; speaker output enabled
+test_kind=engine_defense_fault_injection product_admission=bypassed_by_design
+listening_confirmation=not_automated audible_mode=1
+audio_relative_rms_limit=0.02 audio_max_sample_delta_limit=0.01
+run_attempt=reference initialization_epoch_seconds=1790169443.51744
+run=reference start_epoch_seconds=1790169444.20538 stop_epoch_seconds=1790169451.21828
+au_instances=1 output_starts=1 output_stops=1 speaker_output=audible
+device=device=76 client_rate=48000 processed_frames=558 callback_errors=0 last_render_error=0 au_maximum_frames=4459 device_buffer_frames=512 device_rate=44100
+output_timing_scope=complete_client_render_callback output_callback_count=604 output_valid_budget_callbacks=604 output_invalid_budget_callbacks=0 output_total_frames=336597 output_total_seconds=0.79338234799999996 output_max_callback_seconds=0.002080209 output_max_seconds_frames=557 output_max_seconds_budget_ratio=0.1792639712746858 output_max_callback_budget_ratio=0.1792639712746858 output_max_ratio_seconds=0.002080209 output_max_ratio_frames=557 output_deadline_misses=0 output_headroom_misses=0
+callback_frames=336000 callback_errors=0 source_failed=0 output_healthy=1 health_error="" peak=0.0887372982337611 clipped_samples=0 plugin_latency_seconds=0
+applied_live_updates=0 applied_revision=0 suppressed_conflicts=0 submit_begin_frame=0 submit_return_frame=0 applied_frame=0
+guarded_boundary_frame=38400 before_rms=0.00726778545357641 across_rms=0.00698137145734991 after_rms=0.00676041988867446 minimum_10ms_rms=0.00669990024253142 longest_silent_frames=0
+guarded_boundary_frame=57600 before_rms=0.00300550199800163 across_rms=0.00294459447557306 after_rms=0.00283450619781176 minimum_10ms_rms=0.00274544456916428 longest_silent_frames=0
+held_after_suppressed_release_rms=0.00204330220734408 before_later_reattack_rms=1.95393228854703e-06 later_reattack_rms=0.026663440700115
+actual_note_on_count=2 actual_note_off_count=2 note_ownership_gate=1 continuity_gate=1 full_callback_budget_limit=0.5 run_gate=PASS
+performed_id=1 actual_note_on_count=1 actual_note_off_count=1
+performed_id=2 actual_note_on_count=0 actual_note_off_count=0
+performed_id=3 actual_note_on_count=1 actual_note_off_count=1
+run_attempt=injected-conflict initialization_epoch_seconds=1790169451.26206
+run=injected-conflict start_epoch_seconds=1790169451.86816 stop_epoch_seconds=1790169458.88156
+au_instances=1 output_starts=1 output_stops=1 speaker_output=audible
+device=device=76 client_rate=48000 processed_frames=558 callback_errors=0 last_render_error=0 au_maximum_frames=4459 device_buffer_frames=512 device_rate=44100
+output_timing_scope=complete_client_render_callback output_callback_count=604 output_valid_budget_callbacks=604 output_invalid_budget_callbacks=0 output_total_frames=336597 output_total_seconds=0.82653253500000012 output_max_callback_seconds=0.0020572500000000001 output_max_seconds_frames=557 output_max_seconds_budget_ratio=0.17728545780969479 output_max_callback_budget_ratio=0.17728545780969479 output_max_ratio_seconds=0.0020572500000000001 output_max_ratio_frames=557 output_deadline_misses=0 output_headroom_misses=0
+callback_frames=336000 callback_errors=0 source_failed=0 output_healthy=1 health_error="" peak=0.0887372982337611 clipped_samples=0 plugin_latency_seconds=0
+applied_live_updates=1 applied_revision=1 suppressed_conflicts=1 submit_begin_frame=24335 submit_return_frame=24335 applied_frame=24520
+guarded_boundary_frame=38400 before_rms=0.00726778545357641 across_rms=0.00698137145734991 after_rms=0.00676041988867446 minimum_10ms_rms=0.00669990024253142 longest_silent_frames=0
+guarded_boundary_frame=57600 before_rms=0.00300550199800163 across_rms=0.00294459447557306 after_rms=0.00283450619781176 minimum_10ms_rms=0.00274544456916428 longest_silent_frames=0
+held_after_suppressed_release_rms=0.00204330220734408 before_later_reattack_rms=1.95393228854703e-06 later_reattack_rms=0.026663440700115
+actual_note_on_count=2 actual_note_off_count=2 note_ownership_gate=1 continuity_gate=1 full_callback_budget_limit=0.5 run_gate=PASS
+performed_id=1 actual_note_on_count=1 actual_note_off_count=1
+performed_id=2 actual_note_on_count=0 actual_note_off_count=0
+performed_id=3 actual_note_on_count=1 actual_note_off_count=1
+reference_vs_injected_relative_rms_error=0 max_sample_delta=0
+actual_delivered_midi_equal=1
+PASS callback audio A/B, actual same-key ownership and complete callback headroom
+
+Continuous live edit + actual onset rejection (exit 0; speakers silenced)
+device=76 client_rate=48000 processed_frames=1008675 callback_errors=0 last_render_error=0 au_maximum_frames=4459 device_buffer_frames=512 device_rate=44100
+output_timing_scope=complete_client_render_callback output_callback_count=1810 output_valid_budget_callbacks=1810 output_invalid_budget_callbacks=0 output_total_frames=1008675 output_total_seconds=2.6071464759999987 output_max_callback_seconds=0.0025197919999999999 output_max_seconds_frames=557 output_max_seconds_budget_ratio=0.21714545062836624 output_max_callback_budget_ratio=0.21714545062836624 output_max_ratio_seconds=0.0025197919999999999 output_max_ratio_frames=557 output_deadline_misses=0 output_headroom_misses=0
+live_onset_rejection="performed note 8 onset has already been processed in this playback pass; onset edit was not saved. Stop playback to change its onset."
+complete_callback_budget_limit=0.5 measured_source_frames=1008000 callback_errors=0 peak=0.051632333546876907 render_block_ratio_ge_1_count=0 worst_render_block_budget_ratio=0.36688180645161289
+au_instances=1 output_starts=1 output_stops=1 speaker_output=silenced
+device=76 client_rate=48000 processed_frames=1008675 callback_errors=0 last_render_error=0 au_maximum_frames=4459 device_buffer_frames=512 device_rate=44100
+output_timing_scope=complete_client_render_callback output_callback_count=1810 output_valid_budget_callbacks=1810 output_invalid_budget_callbacks=0 output_total_frames=1008675 output_total_seconds=2.6071464759999987 output_max_callback_seconds=0.0025197919999999999 output_max_seconds_frames=557 output_max_seconds_budget_ratio=0.21714545062836624 output_max_callback_budget_ratio=0.21714545062836624 output_max_ratio_seconds=0.0025197919999999999 output_max_ratio_frames=557 output_deadline_misses=0 output_headroom_misses=0
+live_onset_rejection="performed note 8 onset has already been processed in this playback pass; onset edit was not saved. Stop playback to change its onset."
+complete_callback_budget_limit=0.5 measured_source_frames=1008000 callback_errors=0 peak=0.051632333546876907 render_block_ratio_ge_1_count=0 worst_render_block_budget_ratio=0.36688180645161289
+callback_frames=1008000 callback_errors=0 peak=0.05163233355 reported_plugin_latency_seconds=0
+applied_live_updates=3 suppressed_conflicts=0
+tie_performed_id=8 note_on_count=1 note_off_count=1 on_frame=168000 off_frame=220500
+future_performed_id=10 edited_on_frame=245760
+revision=1 submit_begin_frame=173686 submit_return_frame=173871 applied_frame=173871 publish_begin_frame=173871 publish_end_frame=173871 before_rms=0.01532860838 across_rms=0.0150365042 after_rms=0.01490073441 minimum_10ms_rms=0.01444841533 longest_silent_frames=0
+revision=2 submit_begin_frame=182787 submit_return_frame=182787 applied_frame=182787 publish_begin_frame=182787 publish_end_frame=182787 before_rms=0.01027443705 across_rms=0.009981755292 after_rms=0.009754778536 minimum_10ms_rms=0.009607648787 longest_silent_frames=0
+revision=3 submit_begin_frame=192261 submit_return_frame=192261 applied_frame=192261 publish_begin_frame=192261 publish_end_frame=192261 before_rms=0.005950499902 across_rms=0.005782723787 after_rms=0.005626698448 minimum_10ms_rms=0.005529392381 longest_silent_frames=0
+PASS one uninterrupted AU/CoreAudio run, three live revisions, future onset and CC11 delivered, one sustained tie attack/release, nonzero callback audio across swaps
+
+Local artifacts and SHA-256 (AU state and audio are not redistributed in this repository)
+388517c176d7aa9ec29745a2db001eca08156be0fca06e315a7ff6c7d9839b05  out/performance-eight-bars-20260923/piano.aupreset
+5a9b38e7f70d2a990fceb63fb1d96d1479b60c6d4f0dbb0335f682b3c07700dc  out/performance-conflict-20260923/reference-callback.wav
+5a9b38e7f70d2a990fceb63fb1d96d1479b60c6d4f0dbb0335f682b3c07700dc  out/performance-conflict-20260923/injected-conflict-callback.wav
+46eee58a77271834e054b318bf72b6147142e0a93613679d6327b715721e9dc3  out/performance-conflict-20260923/reference-actual-midi.tsv
+46eee58a77271834e054b318bf72b6147142e0a93613679d6327b715721e9dc3  out/performance-conflict-20260923/injected-conflict-actual-midi.tsv
+fd7b86a8676904857651aba4f02c83558f36a85a715efe8c8f84f1e77febb326  out/performance-client-budget-live-20260923/live-callback.wav
+
+Human auditory confirmation: pending. The A/B pair was sent to speaker output
+and its callback recordings are available. The automated agent does not claim
+to have human ears; identical MIDI/waveforms are not a fabricated listening sign-off.
+
+Verification:
+- Full normal CTest: 43/43 PASS (39.07 s).
+- Full ASan/UBSan CTest: 43/43 PASS (58.80 s), ASAN_OPTIONS=detect_leaks=0.
+- Final publication-window additions: affected performance/live_performance/
+  callback_timing tests 3/3 PASS in both builds (0.18 s normal / 0.41 s sanitized).
+- ThreadSanitizer: live_performance_tests PASS, including 1000 accepted exchanges
+  and 300 guarded reject -> same editor revision/new request ticket retries.
+- Final normal build PASS; exact-byte interactive CLI checker PASS in normal
+  and ASan/UBSan builds (neither CLI checker loads a plugin or opens a device).
+- Pure conflict fixture PASS; pure polyphonic workload and live fixture PASS.
+- git diff --check PASS. No GitHub workflow dispatch/retry.

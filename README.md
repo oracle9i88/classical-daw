@@ -18,7 +18,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   restarting Pianoteq or the transport. A key-ownership ledger preserves held
   notes and their releases; CC64/CC11 changes chase the current playhead. The
   same command stack handles live undo/redo, with rejection rollback and
-  bounded plan retirement. See [live semantics and load gates](docs/live-performance.md)
+  bounded plan retirement. Onset changes for notes already played or skipped
+  by same-key conflict in the current pass are rejected visibly as a whole edit;
+  stop playback to make that change.
+  See [live semantics and load gates](docs/live-performance.md)
   for already-played attacks, same-key conflicts and single-take limits.
 - A local macOS Pianoteq 9 AU host renders MIDI/MusicXML/native projects to real
   stereo piano audio, with saved instrument state, fixed-preset protection,

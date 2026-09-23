@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -64,6 +65,7 @@ void checkFixture(const daw::PerformanceDocument& document) {
 struct Swap {
   std::uint64_t revision = 0;
   std::size_t before_submit = 0, after_submit = 0, applied = 0;
+  std::size_t publish_begin = 0, publish_end = 0;
 };
 void checkProgress(daw::PerformanceAudition& source, daw::CoreAudioOutput& output,
                    std::size_t& previous, const std::chrono::steady_clock::time_point& deadline) {
@@ -133,62 +135,92 @@ int main(int argc, char** argv) {
     daw::PerformanceAudition source(document, true, true);
     daw::CoreAudioOutput output;
     std::string error;
-    require(output.setAudioSource(&source, &error), "cannot attach live source");
-    if (!output.start(&error)) throw std::runtime_error(error);
-    source.start();
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(40);
-    std::size_t previous = 0;
     const std::array<std::size_t, 3> targets{172800, 182400, 192000}; // 3.6, 3.8, 4.0 s, all inside original tie.
     std::array<Swap, 3> swaps{};
     Swap* current_swap = nullptr;
-    editor.setCommitAdmission([&](const daw::PerformanceDocument& candidate, std::uint64_t revision) {
-      require(current_swap != nullptr, "live command has no probe receipt");
-      current_swap->revision = revision;
-      current_swap->before_submit = source.frame();
-      source.submit(candidate, revision);
-      current_swap->after_submit = source.frame(); // no fallible work after publication
-    });
-    for (std::size_t edit = 0; edit < targets.size(); ++edit) {
-      while (source.frame() < targets[edit]) {
+    std::exception_ptr run_failure;
+    std::string onset_rejection;
+    try {
+      require(output.setAudioSource(&source, &error), "cannot attach live source");
+      if (!output.start(&error)) throw std::runtime_error(error);
+      source.start();
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(40);
+      std::size_t previous = 0;
+      editor.setCommitAdmission([&](const daw::PerformanceDocument& candidate, std::uint64_t revision) {
+        require(current_swap != nullptr, "live command has no probe receipt");
+        current_swap->revision = revision;
+        current_swap->before_submit = source.frame();
+        const auto receipt = source.submit(candidate, revision);
+        current_swap->publish_begin = receipt.publish_begin_frame;
+        current_swap->publish_end = receipt.publish_end_frame;
+        current_swap->after_submit = source.frame(); // no fallible work after acceptance
+      });
+      for (std::size_t edit = 0; edit < targets.size(); ++edit) {
+        while (source.frame() < targets[edit]) {
+          checkProgress(source, output, previous, deadline);
+          require(!source.done(), "transport ended before a planned live edit");
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         checkProgress(source, output, previous, deadline);
-        require(!source.done(), "transport ended before a planned live edit");
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        auto& swap = swaps[edit];
+        current_swap = &swap;
+        if (edit == 0) {
+          // The cross-bar tie is sounding. Even a sub-sample stored onset edit
+          // must be visibly refused by the actual AU player's admission path.
+          try { editor.set({kTie, 1e-12, 1, -1}); }
+          catch (const std::invalid_argument& e) { onset_rejection = e.what(); }
+          require(onset_rejection.find("onset has already been processed") != std::string::npos &&
+              editor.revision() == 0 && source.appliedRevision() == 0 &&
+              editor.document().performances.at(editor.document().active).notes.empty() && !editor.undo(),
+              "already-started onset was not visibly/atomically rejected through real playback admission");
+          require(editor.set({kFutureNote, .12, 1, -1}), "future-note edit failed");
+        }
+        else if (edit == 1) require(editor.setCurvePoint(2, 2, 45), "expression edit failed");
+        else require(editor.set({kTie, 0, 1.25, -1}), "tie-duration edit failed");
+        current_swap = nullptr;
+        require(editor.revision() == swap.revision, "document and playback revisions diverged");
+        while (source.appliedRevision() < swap.revision) {
+          checkProgress(source, output, previous, deadline);
+          require(!source.done(), "transport ended with unapplied live edit");
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        swap.applied = source.appliedFrame();
+        require(source.appliedRevision() == swap.revision && swap.applied >= swap.publish_begin &&
+                    swap.applied <= swap.publish_end + 256,
+                "live revision missed the next eligible render-block boundary");
+        require(swap.applied > 168000 && swap.applied < 210000,
+                "live edit was not applied while the original cross-bar tie was held");
+      }
+      while (!source.done()) {
+        checkProgress(source, output, previous, deadline);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
       }
       checkProgress(source, output, previous, deadline);
-      auto& swap = swaps[edit];
-      current_swap = &swap;
-      if (edit == 0) require(editor.set({kFutureNote, .12, 1, -1}), "future-note edit failed");
-      else if (edit == 1) require(editor.setCurvePoint(2, 2, 45), "expression edit failed");
-      else require(editor.set({kTie, 0, 1.25, -1}), "tie-duration edit failed");
-      current_swap = nullptr;
-      require(editor.revision() == swap.revision, "document and playback revisions diverged");
-      while (source.appliedRevision() < swap.revision) {
-        checkProgress(source, output, previous, deadline);
-        require(!source.done(), "transport ended with unapplied live edit");
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      }
-      swap.applied = source.appliedFrame();
-      require(source.appliedRevision() == swap.revision && swap.applied >= swap.before_submit &&
-                  swap.applied <= swap.after_submit + 256,
-              "live revision missed the next eligible render-block boundary");
-      require(swap.applied > 168000 && swap.applied < 210000,
-              "live edit was not applied while the original cross-bar tie was held");
-    }
-    while (!source.done()) {
-      checkProgress(source, output, previous, deadline);
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-    checkProgress(source, output, previous, deadline);
+    } catch (...) { run_failure = std::current_exception(); }
+    const auto output_diagnostics = output.diagnostics(); // snapshot device properties before stop.
     output.stop();
+    const auto timing = output.callbackTimingAfterStop();
     // Preserve the measured load in the console log even when a later gate
-    // rejects it. An unsuccessful run must not hide its timing evidence.
-    std::cout << "measured_callback_frames=" << source.frame() << " callback_errors=" << output.xrunCount()
-              << " peak=" << source.peakAfterStop() << " deadline_misses=" << source.deadlineMissesAfterStop()
-              << " worst_render_block_budget_ratio=" << source.worstBudgetRatioAfterStop() << '\n' << std::flush;
+    // rejects it. Sub-block ratios remain diagnostics, never deadline proof.
+    std::ostringstream measured;
+    measured.precision(17);
+    measured << output_diagnostics << '\n' << daw::formatCallbackTiming(timing) << '\n'
+             << "live_onset_rejection=" << std::quoted(onset_rejection) << '\n'
+             << "complete_callback_budget_limit=0.5 measured_source_frames=" << source.frame()
+             << " callback_errors=" << output.xrunCount() << " peak=" << source.peakAfterStop()
+             << " render_block_ratio_ge_1_count=" << source.deadlineMissesAfterStop()
+             << " worst_render_block_budget_ratio=" << source.worstBudgetRatioAfterStop() << '\n';
+    std::cout << measured.str() << std::flush;
+    std::ofstream timing_report(root / "callback-timing.txt", std::ios::binary);
+    timing_report << measured.str();
+    timing_report.close();
+    require(static_cast<bool>(timing_report), "cannot preserve callback timing evidence");
+    if (run_failure) std::rethrow_exception(run_failure);
     require(!source.failed() && source.peakAfterStop() > 0 && !source.clippedAfterStop() && !output.xrunCount(),
             "uninterrupted callback playback failed, clipped or remained silent");
-    require(source.deadlineMissesAfterStop() == 0 && source.worstBudgetRatioAfterStop() < .5,
-            "live rendering including plan swaps exceeded the 50% block-budget headroom gate");
+    require(timing.callback_count && !timing.invalid_budget_callbacks && !timing.deadline_misses &&
+                timing.max_callback_budget_ratio < .5,
+            "live rendering including plan swaps exceeded the 50% complete-client-callback headroom gate (excludes surrounding HAL/driver work)");
     require(source.appliedRevision() == 3 && source.frame() >= 21 * kRate,
             "live transport did not reach the final revision and tail");
     require(source.liveUpdateCountAfterStop() == 3 && source.suppressedConflictsAfterStop() == 0,
@@ -218,10 +250,9 @@ int main(int argc, char** argv) {
     std::ostringstream evidence;
     evidence.precision(10);
     evidence << "au_instances=1 output_starts=1 output_stops=1 speaker_output=silenced\n"
+             << measured.str()
              << "callback_frames=" << source.frame() << " callback_errors=" << output.xrunCount()
              << " peak=" << source.peakAfterStop() << " reported_plugin_latency_seconds=" << source.latency() << '\n'
-             << "deadline_misses=" << source.deadlineMissesAfterStop()
-             << " worst_render_block_budget_ratio=" << source.worstBudgetRatioAfterStop() << " budget_limit=0.5\n"
              << "applied_live_updates=" << source.liveUpdateCountAfterStop()
              << " suppressed_conflicts=" << source.suppressedConflictsAfterStop() << '\n'
              << "tie_performed_id=8 note_on_count=1 note_off_count=1 on_frame=" << tie.on << " off_frame=" << tie.off << '\n'
@@ -230,6 +261,7 @@ int main(int argc, char** argv) {
       const auto continuity = checkContinuity(capture, swap.applied);
       evidence << "revision=" << swap.revision << " submit_begin_frame=" << swap.before_submit
                << " submit_return_frame=" << swap.after_submit << " applied_frame=" << swap.applied
+               << " publish_begin_frame=" << swap.publish_begin << " publish_end_frame=" << swap.publish_end
                << " before_rms=" << continuity.before << " across_rms=" << continuity.across
                << " after_rms=" << continuity.after << " minimum_10ms_rms=" << continuity.minimum_window
                << " longest_silent_frames=" << continuity.silent_frames << '\n';

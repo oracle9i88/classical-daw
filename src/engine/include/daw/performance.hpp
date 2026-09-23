@@ -45,6 +45,10 @@ struct PerformanceDocument {
 // Performance edits leave Score unchanged. Offsets never quantize written notes. All native
 // channel messages are retained; AU fixed-preset filtering is a host concern.
 MidiSampleSequence compilePerformance(const Score& score, const Performance& performance);
+// Validated override lists; absence means zero offset. Compare stored seconds,
+// including sub-sample edits, rather than rounded scheduled frame numbers.
+std::vector<std::uint64_t> changedPerformanceOnsets(const std::vector<NotePerformance>& before,
+                                                  const std::vector<NotePerformance>& after);
 void validatePerformanceDocument(const PerformanceDocument& document);
 void savePerformanceDocument(const PerformanceDocument& document, const std::string& new_directory);
 PerformanceDocument loadPerformanceDocument(const std::string& directory);
@@ -65,9 +69,10 @@ class WorkEditor {
   bool redo();
   std::uint64_t revision() const noexcept { return revision_; }
   // Optional control-thread admission, after validation and before command
-  // acceptance. Throwing must publish nothing; the document/history roll back.
-  // A successful sink must perform no later fallible work (e.g. publish one
-  // prepared live plan as its final operation). Never called from the callback.
+  // acceptance. Throwing must leave the playing plan unchanged; the document/
+  // history roll back. A guarded live sink waits for the audio-thread decision
+  // before returning (rejected/cancelled candidates never become active).
+  // After acceptance no fallible work remains. Never called from the callback.
   using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
   void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:

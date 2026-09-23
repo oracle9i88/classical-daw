@@ -41,6 +41,15 @@ void update(Performance& take, std::uint64_t id, const std::optional<NotePerform
   else if (value) take.notes.push_back(*value);
 }
 }
+std::vector<std::uint64_t> changedPerformanceOnsets(const std::vector<NotePerformance>& before,
+    const std::vector<NotePerformance>& after) {
+  std::map<std::uint64_t,std::pair<double,double>> offsets;
+  for (const auto& note : before) offsets[note.note_id].first = note.onset_seconds;
+  for (const auto& note : after) offsets[note.note_id].second = note.onset_seconds;
+  std::vector<std::uint64_t> result;
+  for (const auto& entry : offsets) if (entry.second.first != entry.second.second) result.push_back(entry.first);
+  return result;
+}
 Performance makePerformance(const Score& score, const std::string& name) {
   validateNoteIds(score); require(score.next_note_id != 0, "assign notation IDs first");
   MidiFile midi; std::string error;

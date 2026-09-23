@@ -17,21 +17,33 @@ class PerformanceAudition final : public AudioOutputSource {
                                std::uint64_t revision=0)
       : au_(InstrumentKind::Pianoteq9), stream_(compilePerformance(d.score,d.performances.at(d.active)),
           std::pow(10.,d.gain_db/20),revision),
-        state_(d.piano_state), take_(d.active), gain_(std::pow(10.,d.gain_db/20)), silent_(silent) {
+        state_(d.piano_state), take_(d.active), accepted_notes_(d.performances.at(d.active).notes),
+        gain_(std::pow(10.,d.gain_db/20)), silent_(silent) {
     au_.restoreState(state_); au_.prepareRealtime();
     if(capture) { captured_.resize(stream_.endFrame()*2); audit_.resize(262144); }
   }
   bool acceptsFormat(double rate,std::uint32_t channels) const noexcept override {return rate==48000 && channels==2;}
   void start() noexcept {armed_.store(true,std::memory_order_release);}
-  // Control only. Last operation publishes; rejection leaves the playing plan
-  // intact and is propagated to WorkEditor's transaction admission.
-  void submit(const PerformanceDocument& d, std::uint64_t revision) {
+  // Control only. Wait for the block-boundary decision before WorkEditor commits.
+  // Rejection leaves the playing plan intact, including unrelated fields in the
+  // candidate. A processed onset stays locked after release or conflict suppression.
+  LivePerformanceStream::Receipt submit(const PerformanceDocument& d, std::uint64_t revision) {
     if(d.active!=take_ || d.piano_state!=state_) throw std::invalid_argument("stop playback before changing performance or instrument state");
     if(failed()) throw std::runtime_error("audition has failed");
     auto sequence=compilePerformance(d.score,d.performances.at(d.active));
     if(!captured_.empty() && sequence.frames>captured_.size()/2)
       throw std::length_error("live plan exceeds this probe's fixed capture capacity");
-    stream_.submit(std::move(sequence),std::pow(10.,d.gain_db/20),revision);
+    auto next_notes=d.performances.at(d.active).notes;
+    const auto guarded=daw::changedPerformanceOnsets(accepted_notes_,next_notes);
+    const auto ticket=stream_.submit(std::move(sequence),std::pow(10.,d.gain_db/20),revision,guarded);
+    const auto result=stream_.waitForDecision(ticket);
+    if(result.decision==LivePerformanceStream::Decision::RejectedStartedOnset)
+      throw std::invalid_argument("performed note "+std::to_string(result.note_id)+
+        " onset has already been processed in this playback pass; onset edit was not saved. Stop playback to change its onset.");
+    if(result.decision!=LivePerformanceStream::Decision::Applied)
+      throw std::runtime_error("live edit cancelled before audio acceptance; playback did not acknowledge it");
+    accepted_notes_.swap(next_notes); // no fallible work after acceptance
+    return result;
   }
   void render(float* out,std::uint32_t frames) noexcept override {
     std::fill(out,out+frames*2,0.F);
@@ -82,6 +94,7 @@ class PerformanceAudition final : public AudioOutputSource {
  private:
   AudioUnitInstrument au_;LivePerformanceStream stream_;
   std::vector<std::uint8_t> state_;std::size_t take_;
+  std::vector<NotePerformance> accepted_notes_; // control thread only
   double gain_,peak_=0,worst_budget_ratio_=0;bool silent_;
   std::vector<float> captured_;std::vector<TimedMidiEvent> audit_;std::size_t audit_size_=0;
   std::uint64_t clipped_=0,deadline_misses_=0;

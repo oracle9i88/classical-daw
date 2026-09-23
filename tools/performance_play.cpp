@@ -49,8 +49,8 @@ int main(int argc,char** argv) {
           if(command=="notes"){end();for(const auto& map:editor.document().performances[editor.document().active].mapping){std::cout<<"performed="<<map.id<<" notation=";for(auto id:map.notation_ids)std::cout<<id<<',';std::cout<<'\n';}continue;}
           if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active<<" frame="<<(audition?audition->frame():0)
             <<" applied_revision="<<(audition?audition->appliedRevision():editor.revision())<<" applied_frame="<<(audition?audition->appliedFrame():0)<<'\n';continue;}
-          // Admission prepares/publishes a plan before history acceptance. Full
-          // mailbox or invalid live updates leave BOTH document and playback intact.
+          // Admission waits for the callback decision before history acceptance.
+          // Rejected/cancelled updates leave BOTH document and playback intact.
           if(command=="edit"){daw::NotePerformance note;in>>note.note_id>>note.onset_seconds>>note.duration_scale>>note.velocity;parsed();note.onset_seconds/=1000;editor.set(note);}
           else if(command=="pitch"){std::uint64_t id;daw::ScorePitch pitch;in>>id>>pitch.step>>pitch.alter>>pitch.octave;parsed();editor.setPitch(id,pitch);}
           else if(command=="curve"){std::uint64_t curve,point;double value;in>>curve>>point>>value;parsed();editor.setCurvePoint(curve,point,value);}

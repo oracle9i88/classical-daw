@@ -7,11 +7,31 @@
 #include <cstring>
 #include <sstream>
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
 namespace daw {
 namespace {
+// Stack-only scope timer includes validation, every engine subdivision, source
+// rendering and host bookkeeping, including all early-return/error paths. The
+// end timestamp precedes the small accounting operation itself.
+class CallbackTimer {
+ public:
+  CallbackTimer(CallbackTimingStats& stats, std::chrono::steady_clock::time_point start,
+                std::uint32_t frames, double rate) noexcept
+      : stats_(stats), start_(start), frames_(frames), rate_(rate) {}
+  ~CallbackTimer() {
+    const auto end = std::chrono::steady_clock::now();
+    stats_.record(frames_, rate_, std::chrono::duration<double>(end - start_).count());
+  }
+ private:
+  CallbackTimingStats& stats_;
+  std::chrono::steady_clock::time_point start_;
+  std::uint32_t frames_;
+  double rate_;
+};
+
 std::uint64_t milliseconds() noexcept {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -82,6 +102,7 @@ CoreAudioOutput::~CoreAudioOutput() { stop(); }
 
 bool CoreAudioOutput::start(std::string* error) {
   if (running()) return true;
+  callback_timing_ = {};
   if (source_ && !source_->acceptsFormat(config_.sample_rate, config_.channels)) {
     if (error) *error = "audio source does not support this output format";
     return false;
@@ -353,14 +374,23 @@ std::string CoreAudioOutput::diagnostics() const {
   return out.str();
 }
 
+CallbackTimingStats CoreAudioOutput::callbackTimingAfterStop() const {
+  if (audio_unit_ != nullptr) {
+    throw std::logic_error("callback timing is only readable after CoreAudioOutput::stop returns");
+  }
+  return callback_timing_;
+}
+
 OSStatus CoreAudioOutput::renderCallback(void* reference,
                                          AudioUnitRenderActionFlags* /*action_flags*/,
                                          const AudioTimeStamp* /*timestamp*/,
                                          UInt32 /*bus_number*/,
                                          UInt32 frame_count,
                                          AudioBufferList* buffers) noexcept {
+  const auto callback_start = std::chrono::steady_clock::now();
   auto* output = static_cast<CoreAudioOutput*>(reference);
   if (output == nullptr) return noErr;
+  CallbackTimer timer(output->callback_timing_, callback_start, frame_count, output->config_.sample_rate);
   if (buffers == nullptr) {
     output->callback_errors_.fetch_add(1, std::memory_order_relaxed);
     output->scheduler_.recordXrun();

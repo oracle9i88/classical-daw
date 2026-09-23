@@ -1,7 +1,9 @@
 #include "daw/performance_fixture.hpp"
 #include "daw/project.hpp"
 #include "daw/history.hpp"
+#include "daw/live_performance.hpp"
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -88,6 +90,47 @@ int main(){try{
   admitted.setCommitAdmission([](const auto&,auto){throw std::runtime_error("mailbox full");});
   rejects([&]{admitted.setGain(-15);});rejects([&]{admitted.redo();});
   admitted.setCommitAdmission({});require(admitted.redo(),"rejected new branch destroyed redo");
+  // Use the real callback decision, rather than an always-throwing admission,
+  // to protect document bytes, revision and redo when a live onset is refused.
+  daw::WorkEditor live_editor(d);
+  live_editor.setGain(-14);live_editor.undo(); // retain a redo branch
+  daw::LivePerformanceStream live_stream(daw::compilePerformance(d.score,d.performances[d.active]),
+      std::pow(10.,d.gain_db/20),live_editor.revision());
+  auto accepted_notes=d.performances[d.active].notes;
+  live_stream.nextBlock(256); // ID 1 has actually started
+  live_editor.setCommitAdmission([&](const auto& candidate,auto rev){
+    auto next_notes=candidate.performances[candidate.active].notes;
+    const auto guarded=daw::changedPerformanceOnsets(accepted_notes,next_notes);
+    const auto ticket=live_stream.submit(daw::compilePerformance(candidate.score,candidate.performances[candidate.active]),
+        std::pow(10.,candidate.gain_db/20),rev,guarded);
+    live_stream.nextBlock(128); // deterministic audio boundary in this test
+    const auto receipt=live_stream.waitForDecision(ticket);
+    if(receipt.decision!=daw::LivePerformanceStream::Decision::Applied)throw std::runtime_error("onset already processed");
+    accepted_notes.swap(next_notes);
+  });
+  rejects([&]{live_editor.set({1,1e-12,.8,70});}); // sub-sample change still counts
+  require(live_editor.revision()==2&&live_stream.appliedRevision()==2,"rejected onset changed a revision");
+  daw::savePerformanceDocument(live_editor.document(),(temp.root/"onset-rejected").string());
+  for(const auto* name:{"score.dawproj","performances.dawperformance","piano.aupreset"})
+    require(read(temp.root/"base"/name)==read(temp.root/"onset-rejected"/name),"rejected onset partially saved duration/velocity");
+  require(live_editor.redo()&&live_editor.document().gain_db==-14,"onset rejection lost redo");
+  require(live_editor.set({2,.04,.94,85})&&live_stream.appliedRevision()==4,"future onset rejected");
+  require(live_editor.undo()&&live_stream.appliedRevision()==5&&accepted_notes.empty(),"future onset undo did not reach stream");
+  while(live_stream.frame()<26000)live_stream.nextBlock(256);
+  rejects([&]{live_editor.set({1,.01,1,-1});}); // released attacks remain locked
+  require(live_editor.revision()==5,"released-onset rejection changed revision");
+  live_editor.setCommitAdmission({}); // stopping playback permits the retained redo
+  require(live_editor.redo(),"released-onset rejection lost redo");
+  live_editor.setCommitAdmission([&](const auto& candidate,auto rev){
+    const auto ticket=live_stream.submit(daw::compilePerformance(candidate.score,candidate.performances[candidate.active]),.1,rev);
+    if(live_stream.waitForDecision(ticket,std::chrono::milliseconds(0)).decision!=daw::LivePerformanceStream::Decision::Applied)
+      throw std::runtime_error("audio callback unavailable");
+  });
+  const auto before_timeout=live_editor.revision();rejects([&]{live_editor.setGain(-20);});
+  require(live_editor.revision()==before_timeout&&live_editor.document().gain_db==-14&&!live_stream.hasPendingUpdate(),
+      "cancelled audio acceptance changed document or left a pending candidate");
+  require(daw::changedPerformanceOnsets({{1,.1,1,-1}},{} )==std::vector<std::uint64_t>{1},"removed offset not guarded");
+  require(daw::changedPerformanceOnsets({},{{1,0,.8,70}}).empty(),"duration/velocity edit incorrectly guards onset");
   // Stored onset offsets are elapsed seconds, invariant under tempo-map edits.
   auto seconds_take=d.performances[1];seconds_take.notes.push_back({2,.1,1,-1});
   const auto original_tempo=daw::compilePerformance(d.score,seconds_take);

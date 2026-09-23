@@ -3,6 +3,7 @@
 #include <cmath>
 #include <map>
 #include <stdexcept>
+#include <thread>
 
 namespace daw {
 namespace {
@@ -39,6 +40,8 @@ struct LivePerformanceStream::Plan {
   std::size_t frames = 0;
   double gain = 1;
   std::uint64_t revision = 0;
+  std::uint64_t ticket = 0;
+  std::vector<std::size_t> guarded_onsets;
 };
 LivePerformanceStream::LivePerformanceStream(MidiSampleSequence sequence, double gain, std::uint64_t revision) {
   static_assert(std::atomic<const Plan*>::is_always_lock_free);
@@ -50,7 +53,7 @@ LivePerformanceStream::LivePerformanceStream(MidiSampleSequence sequence, double
   fixed_events_ = fixedEvents(sequence);
   owned_[0] = prepare(std::move(sequence), gain, revision);
   active_ = owned_[0].get(); submitted_revision_ = revision;
-  applied_.store(revision); requested_.store(revision); render_end_ = active_->frames; end_frame_.store(render_end_);
+  applied_.store(revision); render_end_ = active_->frames; end_frame_.store(render_end_);
   for (auto& channel : controls_) channel = {-1, -1}; // no message sent yet
   for (auto& channel : key_owner_) channel.fill(no_slot);
 }
@@ -109,18 +112,68 @@ std::unique_ptr<LivePerformanceStream::Plan> LivePerformanceStream::prepare(
   return plan;
 }
 void LivePerformanceStream::collectRetired() noexcept {
+  // ACK comes after retirement. Do not reclaim a just-retired candidate while
+  // the callback still publishes its decision/identity.
+  if (acknowledged_.load(std::memory_order_acquire) != submitted_ticket_) return;
   if (const auto* old = retired_.exchange(nullptr, std::memory_order_acq_rel))
     for (auto& slot : owned_) if (slot.get() == old) { slot.reset(); break; }
+  submitted_revision_ = appliedRevision();
+  submitted_plan_ = nullptr;
 }
-void LivePerformanceStream::submit(MidiSampleSequence sequence, double gain, std::uint64_t revision) {
+std::uint64_t LivePerformanceStream::submit(MidiSampleSequence sequence, double gain, std::uint64_t revision,
+    const std::vector<std::uint64_t>& reject_started_onsets) {
   collectRetired();
+  require(acknowledged_.load(std::memory_order_acquire) == submitted_ticket_, "live update awaiting callback decision");
   require(!failed() && revision > submitted_revision_, "invalid or failed live revision");
   auto free = std::find_if(owned_.begin(), owned_.end(), [](const auto& slot) { return !slot; });
   require(free != owned_.end(), "live update pending; retry after the next audio block");
   auto next = prepare(std::move(sequence), gain, revision); // no side effects on failure
+  for (const auto id : reject_started_onsets) {
+    const auto found = std::lower_bound(ids_.begin(), ids_.end(), id);
+    require(found != ids_.end() && *found == id, "unknown guarded performed ID");
+    next->guarded_onsets.push_back(static_cast<std::size_t>(found-ids_.begin()));
+  }
+  std::sort(next->guarded_onsets.begin(), next->guarded_onsets.end());
+  next->guarded_onsets.erase(std::unique(next->guarded_onsets.begin(), next->guarded_onsets.end()), next->guarded_onsets.end());
+  require(submitted_ticket_ != UINT64_MAX, "live request ticket exhausted");
+  next->ticket = ++submitted_ticket_;
   *free = std::move(next); submitted_revision_ = revision;
-  requested_.store(revision,std::memory_order_release);
+  submitted_plan_ = free->get();
+  requested_.store(submitted_ticket_,std::memory_order_release);
+  publish_begin_frame_ = frame();
   pending_.store(free->get(), std::memory_order_release);
+  publish_end_frame_ = frame();
+  return submitted_ticket_;
+}
+LivePerformanceStream::Receipt LivePerformanceStream::receipt(std::uint64_t ticket) const {
+  require(ticket != 0 && ticket == submitted_ticket_, "receipt requires latest live request ticket");
+  Receipt result = acknowledged_.load(std::memory_order_acquire) != ticket ? Receipt{Decision::Pending,ticket} : receipt_;
+  result.publish_begin_frame = publish_begin_frame_;
+  result.publish_end_frame = publish_end_frame_;
+  return result;
+}
+bool LivePerformanceStream::cancelPending(std::uint64_t ticket) {
+  if (receipt(ticket).decision != Decision::Pending) return false;
+  const auto* expected = submitted_plan_;
+  if (!pending_.compare_exchange_strong(expected,nullptr,std::memory_order_acq_rel)) return false;
+  // CAS won ownership before the callback: it can never access this candidate.
+  receipt_ = {Decision::Cancelled,ticket,submitted_revision_,0,frame()};
+  retired_.store(submitted_plan_,std::memory_order_release);
+  acknowledged_.store(ticket,std::memory_order_release);
+  collectRetired();
+  return true;
+}
+LivePerformanceStream::Receipt LivePerformanceStream::waitForDecision(
+    std::uint64_t ticket, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now()+timeout;
+  for (;;) {
+    const auto result = receipt(ticket);
+    if (result.decision != Decision::Pending) { collectRetired(); return result; }
+    if (std::chrono::steady_clock::now() >= deadline && cancelPending(ticket)) return receipt(ticket);
+    // If the callback already claimed the plan, never roll back a possibly
+    // applied edit on a timeout. Its bounded host-only decision precedes AU DSP.
+    std::this_thread::sleep_for(std::chrono::microseconds(50));
+  }
 }
 void LivePerformanceStream::emit(TimedMidiEvent event, std::size_t slot, std::size_t& count) noexcept {
   const int controller = lane(event);
@@ -130,7 +183,7 @@ void LivePerformanceStream::emit(TimedMidiEvent event, std::size_t slot, std::si
     if (noteOn(event) && owner != no_slot && owner != slot) {
       // Retiming a held attack can create a collision absent from either score.
       // Preserve its voice; consume the conflicting attack for this pass only.
-      voices_[slot].fired = true; ++suppressed_conflicts_; return;
+      voices_[slot].fired = true; voices_[slot].onset_locked = true; ++suppressed_conflicts_; return;
     }
     if (noteOff(event) && owner != slot) return;
   }
@@ -139,7 +192,8 @@ void LivePerformanceStream::emit(TimedMidiEvent event, std::size_t slot, std::si
   if (slot < ids_.size()) {
     auto& voice = voices_[slot];
     if (noteOn(event)) {
-      voice.fired = true; voice.down = true; voice.channel = event.status & 15; voice.pitch = event.data1;
+      voice.fired = true; voice.down = true; voice.onset_locked = true;
+      voice.channel = event.status & 15; voice.pitch = event.data1;
       key_owner_[voice.channel][voice.pitch] = slot;
     } else if (noteOff(event)) {
       voice.down = false; key_owner_[event.status&15][event.data1] = no_slot;
@@ -194,21 +248,33 @@ LivePerformanceStream::Block LivePerformanceStream::nextBlock(std::uint32_t fram
     initialized_controls_ = true;
   }
   if (const auto* next = pending_.exchange(nullptr,std::memory_order_acq_rel)) {
-    // An already-ended pass may accept document revisions silently. Do not
-    // synthesize an extra render block beyond its reserved/captured end.
-    changed = position_ < render_end_ || position_ < next->frames;
-    if (changed) switchPlan(*next,count);
-    const auto* old = active_; active_ = next;
-    cursor_ = static_cast<std::size_t>(std::lower_bound(next->events.begin(),next->events.end(),position_,
-        [](const auto& e, auto frame) { return e.midi.frame < frame; }) - next->events.begin());
-    // Never shorten a run's release-tail budget. Any still-down old key had
-    // its old planned release + tail reserved before this boundary.
-    render_end_ = std::max(render_end_,next->frames);
-    end_frame_.store(render_end_,std::memory_order_release); ++update_count_;
-    applied_frame_.store(position_,std::memory_order_release);
-    applied_.store(next->revision,std::memory_order_release);
-    // No access to the old plan after this release; its destructor is control-only.
-    retired_.store(old,std::memory_order_release);
+    std::uint64_t rejected_id = 0;
+    for (const auto slot : next->guarded_onsets) if (voices_[slot].onset_locked) { rejected_id = ids_[slot]; break; }
+    if (rejected_id) {
+      // No controller/voice/plan mutation before this decision. Guard against
+      // attacks that occurred while the control thread was compiling, too.
+      receipt_ = {Decision::RejectedStartedOnset,next->ticket,next->revision,rejected_id,position_};
+      retired_.store(next,std::memory_order_release);
+      acknowledged_.store(next->ticket,std::memory_order_release);
+    } else {
+      // An already-ended pass may accept document revisions silently. Do not
+      // synthesize an extra render block beyond its reserved/captured end.
+      changed = position_ < render_end_ || position_ < next->frames;
+      if (changed) switchPlan(*next,count);
+      const auto* old = active_; active_ = next;
+      cursor_ = static_cast<std::size_t>(std::lower_bound(next->events.begin(),next->events.end(),position_,
+          [](const auto& e, auto frame) { return e.midi.frame < frame; }) - next->events.begin());
+      // Never shorten a run's release-tail budget. Any still-down old key had
+      // its old planned release + tail reserved before this boundary.
+      render_end_ = std::max(render_end_,next->frames);
+      end_frame_.store(render_end_,std::memory_order_release); ++update_count_;
+      applied_frame_.store(position_,std::memory_order_release);
+      applied_.store(next->revision,std::memory_order_release);
+      // No access to the old plan after this release; its destructor is control-only.
+      retired_.store(old,std::memory_order_release);
+      receipt_ = {Decision::Applied,next->ticket,next->revision,0,position_};
+      acknowledged_.store(next->ticket,std::memory_order_release);
+    }
   }
   const auto remaining = render_end_ > position_ ? render_end_-position_ : 0;
   result.frames = static_cast<std::uint32_t>(std::min<std::size_t>(frames, remaining));

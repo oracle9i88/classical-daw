@@ -59,6 +59,24 @@ in use. Controller state is chased at the boundary, and keys keep their pending
 releases by performed identity. See [live editing semantics and gates](live-performance.md)
 for already-sounded attacks, sustain, same-key conflicts and capacity limits.
 
+Onset edits for an already-processed performed note are rejected as a complete
+transaction. A sticky per-run lock covers sent attacks, including keys since
+released, and attacks consumed by same-key conflict suppression. Suppression
+does not mean the note sounded; rejecting a later onset change prevents another
+silently ineffective edit in that pass. Repitching cannot clear the lock.
+The audio thread makes this decision before plan exchange; a control-thread
+precheck alone races playback. Admission waits for an applied/rejected
+acknowledgement before committing document history. Stopping playback permits
+the edit. This policy prevents a saved edit that silently cannot affect the
+current pass.
+
+Load acceptance times the complete DefaultOutput input render callback, across
+all engine quanta, against its client frame count divided by client sample
+rate. Subblock budget ratios are diagnostics. This client-side interval excludes
+the output AU's conversion/driver work outside the callback and is not a HAL
+IO-cycle measurement. Host buffer-error counters and elapsed-time thresholds
+must not be presented as OS xrun observations.
+
 ## Project and engine split
 
 The UI will submit commands such as `AddTrack`, `MoveClip`, `InsertNote`,
@@ -83,7 +101,8 @@ longer deep-copies every historical Score. This removes the O(history × score)
 copy amplification, but not the O(history × score) resident storage or the need
 to migrate legacy editing. The new `WorkEditor` instead owns one delta-command
 stack for notation/performance/curve/gain changes. Its final admission step
-prepares and publishes the live plan; a failure rolls back data and leaves the
+prepares and publishes the live plan, then waits for its boundary decision; a
+rejection rolls back data and leaves the
 history cursor/revision unchanged, including undo/redo. No extra audio-edit undo
 stack exists. This is not yet global unification with `SessionMixState`.
 
