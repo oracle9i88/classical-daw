@@ -6,6 +6,13 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add explicit incremental offline render/preflight from previous to current
+  session. Compare stable part ID, instrument/state and ordered sample events;
+  validate candidate caches before loading changed instruments. Rebind unchanged
+  audio to the new score, retaining current mix and route order. This closes the
+  offline per-part reuse path; live document invalidation remains pending.
+  See [incremental rendering](incremental-rendering.md).
+
 - Collect saved frozen sessions into independent directories with normalized
   references, staged validation and exclusive no-overwrite publication. Preserve
   exact score/state/audio and saved mix; omit old exports and recovery/history.
@@ -247,6 +254,6 @@ the renderer an orchestral solution.
 ### M3: notation and assisted composition
 
 Add score editing/engraving, articulations, orchestral instrument libraries,
-incremental per-part cache invalidation, and AI services behind the same command boundary. AI must
+live per-part cache invalidation (explicit offline reuse is implemented), and AI services behind the same command boundary. AI must
 not run in the realtime callback or become a substitute for deterministic
 project state.

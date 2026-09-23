@@ -82,18 +82,23 @@ struct InstrumentState {
 
 int main(int argc, char** argv) {
   try {
-    const bool check_only = argc == 3 && std::string(argv[1]) == "--check";
-    const bool stream = argc == 4 && (std::string(argv[1]) == "--stream" || std::string(argv[1]) == "--stream-frozen");
+    const std::string option = argc > 1 ? argv[1] : "";
+    const bool incremental_check = argc == 4 && option == "--incremental-check";
+    const bool incremental = incremental_check || (argc == 5 && option == "--incremental");
+    const bool check_only = incremental_check || (argc == 3 && option == "--check");
+    const bool stream = incremental || (argc == 4 && (option == "--stream" || option == "--stream-frozen"));
     const bool frozen = argc == 4 && (std::string(argv[1]) == "--frozen" || std::string(argv[1]) == "--stream-frozen");
-    if (argc != 3 && !frozen && !stream) {
+    if (!check_only && !frozen && !stream && (argc != 3 || option.compare(0, 2, "--") == 0)) {
       std::cerr << "Usage: daw_session_render INPUT.dawsession NEW_OUTPUT_DIRECTORY\n"
                    "       daw_session_render --check INPUT.dawsession\n"
                    "       daw_session_render --frozen INPUT.dawsession NEW_OUTPUT_DIRECTORY\n"
                    "       daw_session_render --stream INPUT.dawsession NEW_OUTPUT_DIRECTORY\n"
-                   "       daw_session_render --stream-frozen INPUT.dawsession NEW_OUTPUT_DIRECTORY\n";
+                   "       daw_session_render --stream-frozen INPUT.dawsession NEW_OUTPUT_DIRECTORY\n"
+                   "       daw_session_render --incremental PREVIOUS.dawsession CURRENT.dawsession NEW_OUTPUT_DIRECTORY\n"
+                   "       daw_session_render --incremental-check PREVIOUS.dawsession CURRENT.dawsession\n";
       return 2;
     }
-    const fs::path input = (check_only || frozen || stream) ? argv[2] : argv[1];
+    const fs::path input = incremental ? argv[3] : (check_only || frozen || stream) ? argv[2] : argv[1];
     const auto source = daw::parseSession(read(input, 1024U * 1024U));
     const auto score_path = input.parent_path() / source.score_file;
     if (!fs::is_regular_file(fs::symlink_status(score_path))) throw std::runtime_error("score must be a regular sibling file");
@@ -120,12 +125,55 @@ int main(int argc, char** argv) {
       }
       source_states.push_back(std::move(bytes));
     }
+    // A previous cache is never trusted solely because its filename or MIDI
+    // looks right. Compare stable part/state/performance, then validate its
+    // original score-bound identity and complete CRC before any plugin loads.
+    std::vector<std::unique_ptr<daw::FrozenTrackReader>> reused(plan.tracks.size());
+    if (incremental) {
+      const fs::path old_input(argv[2]);
+      const auto old_session = daw::parseSession(read(old_input, 1024U * 1024U));
+      const auto old_score_path = old_input.parent_path() / old_session.score_file;
+      const auto old_score_bytes = read(old_score_path, 64U * 1024U * 1024U);
+      daw::Score old_score;
+      if (!daw::readProjectFile(old_score_path.string(), &old_score, &error)) throw std::runtime_error("previous score load: " + error);
+      const auto old_plan = daw::planSession(old_session, old_score, 48000, 5, daw::SessionPlanMode::Streaming);
+      std::size_t old_state_bytes = 0, reused_count = 0;
+      for (std::size_t i = 0; i < plan.tracks.size(); ++i) {
+        const auto& route = plan.tracks[i].route;
+        const auto found = std::find_if(old_session.routes.begin(), old_session.routes.end(),
+            [&](const auto& old) { return old.part_id == route.part_id; });
+        std::string reason;
+        if (found == old_session.routes.end()) reason = "new part";
+        else if (found->instrument != route.instrument) reason = "instrument changed";
+        else if (found->state_file.empty() || source_states[i].empty()) reason = "saved state required";
+        else {
+          const auto raw = read(old_input.parent_path() / found->state_file, 16U * 1024U * 1024U);
+          old_state_bytes += raw.size();
+          if (old_state_bytes > 64U * 1024U * 1024U) throw std::runtime_error("previous instrument states exceed 64 MiB");
+          const std::vector<std::uint8_t> old_state(raw.begin(), raw.end());
+          if (old_state != source_states[i]) reason = "instrument state changed";
+          else if (!daw::sameSessionPerformance(old_plan, static_cast<std::size_t>(found - old_session.routes.begin()), plan, i))
+            reason = "MIDI performance or shared timing changed";
+          else if (found->frozen_file.empty()) reason = "no previous frozen audio";
+          else {
+            const auto identity = daw::frozenTrackIdentity(old_score_bytes, found->part_id, found->instrument, old_state);
+            reused[i] = std::make_unique<daw::FrozenTrackReader>(
+                (old_input.parent_path() / found->frozen_file).string(), identity, old_plan.frames);
+            ++reused_count;
+          }
+        }
+        std::cerr << (reused[i] ? "REUSE " : "RENDER ") << std::quoted(route.part_id)
+                  << ": " << (reused[i] ? "validated unchanged performance/state" : reason) << '\n';
+      }
+      if (incremental_check)
+        std::cout << "Incremental plan: reuse=" << reused_count << " render=" << plan.tracks.size()-reused_count << ". ";
+    }
     if (check_only) {
       std::cout << "Routing valid: " << plan.tracks.size() << " instruments; " << plan.frames
                 << " frames at 48000 Hz. Plugins were not loaded or validated.\n";
       return 0;
     }
-    Bundle bundle{fs::path(argv[frozen || stream ? 3 : 2]), {}};
+    Bundle bundle{fs::path(argv[incremental ? 4 : frozen || stream ? 3 : 2]), {}};
     std::error_code ec;
     const auto status = fs::symlink_status(bundle.directory, ec);
     if ((ec && ec != std::errc::no_such_file_or_directory) || fs::exists(status)) throw std::runtime_error("output directory must be new");
@@ -137,7 +185,9 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < plan.tracks.size(); ++i) {
       const auto& route = plan.tracks[i].route;
       const auto kind = route.instrument == "pianoteq" ? daw::InstrumentKind::Pianoteq9 : daw::InstrumentKind::SwamCello3;
-      if (frozen) {
+      if (frozen || reused[i]) {
+        state_bytes += source_states[i].size();
+        if (state_bytes > 64U * 1024U * 1024U) throw std::runtime_error("session instrument states exceed 64 MiB");
         states.push_back({kind, "", 0, std::move(source_states[i])});
         continue;  // No AU discovery, instantiation or licensing on frozen reuse.
       }
@@ -169,6 +219,7 @@ int main(int argc, char** argv) {
     bundle.created = true;
     for (std::size_t i = 0; i < plan.tracks.size(); ++i) {
       const auto& routed = plan.tracks[i];
+      const bool reuse_audio = frozen || bool(reused[i]);
       auto& state = states[i];
       daw::InstrumentRenderReport diagnostics;
       const auto identity = daw::frozenTrackIdentity(score_bytes, routed.route.part_id, routed.route.instrument, state.bytes);
@@ -178,9 +229,9 @@ int main(int argc, char** argv) {
       daw::AudioBuffer stem;
       daw::MixReport stem_meter;
       if (stream) {
-        std::unique_ptr<daw::FrozenTrackReader> cache;
-        if (frozen) {
-          cache = std::make_unique<daw::FrozenTrackReader>((input.parent_path() / routed.route.frozen_file).string(), identity, plan.frames);
+        auto cache = std::move(reused[i]);
+        if (reuse_audio) {
+          if (!cache) cache = std::make_unique<daw::FrozenTrackReader>((input.parent_path() / routed.route.frozen_file).string(), identity, plan.frames);
           state.name = cache->presetName(); state.version = cache->componentVersion();
         }
         daw::FrozenTrackWriter frozen_writer(bundle.path(frozen_name).string(), identity, state.name, state.version, plan.frames);
@@ -199,7 +250,7 @@ int main(int argc, char** argv) {
           wav_writer.appendFrames(stem.samples.data(), count); // Rejects any PCM16 overload before publication.
           received += count;
         };
-        if (frozen) {
+        if (reuse_audio) {
           std::cerr << "Streaming frozen audio: " << routed.route.part_id << '\n';
           std::vector<float> block(8192 * 2);
           for (std::size_t frame = 0; frame < plan.frames; frame += 8192) {
@@ -254,11 +305,11 @@ int main(int argc, char** argv) {
              << ", \"mute\": " << (routed.route.mute ? "true" : "false")
              << ", \"solo\": " << (routed.route.solo ? "true" : "false")
              << ", \"audible\": " << (audible[i] ? "true" : "false")
-             << ", \"frozen\": " << quote(frozen_name) << ", \"audio_source\": " << quote(frozen ? "frozen" : "plugin")
+             << ", \"frozen\": " << quote(frozen_name) << ", \"audio_source\": " << quote(reuse_audio ? "frozen" : "plugin")
              << ", \"peak\": " << stem_meter.peak << ", \"rms\": " << stem_meter.rms
              << ", \"sent_messages\": " << diagnostics.sent_messages
              << ", \"skipped_bank_program_messages\": " << diagnostics.skipped_instrument_selection
-             << ", \"plugin_over_unity_samples\": " << (frozen ? "null" : std::to_string(diagnostics.over_unity_samples)) << '}';
+             << ", \"plugin_over_unity_samples\": " << (reuse_audio ? "null" : std::to_string(diagnostics.over_unity_samples)) << '}';
     }
     daw::MixReport master;
     if (stream) {

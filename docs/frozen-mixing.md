@@ -136,3 +136,10 @@ including tail in the same DAWFRZ01 layout. Use `daw_session_render --stream-fro
 for a streamed remix and `--stream` for a fresh instrument render. This does not
 lift the default buffered limit above. See [streamed export](streaming-export.md)
 and [long-track playback](session-playback.md) for commands and test evidence.
+
+## Selective reuse after score edits
+
+Strict frozen reuse still requires exact whole-score identity. For an
+explicit previous/current score comparison and selective per-part rerendering,
+use the new [incremental renderer](incremental-rendering.md). It validates old
+cache bindings before rebinding unchanged audio to the edited score.

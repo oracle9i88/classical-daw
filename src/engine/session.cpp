@@ -153,6 +153,25 @@ SessionPlan planSession(const Session& session, const Score& score, std::uint32_
   return plan;
 }
 
+bool sameSessionPerformance(const SessionPlan& previous, std::size_t previous_track,
+                            const SessionPlan& current, std::size_t current_track) {
+  require(previous_track < previous.tracks.size() && current_track < current.tracks.size(),
+          "performance track index out of range");
+  if (previous.frames != current.frames) return false;
+  const auto before = makeMidiSampleSequence(previous.tracks[previous_track].midi, 48000, 5,
+                                             kMaxStreamAudioFrames, previous.end_tick);
+  const auto after = makeMidiSampleSequence(current.tracks[current_track].midi, 48000, 5,
+                                            kMaxStreamAudioFrames, current.end_tick);
+  if (before.frames != previous.frames || after.frames != current.frames)
+    throw std::invalid_argument("performance comparison requires 48 kHz / five-second-tail plans");
+  if (before.end_frame != after.end_frame || before.events.size() != after.events.size()) return false;
+  for (std::size_t i = 0; i < before.events.size(); ++i) {
+    const auto& a = before.events[i]; const auto& b = after.events[i];
+    if (a.frame != b.frame || a.status != b.status || a.data1 != b.data1 || a.data2 != b.data2) return false;
+  }
+  return true;
+}
+
 void applyTrackMix(AudioBuffer& audio, double db, double balance) {
   stereoValid(audio);
   gainValid(db);

@@ -56,6 +56,17 @@ SessionPlan planSession(const Session& session, const Score& score,
                         std::uint32_t rate = 48000, double tail = 5.0,
                         SessionPlanMode mode = SessionPlanMode::Buffered);
 
+// Compare the inputs delivered by the CURRENT offline AU host: ordered MIDI
+// bytes at 48 kHz sample positions, shared release/end and five-second tail.
+// Ignores notation/track names and mix settings. Includes bank/program messages
+// conservatively, even when a fixed-preset host ignores them. Plans must come
+// from planSession at 48 kHz / five-second tail. Does not certify cache validity:
+// callers must ALSO match stable part ID, instrument and exact state, and fully
+// validate the old frozen identity/CRC. Revisit when the host gains tempo/meter
+// callbacks, automation, effects, other sample rates or other render inputs.
+bool sameSessionPerformance(const SessionPlan& previous, std::size_t previous_track,
+                            const SessionPlan& current, std::size_t current_track);
+
 struct MixReport {
   double peak = 0;
   double rms = 0;

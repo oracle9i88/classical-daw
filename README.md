@@ -26,6 +26,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   Explicit frozen reuse changes gain/balance or track selection without loading
   instruments; source matching and corruption checks reject stale audio. Unchanged
   mixes and unmute restore the captured audio exactly. See [frozen mixing](docs/frozen-mixing.md).
+- Explicit incremental offline rendering compares previous/current sessions by
+  stable part, saved state and sample-timed performance. Changed parts render;
+  validated unchanged performances are retained and rebound to the new score.
+  A read-only preflight reports each decision. See [incremental rendering](docs/incremental-rendering.md).
 - Native frozen-track playback through CoreAudio, with play/pause/seek/stop,
   live gain/balance/mute/solo/master controls, bounded callback processing and
   startup readiness checks. Hardware callbacks and controls were verified with
