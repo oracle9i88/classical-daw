@@ -2,6 +2,12 @@
 
 2026-09-24; preceding design commit `8bd118d`.
 
+**Subsequent implementation:** [whole-session publication](live-session.md) is
+now coded and tested; the old single-track API delegates to it. Also see the
+[48-case SWAM attack-response table](swam-attack-response.md), including the
+important negative differences from reported latency. The remaining complete
+integration gates below are still open.
+
 ## SWAM latency experiment
 
 Installed AU: **SWAM Cello 3.12.2**, `aumu/Sce3/AuMo`, encoded version 199682.
@@ -95,9 +101,10 @@ construct its input from N independently adopting live-stream mailboxes.
 Remaining, in the approved order:
 
 1. Track-binding/document migration, unified history and prepared AU adapter.
-2. One session mailbox, all-lane admission before reconciliation, shared revision
-   and ACK, held-note continuity, coordinated seek/reset and three-clock receipts;
-   rerun synthetic tests through that stream.
+2. Finish production binding/latency admission, coordinated seek/reset and
+   three-clock receipts around the implemented whole-session mailbox; run the
+   full synthetic matrix through that combined runtime. Basic nonempty PDC swap
+   integration is tested, but is not that complete matrix.
 3. Real Pianoteq+SWAM callback, separate captures, combined budget, device
    diagnostics and live/frozen integration. Measure the real 12-part edit-to-
    ensemble turnaround with cache-hit identities and phase timing. **No combined

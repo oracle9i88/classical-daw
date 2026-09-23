@@ -17,8 +17,10 @@ plugin errors are isolated by lane; process crashes/hangs are not isolated yet.
 
 First slice: [SWAM latency experiment and portable PDC kernel](multi-instrument-progress.md).
 The installed SWAM reported 20 ms across tested settings. The standalone kernel
-and v3 route-delay reservation have tests; atomic session adoption, real multi-AU
-output and all four complete gates remain pending.
+and v3 route-delay reservation have tests; real multi-AU output and all four
+complete integration gates remain pending. The subsequent
+[whole-session mailbox subgate](live-session.md) is implemented; multitrack
+document/history and real AU graph integration are still pending.
 
 ## Completed in this iteration
 

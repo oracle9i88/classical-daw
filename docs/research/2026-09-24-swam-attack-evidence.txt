@@ -1,0 +1,329 @@
+SWAM attack probe, 2026-09-24. Baseline 7a85661 plus task changes.
+Component aumu/Sce3/AuMo version 199682 is enforced by the probe before capture.
+48 new instances; no output device; raw audio retained locally, not published.
+
+===== initial failed attempt =====
+Command: build/daw_swam_attack_probe out/swam-attack-20260924
+Exit: 1
+Raw SHA256: 06f272521c5bff5921cb85257fedf0120b789358a15ad57bbba378aa809ae732
+setting id=1052964665 name="Transpose" requested=0.666667 actual=0.666667
+FAIL concert-pitch transpose not stored yet
+
+===== corrected state preparation =====
+Command: build/daw_swam_attack_probe out/swam-attack-20260924-state
+Exit: 0
+Raw SHA256: bdad3fd781e76091db127f870d5a1bc6e756a7d7f4699f87c3995d5f629e5d7c
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-default pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.337532 file=bow-default-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-default pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.361061 file=bow-default-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-default pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.432393 file=bow-default-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-default pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.416435 file=bow-default-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity32 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.331193 file=bow-velocity32-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity32 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.308131 file=bow-velocity32-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity32 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.377656 file=bow-velocity32-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity32 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.370443 file=bow-velocity32-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity127 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.376213 file=bow-velocity127-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity127 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.340153 file=bow-velocity127-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity127 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.403011 file=bow-velocity127-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=0 actual=0
+case=bow-velocity127 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.437166 file=bow-velocity127-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=0 actual=0
+case=bow-ramp0 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.345494 file=bow-ramp0-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=0 actual=0
+case=bow-ramp0 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.331589 file=bow-ramp0-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=0 actual=0
+case=bow-ramp0 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.398101 file=bow-ramp0-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=0 actual=0
+case=bow-ramp0 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.39373 file=bow-ramp0-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=1 actual=1
+case=bow-ramp1 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.347989 file=bow-ramp1-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=1 actual=1
+case=bow-ramp1 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.361402 file=bow-ramp1-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=1 actual=1
+case=bow-ramp1 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.411502 file=bow-ramp1-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=641237175 name="Attack Ramp Speed" requested=1 actual=1
+case=bow-ramp1 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.427262 file=bow-ramp1-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=0 actual=0
+case=bow-position0 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.40034 file=bow-position0-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=0 actual=0
+case=bow-position0 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.38785 file=bow-position0-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=0 actual=0
+case=bow-position0 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.431 file=bow-position0-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=0 actual=0
+case=bow-position0 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.420891 file=bow-position0-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=1 actual=1
+case=bow-position1 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.313213 file=bow-position1-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=1 actual=1
+case=bow-position1 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.339315 file=bow-position1-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=1 actual=1
+case=bow-position1 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.38448 file=bow-position1-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1013107514 name="Bow/Pizz Position" requested=1 actual=1
+case=bow-position1 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.400271 file=bow-position1-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.1 actual=0.1
+case=bow-pressure0.1 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.325955 file=bow-pressure0.1-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.1 actual=0.1
+case=bow-pressure0.1 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.311683 file=bow-pressure0.1-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.1 actual=0.1
+case=bow-pressure0.1 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.381166 file=bow-pressure0.1-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.1 actual=0.1
+case=bow-pressure0.1 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.379943 file=bow-pressure0.1-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.9 actual=0.9
+case=bow-pressure0.9 pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.322782 file=bow-pressure0.9-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.9 actual=0.9
+case=bow-pressure0.9 pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.354322 file=bow-pressure0.9-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.9 actual=0.9
+case=bow-pressure0.9 pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.373018 file=bow-pressure0.9-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1484578252 name="Bow Pressure" requested=0.9 actual=0.9
+case=bow-pressure0.9 pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.337525 file=bow-pressure0.9-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1336834641 name="Sordino" requested=1 actual=1
+case=bow-sordino pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.324813 file=bow-sordino-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1336834641 name="Sordino" requested=1 actual=1
+case=bow-sordino pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.33471 file=bow-sordino-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1336834641 name="Sordino" requested=1 actual=1
+case=bow-sordino pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.358946 file=bow-sordino-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=1336834641 name="Sordino" requested=1 actual=1
+case=bow-sordino pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.356614 file=bow-sordino-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=1 actual=1
+case=pizzicato pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.227233 file=pizzicato-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=1 actual=1
+case=pizzicato pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.229163 file=pizzicato-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=1 actual=1
+case=pizzicato pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.168175 file=pizzicato-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=1 actual=1
+case=pizzicato pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.169385 file=pizzicato-60-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=2 actual=2
+case=col-legno pitch=48 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.106141 file=col-legno-48-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=2 actual=2
+case=col-legno pitch=48 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.104477 file=col-legno-48-2.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=2 actual=2
+case=col-legno pitch=60 repeat=1 latency=0.02 notifications_before=1 notifications_after=1 peak=0.0688372 file=col-legno-60-1.f32le
+setting id=1099171302 name="Ambiente
+Room Simulator" requested=0 actual=0
+setting id=655530384 name="Source Delay Mode" requested=0 actual=0
+setting id=2008574934 name="Play Mode" requested=2 actual=2
+case=col-legno pitch=60 repeat=2 latency=0.02 notifications_before=1 notifications_after=1 peak=0.069121 file=col-legno-60-2.f32le
+PASS captures=48 output_device=none saved_preset=none coverage=listed_settings_only
+
+===== analysis verified =====
+Command: python3 scripts/analyze_swam_attack.py --verify out/swam-attack-20260924-state
+Exit: 0
+Raw SHA256: cfc33db46e42ab2a9e37d59cd640c788a09acb5408b98b850a16bac090d36e72
+| setting | peak-relative t20 ms | t20 minus reported 20 ms | late-window-relative t20 ms |
+|---|---:|---:|---:|
+| bow-default | 36–37 | 16–17 | 34–35 |
+| bow-velocity32 | 38–43 | 18–23 | 38–41 |
+| bow-velocity127 | 34–35 | 14–15 | 33–34 |
+| bow-ramp0 | 39–45 | 19–25 | 38–45 |
+| bow-ramp1 | 34–35 | 14–15 | 32–34 |
+| bow-position0 | 37–42 | 17–22 | 34–36 |
+| bow-position1 | 34–37 | 14–17 | 33–37 |
+| bow-pressure0.1 | 37–41 | 17–21 | 35–37 |
+| bow-pressure0.9 | 33–36 | 13–16 | 32–35 |
+| bow-sordino | 35–37 | 15–17 | 34–35 |
+| pizzicato | 9–11 | -11–-9 | 8–10 |
+| col-legno | 9–12 | -11–-8 | 8–10 |
+coverage=12_settings_2_pitches_2_repetitions; no universal attack constant; no automatic track delay
+9c05492c1e6f205c86279512382c00da53eee1629e85169283448ff6f110a8ba  tools/swam_attack_probe.cpp
+75df9203e2d5bd1c3bfebaf35fef8199e8ce0f9368b9838d1e42bae30d654f23  scripts/analyze_swam_attack.py
+
+Complete manifest:
+case	pitch	velocity	repeat	parameter_id	parameter_value	latency_seconds	notifications	file
+bow-default	48	96	1	2008574934	0	0.02	1	bow-default-48-1.f32le
+bow-default	48	96	2	2008574934	0	0.02	1	bow-default-48-2.f32le
+bow-default	60	96	1	2008574934	0	0.02	1	bow-default-60-1.f32le
+bow-default	60	96	2	2008574934	0	0.02	1	bow-default-60-2.f32le
+bow-velocity32	48	32	1	2008574934	0	0.02	1	bow-velocity32-48-1.f32le
+bow-velocity32	48	32	2	2008574934	0	0.02	1	bow-velocity32-48-2.f32le
+bow-velocity32	60	32	1	2008574934	0	0.02	1	bow-velocity32-60-1.f32le
+bow-velocity32	60	32	2	2008574934	0	0.02	1	bow-velocity32-60-2.f32le
+bow-velocity127	48	127	1	2008574934	0	0.02	1	bow-velocity127-48-1.f32le
+bow-velocity127	48	127	2	2008574934	0	0.02	1	bow-velocity127-48-2.f32le
+bow-velocity127	60	127	1	2008574934	0	0.02	1	bow-velocity127-60-1.f32le
+bow-velocity127	60	127	2	2008574934	0	0.02	1	bow-velocity127-60-2.f32le
+bow-ramp0	48	96	1	641237175	0	0.02	1	bow-ramp0-48-1.f32le
+bow-ramp0	48	96	2	641237175	0	0.02	1	bow-ramp0-48-2.f32le
+bow-ramp0	60	96	1	641237175	0	0.02	1	bow-ramp0-60-1.f32le
+bow-ramp0	60	96	2	641237175	0	0.02	1	bow-ramp0-60-2.f32le
+bow-ramp1	48	96	1	641237175	1	0.02	1	bow-ramp1-48-1.f32le
+bow-ramp1	48	96	2	641237175	1	0.02	1	bow-ramp1-48-2.f32le
+bow-ramp1	60	96	1	641237175	1	0.02	1	bow-ramp1-60-1.f32le
+bow-ramp1	60	96	2	641237175	1	0.02	1	bow-ramp1-60-2.f32le
+bow-position0	48	96	1	1013107514	0	0.02	1	bow-position0-48-1.f32le
+bow-position0	48	96	2	1013107514	0	0.02	1	bow-position0-48-2.f32le
+bow-position0	60	96	1	1013107514	0	0.02	1	bow-position0-60-1.f32le
+bow-position0	60	96	2	1013107514	0	0.02	1	bow-position0-60-2.f32le
+bow-position1	48	96	1	1013107514	1	0.02	1	bow-position1-48-1.f32le
+bow-position1	48	96	2	1013107514	1	0.02	1	bow-position1-48-2.f32le
+bow-position1	60	96	1	1013107514	1	0.02	1	bow-position1-60-1.f32le
+bow-position1	60	96	2	1013107514	1	0.02	1	bow-position1-60-2.f32le
+bow-pressure0.1	48	96	1	1484578252	0.10000000149011612	0.02	1	bow-pressure0.1-48-1.f32le
+bow-pressure0.1	48	96	2	1484578252	0.10000000149011612	0.02	1	bow-pressure0.1-48-2.f32le
+bow-pressure0.1	60	96	1	1484578252	0.10000000149011612	0.02	1	bow-pressure0.1-60-1.f32le
+bow-pressure0.1	60	96	2	1484578252	0.10000000149011612	0.02	1	bow-pressure0.1-60-2.f32le
+bow-pressure0.9	48	96	1	1484578252	0.89999997615814209	0.02	1	bow-pressure0.9-48-1.f32le
+bow-pressure0.9	48	96	2	1484578252	0.89999997615814209	0.02	1	bow-pressure0.9-48-2.f32le
+bow-pressure0.9	60	96	1	1484578252	0.89999997615814209	0.02	1	bow-pressure0.9-60-1.f32le
+bow-pressure0.9	60	96	2	1484578252	0.89999997615814209	0.02	1	bow-pressure0.9-60-2.f32le
+bow-sordino	48	96	1	1336834641	1	0.02	1	bow-sordino-48-1.f32le
+bow-sordino	48	96	2	1336834641	1	0.02	1	bow-sordino-48-2.f32le
+bow-sordino	60	96	1	1336834641	1	0.02	1	bow-sordino-60-1.f32le
+bow-sordino	60	96	2	1336834641	1	0.02	1	bow-sordino-60-2.f32le
+pizzicato	48	96	1	2008574934	1	0.02	1	pizzicato-48-1.f32le
+pizzicato	48	96	2	2008574934	1	0.02	1	pizzicato-48-2.f32le
+pizzicato	60	96	1	2008574934	1	0.02	1	pizzicato-60-1.f32le
+pizzicato	60	96	2	2008574934	1	0.02	1	pizzicato-60-2.f32le
+col-legno	48	96	1	2008574934	2	0.02	1	col-legno-48-1.f32le
+col-legno	48	96	2	2008574934	2	0.02	1	col-legno-48-2.f32le
+col-legno	60	96	1	2008574934	2	0.02	1	col-legno-60-1.f32le
+col-legno	60	96	2	2008574934	2	0.02	1	col-legno-60-2.f32le

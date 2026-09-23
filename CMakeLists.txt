@@ -10,6 +10,7 @@ add_library(daw_engine STATIC
   src/engine/note_identity.cpp
   src/engine/performance.cpp
   src/engine/live_performance.cpp
+  src/engine/live_session.cpp
   src/engine/parallel_render_graph.cpp
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
@@ -46,6 +47,9 @@ add_test(NAME daw_performance_tests COMMAND daw_performance_tests)
 add_executable(daw_live_performance_tests tests/live_performance_tests.cpp)
 target_link_libraries(daw_live_performance_tests PRIVATE daw_engine)
 add_test(NAME daw_live_performance_tests COMMAND daw_live_performance_tests)
+add_executable(daw_live_session_tests tests/live_session_tests.cpp)
+target_link_libraries(daw_live_session_tests PRIVATE daw_engine)
+add_test(NAME daw_live_session_tests COMMAND daw_live_session_tests)
 add_executable(daw_parallel_render_graph_tests tests/parallel_render_graph_tests.cpp)
 target_link_libraries(daw_parallel_render_graph_tests PRIVATE daw_engine)
 add_test(NAME daw_parallel_render_graph_tests COMMAND daw_parallel_render_graph_tests)
@@ -225,6 +229,8 @@ if(APPLE)
   target_compile_options(daw_au_host PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
   add_executable(daw_swam_latency_probe tools/swam_latency_probe.cpp)
   target_link_libraries(daw_swam_latency_probe PRIVATE daw_au_host)
+  add_executable(daw_swam_attack_probe tools/swam_attack_probe.cpp)
+  target_link_libraries(daw_swam_attack_probe PRIVATE daw_au_host)
   add_executable(daw_swam_state_tests tests/swam_state_tests.mm)
   target_link_libraries(daw_swam_state_tests PRIVATE daw_au_host)
   add_test(NAME daw_swam_state_tests COMMAND daw_swam_state_tests)

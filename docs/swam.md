@@ -9,6 +9,9 @@ timeline, state persistence and stereo WAV writer.
 (960 frames at 48 kHz) across 12 factory presets and 27 tested parameter changes,
 in both offline-property modes. See [scope and raw evidence](multi-instrument-progress.md).
 This does not certify realtime multi-instrument playback or acoustic attack time.
+The subsequent [attack-response experiment](swam-attack-response.md) measured
+48 offline captures; plucked threshold crossings before the reported 20 ms
+prevent treating a simple subtraction as an expressive-delay calibration.
 
 **2026-09-23 correction:** the earlier eight-bar duet played only three of its
 eight cello notes. The captured factory state had `transpose=-12`; written

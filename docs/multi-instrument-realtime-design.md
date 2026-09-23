@@ -4,8 +4,9 @@ Date: 2026-09-23. Baseline inspected: `03676e2`.
 **Status: implementation started 2026-09-24.** The standalone SWAM latency
 experiment and portable PDC kernel are implemented; see
 [implementation evidence and remaining gates](multi-instrument-progress.md).
-The complete session stream, AU integration and four end-to-end gates below
-are **not passed**. A tested kernel is not a delivered multi-AU player.
+The [whole-session MIDI mailbox](live-session.md) is also implemented and tested.
+Full document/graph/AU integration and the four end-to-end gates below are
+**not passed**. Tested components are not a delivered multi-AU player.
 The preceding [single-instrument gate](live-performance.md) remains the evidence
 for the running implementation. Its human listening sign-off remains separate.
 
@@ -185,6 +186,18 @@ established, report `unknown` with a reason, not zero or an exact arrival frame.
 A host/device timestamp estimate is not physical speaker-to-ear measurement.
 Hardware loopback requires its own input-latency calibration before certifying
 physical end-to-end timing. This uncertainty cannot be concealed in clock 2.
+
+Future live MIDI monitoring needs a separately selected low-latency monitor
+policy that may bypass **host-added** compensation on the monitored path and
+visibly accept its timing difference from other tracks. Do not rewrite the
+verified playback PDC calculation to implement this. Bypass cannot remove a
+plugin's own processing latency or expressive attack. In the current proposed
+parallel piano(0)/SWAM(960) layout, SWAM's host compensation is already zero;
+bypassing it saves zero frames on that lane. A lower-latency plugin mode or a
+different monitor path would be a separate capability/quality choice.
+The arithmetic 20 ms + 557/48000 ~= 31.6 ms is only a rough planning estimate:
+557 is a client render request after conversion, not a measured device transit
+time. No universal player-acceptability threshold or acoustic total is certified.
 
 Acceptance: known-delay fake output clock at 48k and rational 44.1k conversion,
 missing flags/properties, route changes and seeks; verify all three records,
