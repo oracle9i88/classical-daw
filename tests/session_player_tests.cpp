@@ -1,4 +1,5 @@
 #include "daw/session_player.hpp"
+#include "daw/output_blocks.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -53,6 +54,35 @@ void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
 int main() {
   using A = daw::PlaybackAction;
   try {
+    require(daw::outputSliceCapacity(512, 44100, 48000, 256) >= 814, "resampling capacity too small");
+    require(daw::outputSliceCapacity(4096, 44100, 192000, 256) >= 18089, "high rate capacity too small");
+    rejects([] { daw::outputSliceCapacity(65536, 44100, 48000, 256); });
+    rejects([] { daw::outputSliceCapacity(512, 0, 48000, 256); });
+    rejects([] { daw::outputSliceCapacity(512, 44100, std::numeric_limits<double>::quiet_NaN(), 256); });
+    rejects([] { daw::outputSliceCapacity(512, 44100, 48000, 0); });
+    // Variable hardware slices must never truncate frames or desynchronize the
+    // two channels. Count every callback quantum, including the short final one.
+    for (const unsigned frames : {1U, 255U, 256U, 279U, 512U, 558U, 4459U}) {
+      std::vector<float> output(static_cast<std::size_t>(frames) * 2 + 2, -9);
+      unsigned position = 0, calls = 0;
+      in_audio = true;
+      daw::renderOutputBlocks(output.data() + 1, frames, 2, 256,
+          [&](float* dest, unsigned count) noexcept {
+            if (count > 256 || !count) std::abort();
+            ++calls;
+            for (unsigned i = 0; i < count; ++i) {
+              dest[2 * i] = static_cast<float>(position);
+              dest[2 * i + 1] = -static_cast<float>(position++);
+            }
+          });
+      in_audio = false;
+      require(position == frames && calls == (frames + 255) / 256, "hardware slice lost frames");
+      require(output.front() == -9 && output.back() == -9, "hardware slice overwrote guard");
+      for (unsigned i = 0; i < frames; ++i) {
+        near(output[1 + 2 * i], i, "hardware slice left alignment");
+        near(output[2 + 2 * i], -static_cast<double>(i), "hardware slice right alignment");
+      }
+    }
     daw::SessionPlayer player(settings(), sources());
     require(player.acceptsFormat(48000, 2) && !player.acceptsFormat(44100, 2) &&
             !player.acceptsFormat(48000, 1), "format validation");

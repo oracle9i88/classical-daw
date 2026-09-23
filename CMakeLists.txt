@@ -184,11 +184,14 @@ if(APPLE)
     src/platform/macos/coreaudio_output.cpp
   )
   target_include_directories(daw_coreaudio PUBLIC src/platform/macos)
-  target_link_libraries(daw_coreaudio PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreAudio")
+  target_link_libraries(daw_coreaudio PUBLIC daw_engine "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
   target_compile_features(daw_coreaudio PUBLIC cxx_std_17)
   target_compile_options(daw_coreaudio PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
   add_executable(daw_session_play tools/session_play.cpp)
   target_link_libraries(daw_session_play PRIVATE daw_coreaudio daw_au_host)
+  # Explicit local hardware check, intentionally excluded from CTest/CI.
+  add_executable(daw_output_probe tools/output_probe.cpp)
+  target_link_libraries(daw_output_probe PRIVATE daw_coreaudio)
 
   add_library(daw_coremidi STATIC
     src/platform/macos/coremidi_host.cpp

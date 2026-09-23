@@ -2,8 +2,8 @@
 
 This repository is the first compileable slice of a macOS-oriented classical
 music workstation. The engine is self-contained C++17 with no third-party
-source copied into the tree. It is intentionally an offline core, suitable for
-validating score timing and audio rendering before platform integration.
+source copied into the tree. It includes an offline score/rendering core and
+an initial native frozen-track playback path; it is not a finished DAW.
 
 ## What works in Alpha
 
@@ -15,7 +15,7 @@ validating score timing and audio rendering before platform integration.
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
   Cocoa startup handling, concert-pitch factory initialization, saved-state
   pitch-range validation and per-note fixture audio checks. Other installed SWAM instruments and
-  realtime playback remain pending. See [SWAM Cello setup](docs/swam.md).
+  realtime instrument-plugin playback remain pending. See [SWAM Cello setup](docs/swam.md).
 - Offline multi-instrument sessions route each score part to an independent
   piano/cello instance, with saved gain, stereo balance and instrument state.
   They export aligned stems and a master mix on the shared tempo map, retaining
@@ -26,6 +26,11 @@ validating score timing and audio rendering before platform integration.
   Explicit frozen reuse changes gain/balance or track selection without loading
   instruments; source matching and corruption checks reject stale audio. Unchanged
   mixes and unmute restore the captured audio exactly. See [frozen mixing](docs/frozen-mixing.md).
+- Native frozen-track playback through CoreAudio, with play/pause/seek/stop,
+  live gain/balance/mute/solo/master controls, bounded callback processing and
+  startup readiness checks. Hardware callbacks and controls were verified with
+  speaker-silenced probes. GUI and realtime instrument hosting remain pending.
+  See [playback commands and measured limits](docs/session-playback.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.

@@ -1,9 +1,13 @@
 #include "coreaudio_output.hpp"
+#include "daw/output_blocks.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
 
 #include <cmath>
 #include <cstring>
+#include <sstream>
+#include <chrono>
+#include <thread>
 #include <vector>
 
 namespace daw {
@@ -74,6 +78,7 @@ bool CoreAudioOutput::start(std::string* error) {
     return false;
   }
   if (!std::isfinite(config_.sample_rate) || config_.sample_rate <= 0.0 || config_.block_size == 0 ||
+      config_.block_size > 65536 ||
       config_.channels == 0 || config_.channels > 8) {
     if (error != nullptr) *error = "invalid CoreAudio output configuration";
     return false;
@@ -111,14 +116,6 @@ bool CoreAudioOutput::start(std::string* error) {
   }
   current_device_id_ = static_cast<std::uint32_t>(device);
 
-  const UInt32 block_size = config_.block_size;
-  if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioUnitProperty_MaximumFramesPerSlice,
-                                        kAudioUnitScope_Global, 0, &block_size, sizeof(block_size)),
-                   "maximum frames per slice", error)) {
-    stop();
-    return false;
-  }
-
   AudioStreamBasicDescription format{};
   format.mSampleRate = config_.sample_rate;
   format.mFormatID = kAudioFormatLinearPCM;
@@ -133,6 +130,23 @@ bool CoreAudioOutput::start(std::string* error) {
                    "stream format", error)) {
     stop();
     return false;
+  }
+
+  AudioObjectPropertyAddress device_property{kAudioDevicePropertyBufferFrameSize,
+      kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  UInt32 device_frames = 0, size = sizeof(device_frames);
+  if (!checkStatus(AudioObjectGetPropertyData(device, &device_property, 0, nullptr, &size, &device_frames),
+                   "device buffer frames", error)) { stop(); return false; }
+  device_property.mSelector = kAudioDevicePropertyNominalSampleRate;
+  Float64 device_rate = 0; size = sizeof(device_rate);
+  if (!checkStatus(AudioObjectGetPropertyData(device, &device_property, 0, nullptr, &size, &device_rate),
+                   "device sample rate", error)) { stop(); return false; }
+  UInt32 capacity = 0;
+  try { capacity = outputSliceCapacity(device_frames, device_rate, config_.sample_rate, config_.block_size); }
+  catch (const std::exception& e) { if (error) *error = e.what(); stop(); return false; }
+  if (!checkStatus(AudioUnitSetProperty(audio_unit_, kAudioUnitProperty_MaximumFramesPerSlice,
+      kAudioUnitScope_Global, 0, &capacity, sizeof(capacity)), "maximum frames per slice", error)) {
+    stop(); return false;
   }
 
   AURenderCallbackStruct callback{};
@@ -153,11 +167,33 @@ bool CoreAudioOutput::start(std::string* error) {
     stop();
     return false;
   }
+  size = sizeof(maximum_callback_frames_);
+  if (!checkStatus(AudioUnitGetProperty(audio_unit_, kAudioUnitProperty_MaximumFramesPerSlice,
+      kAudioUnitScope_Global, 0, &maximum_callback_frames_, &size), "prepared maximum frames", error)) {
+    stop(); return false;
+  }
+  if (!maximum_callback_frames_ || maximum_callback_frames_ > 65536) {
+    if (error) *error = "prepared AU callback capacity is outside supported bounds";
+    stop(); return false;
+  }
+  rendered_frames_.store(0, std::memory_order_relaxed);
+  callback_errors_.store(0, std::memory_order_relaxed);
   if (!checkStatus(AudioOutputUnitStart(audio_unit_), "AudioOutputUnitStart", error)) {
     stop();
     return false;
   }
   running_.store(true, std::memory_order_release);
+  // A successful start call alone does not prove the device is pulling audio.
+  // Bound this control-thread wait; callbacks never sleep or query properties.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!renderedFrames() && !xrunCount() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  if (!renderedFrames() || xrunCount()) {
+    if (error) *error = "output failed callback readiness: " + diagnostics();
+    stop(); return false;
+  }
+  if (error) error->clear();
   return true;
 }
 
@@ -241,6 +277,33 @@ bool CoreAudioOutput::setAudioSource(AudioOutputSource* source, std::string* err
   return true;
 }
 
+std::string CoreAudioOutput::diagnostics() const {
+  std::ostringstream out;
+  out << "device=" << current_device_id_ << " client_rate=" << config_.sample_rate
+      << " processed_frames=" << renderedFrames() << " callback_errors=" << xrunCount();
+  if (audio_unit_) {
+    OSStatus last_error = 0;
+    UInt32 size = sizeof(last_error);
+    if (AudioUnitGetProperty(audio_unit_, kAudioUnitProperty_LastRenderError,
+        kAudioUnitScope_Global, 0, &last_error, &size) == noErr) out << " last_render_error=" << last_error;
+    UInt32 maximum = 0; size = sizeof(maximum);
+    if (AudioUnitGetProperty(audio_unit_, kAudioUnitProperty_MaximumFramesPerSlice,
+        kAudioUnitScope_Global, 0, &maximum, &size) == noErr) out << " au_maximum_frames=" << maximum;
+  }
+  if (current_device_id_) {
+    AudioObjectPropertyAddress address{kAudioDevicePropertyBufferFrameSize,
+        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+    UInt32 frames = 0, size = sizeof(frames);
+    if (AudioObjectGetPropertyData(current_device_id_, &address, 0, nullptr, &size, &frames) == noErr)
+      out << " device_buffer_frames=" << frames;
+    address.mSelector = kAudioDevicePropertyNominalSampleRate;
+    Float64 rate = 0; size = sizeof(rate);
+    if (AudioObjectGetPropertyData(current_device_id_, &address, 0, nullptr, &size, &rate) == noErr)
+      out << " device_rate=" << rate;
+  }
+  return out.str();
+}
+
 OSStatus CoreAudioOutput::renderCallback(void* reference,
                                          AudioUnitRenderActionFlags* /*action_flags*/,
                                          const AudioTimeStamp* /*timestamp*/,
@@ -256,15 +319,18 @@ OSStatus CoreAudioOutput::renderCallback(void* reference,
   }
   const std::size_t required_bytes = static_cast<std::size_t>(frame_count) * output->config_.channels * sizeof(float);
   if (buffers->mNumberBuffers == 1 && buffers->mBuffers[0].mData != nullptr &&
-      frame_count <= output->config_.block_size &&
+      frame_count <= output->maximum_callback_frames_ &&
       buffers->mBuffers[0].mNumberChannels == output->config_.channels &&
       buffers->mBuffers[0].mDataByteSize >= required_bytes) {
     auto& buffer = buffers->mBuffers[0];
-    if (output->source_) output->source_->render(static_cast<float*>(buffer.mData), frame_count);
-    else {
-      output->scheduler_.processBlock(frame_count);
-      output->synth_.render(static_cast<float*>(buffer.mData), frame_count, output->config_.channels, output->config_.sample_rate);
-    }
+    renderOutputBlocks(static_cast<float*>(buffer.mData), frame_count, output->config_.channels,
+        output->config_.block_size, [output](float* samples, std::uint32_t count) noexcept {
+          if (output->source_) output->source_->render(samples, count);
+          else {
+            output->scheduler_.processBlock(count);
+            output->synth_.render(samples, count, output->config_.channels, output->config_.sample_rate);
+          }
+        });
     output->rendered_frames_.fetch_add(frame_count, std::memory_order_relaxed);
   } else {
     output->callback_errors_.fetch_add(1, std::memory_order_relaxed);

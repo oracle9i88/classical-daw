@@ -6,6 +6,13 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add native frozen-track playback and live CLI track mixing. Fix CoreAudio
+  output callback registration and AU slice capacity versus device-buffer/rate
+  conversion; require actual callbacks before reporting startup ready. Verify
+  real-device callbacks, transport/mix controls and restart with silent output,
+  plus variable-slice and offline-parity regressions. This is frozen audio,
+  not realtime AU synthesis. See [playback evidence](session-playback.md).
+
 - Correct SWAM's captured -12-semitone default that suppressed five low notes
   in the duet. New factory states use concert pitch; saved/frozen states get
   per-note range validation. Require note-level energy/harmonic evidence, not
@@ -158,7 +165,8 @@ Extend the piano/SWAM Cello per-part offline host to the other installed SWAM in
 Validate continuous expression, legato/articulation and saved state per instrument.
 Resolve initial-versus-reopened SWAM waveform differences; offline frozen reuse
 now preserves captured audio, but plugin rerendering itself remains unproven.
-Extend saved mute/solo to realtime track mixing and a graphical control surface.
+Frozen audio now has realtime track mixing through a CLI; extend this to live
+instrument hosting and a graphical control surface.
 Keep optional synthesized orchestral effects on the same future track/bus path;
 the user's synth-demo screenshots are design references, not audited DSP code.
 

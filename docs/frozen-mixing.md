@@ -126,6 +126,7 @@ Unchanged WAVs/frozen files and restored full mixes matched byte for byte;
 stale source/state, corrupt audio and master overload were rejected with no
 partial output left behind.
 
-This is saved **offline mixing**, not a realtime mute/solo control surface.
-Realtime transport, plugin audition, graphical editing and audio-device recovery
-remain the next integration work.
+The bounce/editor above provide saved **offline mixing**. A separate native
+[frozen-track player](session-playback.md) now exposes realtime transport and
+temporary CLI mix controls. Live instrument-plugin audition, graphical editing
+and audio-device recovery remain future integration work.

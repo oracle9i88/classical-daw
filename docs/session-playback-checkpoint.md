@@ -1,5 +1,11 @@
 # Native session playback checkpoint — 2026-09-23
 
+**Resumed and resolved:** the zero-callback failure below was traced to an AU
+slice capacity smaller than the hardware buffer plus rate conversion. The
+current [playback record](session-playback.md) documents the fix, real hardware
+callback/control checks, and remaining limitations. The following is the
+historical shutdown checkpoint, retained as an incident record.
+
 Paused at the user's request before shutting down the machine. This is a work
 checkpoint, **not a completed native playback release**.
 

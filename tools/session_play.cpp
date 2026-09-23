@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, .02, false);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
+      std::cout << output.diagnostics() << '\n';
       output.stop();
       if (output.xrunCount()) throw std::runtime_error("output callback errors during device check");
       if (!output.renderedFrames()) throw std::runtime_error("output produced no callbacks during device check");

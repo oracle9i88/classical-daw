@@ -14,6 +14,7 @@ namespace daw {
 
 struct CoreAudioOutputConfig {
   double sample_rate = 48000.0;
+  // Engine quantum, not a request to change the hardware's buffer size.
   std::uint32_t block_size = 256;
   std::uint32_t channels = 2;
   // Zero uses the system default output device. A non-zero value is an
@@ -27,8 +28,8 @@ struct CoreAudioOutputDeviceInfo {
   bool is_default = false;
 };
 
-// Minimal macOS host for the platform-neutral BlockScheduler. The callback
-// uses a prepared diagnostic renderer and clears/counts malformed output
+// macOS host for prepared audio sources or the diagnostic BlockScheduler. The
+// callback splits hardware requests into engine quanta and clears/counts malformed output
 // buffers. Device enumeration and explicit selection stay on the control
 // thread; the realtime callback never touches CoreAudio object properties.
 class CoreAudioOutput {
@@ -39,6 +40,8 @@ class CoreAudioOutput {
   CoreAudioOutput(const CoreAudioOutput&) = delete;
   CoreAudioOutput& operator=(const CoreAudioOutput&) = delete;
 
+  // Waits up to 2 seconds for a successfully rendered callback before reporting
+  // readiness. Prepare/attach a paused source to avoid sound during startup.
   bool start(std::string* error = nullptr);
   void stop() noexcept;
   [[nodiscard]] std::vector<CoreAudioOutputDeviceInfo> enumerateOutputDevices(
@@ -49,6 +52,9 @@ class CoreAudioOutput {
   // Control thread only, with output stopped. nullptr restores the diagnostic
   // synth path. The source must outlive this output's active callback.
   bool setAudioSource(AudioOutputSource* source, std::string* error = nullptr);
+  // Control-thread diagnostic only; reads AU/device properties, never called
+  // by renderCallback. Does not change the system sample rate or buffer size.
+  std::string diagnostics() const;
   [[nodiscard]] std::uint32_t currentDeviceId() const noexcept { return current_device_id_; }
   [[nodiscard]] bool running() const noexcept { return running_.load(std::memory_order_acquire); }
   [[nodiscard]] std::uint64_t xrunCount() const noexcept { return callback_errors_.load(std::memory_order_relaxed); }
@@ -73,6 +79,7 @@ class CoreAudioOutput {
   std::atomic<std::uint64_t> callback_errors_{0};
   std::atomic<std::uint64_t> rendered_frames_{0};
   std::uint32_t current_device_id_ = 0;
+  std::uint32_t maximum_callback_frames_ = 0;
 };
 
 }  // namespace daw
