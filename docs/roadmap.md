@@ -6,19 +6,27 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Connect continuous AU chunk rendering to incremental frozen/PCM16 stem writers
+  and a second bounded pass for the master. `--stream` and `--stream-frozen`
+  use the two-hour plan; old buffered modes retain their limits. Verify
+  byte-identical frozen remixes, short real piano/cello export with every cello
+  note audible, and full two-hour synthetic WAV output. Real long plugin runs,
+  slow-storage performance and process isolation remain pending.
+  See [streamed export](streaming-export.md).
+
 - Separate streaming duration from buffered-render allocation limits: allow
   two hours including tail in 48 kHz stream plans/readers, retaining old buffer
   guards. Add an incremental, checksum-preserving frozen writer with exclusive
   atomic publication. Verify a 45-minute synthetic file, long seeks and shared
-  EOF without whole-waveform allocation. AU rendering and WAV export still need
-  chunked producer integration before claiming complete long-form production.
+  EOF without whole-waveform allocation. Producer integration is now described
+  above; long-form real musical performances still need endurance validation.
 
 - Add optional disk-streamed frozen playback: bounded block reader with full
   startup validation, one prefetch worker and four owned pages, shared transport/
   mix/history/recovery controls. Verify page handoff with ThreadSanitizer,
   resident sample parity, seek/EOF/disk-failure behavior, 64-route capacity and
-  real output callbacks. Long-duration/slow-storage performance, streaming
-  offline bounce and live instruments remain pending.
+  real output callbacks. Long-duration/slow-storage performance and live
+  instruments remain pending.
 
 - Automatically checkpoint native mix edits/undo/redo to isolated per-run
   recovery directories. Add source-bound, checksummed recovery to a new sibling,
@@ -209,7 +217,8 @@ Keep optional synthesized orchestral effects on the same future track/bus path;
 the user's synth-demo screenshots are design references, not audited DSP code.
 
 Add recording/takes, MIDI event scheduling, buses, automation, plugin scanning in a worker,
-latency compensation, effects sends/returns, and streaming offline bounce. Extend the first real
+latency compensation and effects sends/returns. Stress the new streamed offline
+bounce on real long works. Extend the first real
 instrument adapters to a validated orchestral instrument set before calling
 the renderer an orchestral solution.
 

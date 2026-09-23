@@ -163,6 +163,9 @@ add_test(NAME daw_streaming_audio_tests COMMAND daw_streaming_audio_tests)
 add_executable(daw_frozen_stream_writer_tests tests/frozen_stream_writer_tests.cpp)
 target_link_libraries(daw_frozen_stream_writer_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_stream_writer_tests COMMAND daw_frozen_stream_writer_tests)
+add_executable(daw_wav_stream_writer_tests tests/wav_stream_writer_tests.cpp)
+target_link_libraries(daw_wav_stream_writer_tests PRIVATE daw_engine)
+add_test(NAME daw_wav_stream_writer_tests COMMAND daw_wav_stream_writer_tests)
 add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
 target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)
@@ -202,6 +205,10 @@ if(APPLE)
 
   add_executable(daw_session_render tools/session_render.cpp)
   target_link_libraries(daw_session_render PRIVATE daw_au_host)
+
+  # Explicit installed/licensed Pianoteq check; never part of CTest/CI.
+  add_executable(daw_au_chunk_probe tools/au_chunk_probe.cpp)
+  target_link_libraries(daw_au_chunk_probe PRIVATE daw_au_host)
 
   add_library(daw_coreaudio STATIC
     src/platform/macos/coreaudio_output.cpp

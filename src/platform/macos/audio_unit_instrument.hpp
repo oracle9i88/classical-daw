@@ -1,6 +1,8 @@
 #pragma once
 
 #include "daw/midi.hpp"
+#include "daw/midi_sequence.hpp"
+#include <functional>
 #include "daw/wav.hpp"
 #include <cstdint>
 #include <memory>
@@ -67,7 +69,18 @@ class AudioUnitInstrument {
                      std::uint32_t rate = 48000, double tail_seconds = 5.0,
                      bool clip_output = true, Tick minimum_end_tick = 0);
 
+  using ChunkSink = std::function<void(std::size_t, const float*, std::uint32_t)>;
+  // Offline fixed 48 kHz stereo, up to two hours including tail. The same AU
+  // instance/clock/controller state spans every chunk. Sink runs synchronously,
+  // borrows samples only until return, and may throw to abort; a used instance
+  // cannot be retried. Report is published only after every sink call succeeds.
+  void renderChunks(const MidiFile& midi, const ChunkSink& sink,
+                    InstrumentRenderReport* report = nullptr, double tail_seconds = 5.0,
+                    Tick minimum_end_tick = 0);
+
  private:
+  void renderSequence(const MidiSampleSequence& sequence, const ChunkSink& sink,
+                      InstrumentRenderReport* report, bool clip_output);
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

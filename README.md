@@ -37,8 +37,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   shared clock and reports buffering; seek and mixing use the same player.
   Stream plans/readers accept up to two hours including tail; a new chunked
   frozen writer avoids whole-waveform allocation. A 45-minute synthetic file
-  passes random-access checks. Offline AU/WAV producers still use their old
-  buffered limits. See [streaming limits and validation](docs/session-playback.md).
+  passes random-access checks. Offline `daw_session_render --stream` now connects
+  AU chunks to frozen audio, WAV stems and a streamed master; `--stream-frozen`
+  remixes without plugins. Two-hour synthetic WAV writing and short real
+  piano/cello export are verified. See [export usage and limits](docs/streaming-export.md).
 - Shared mix-edit state for offline and native playback controls. Inspect accepted
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state

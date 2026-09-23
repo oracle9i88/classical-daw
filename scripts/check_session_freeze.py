@@ -7,6 +7,7 @@ The supplied source bundle is read-only. No network or workflow is invoked.
 import argparse
 import array
 import json
+import hashlib
 import math
 import plistlib
 from pathlib import Path
@@ -55,6 +56,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bundle", type=Path)
     parser.add_argument("--build", type=Path, default=Path("build"))
+    parser.add_argument("--stream", action="store_true", help="exercise chunked export and compare every successful bundle against buffered export")
     args = parser.parse_args()
     build = args.build.resolve()
     editor, renderer = build / "daw_session_edit", build / "daw_session_render"
@@ -63,6 +65,17 @@ def main():
     for stem in report["stems"]:
         frozen(args.bundle / stem["frozen"])
     checks = 0
+    def hashes(folder):
+        result = {}
+        for path in folder.iterdir():
+            if path.is_file():
+                digest = hashlib.sha256()
+                with path.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(65536), b""):
+                        digest.update(chunk)
+                result[path.name] = digest.hexdigest()
+        return result
+    source_hashes = hashes(args.bundle)
     with tempfile.TemporaryDirectory(prefix="daw-frozen-cli-") as folder:
         root = Path(folder)
         source = root / "source"
@@ -86,10 +99,14 @@ def main():
 
         def bounce(session, name, failure=None):
             destination = root / name
-            result = run([renderer, "--frozen", session, destination], failure)
+            result = run([renderer, "--stream-frozen" if args.stream else "--frozen", session, destination], failure)
             require("Rendering " not in result.stderr, "frozen path loaded an instrument")
             if failure:
                 require(not destination.exists(), "failed bounce left a partial bundle")
+            elif args.stream:
+                reference = root / (name + "-buffered")
+                run([renderer, "--frozen", session, reference])
+                require(hashes(destination) == hashes(reference), f"streamed bundle differs from buffered export: {name}")
             return destination
 
         unchanged = bounce(source / "session.dawsession", "unchanged")
@@ -139,7 +156,8 @@ def main():
                     changed = plistlib.dumps(value, fmt=plistlib.FMT_BINARY)
                 require(changed != original, "fixture mutation did not change input")
                 path.write_bytes(changed)
-                bounce(source / "session.dawsession", "stale-" + filename, "frozen audio is stale")
+                bounce(source / "session.dawsession", "stale-" + filename,
+                       "source identity mismatch" if args.stream else "frozen audio is stale")
             finally:
                 path.write_bytes(original)
         damaged = source / "track-2.dawfreeze"
@@ -151,7 +169,15 @@ def main():
             damaged.write_bytes(original)
         overload = edit(source, "overload.dawsession", "--gain", "piano", "1.5", "--gain", "cello", "0", "--master", "12")
         bounce(overload, "overload", "master exceeds PCM16 headroom")
+        loud_stem = edit(source, "loud-stem.dawsession", "--gain", "cello", "12", "--master", "-30")
+        bounce(loud_stem, "loud-stem", "stem exceeds PCM16 headroom")
+        protected = root / "existing"
+        protected.mkdir(); (protected / "keep").write_text("untouched")
+        run([renderer, "--stream-frozen" if args.stream else "--frozen", source / "session.dawsession", protected], "must be new")
+        require((protected / "keep").read_text() == "untouched", "existing bundle changed")
+    require(hashes(args.bundle) == source_hashes, "original source bundle changed")
     print(json.dumps({"result": "PASS", "cli_operations": checks, "plugin_loads": 0,
+                      "streamed_export_matches_buffered_bundles": args.stream,
                       "unchanged_remix_bit_exact": True, "unmute_restores_bit_exact_mix": True,
                       "stale_corrupt_overload_cleanup": "PASS"}, indent=2))
 

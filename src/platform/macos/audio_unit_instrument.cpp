@@ -1,6 +1,7 @@
 #include "audio_unit_instrument.hpp"
 #include "audio_unit_runtime.hpp"
 #include "daw/midi_sequence.hpp"
+#include "daw/audio_limits.hpp"
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -198,6 +199,22 @@ AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderRe
   output.sample_rate = rate;
   output.channels = 2;
   output.samples.resize(sequence.frames * 2);
+  renderSequence(sequence, [&](std::size_t frame, const float* samples, std::uint32_t count) {
+    std::copy(samples, samples + count * 2, output.samples.begin() + static_cast<std::ptrdiff_t>(frame * 2));
+  }, report, clip_output);
+  return output;
+}
+void AudioUnitInstrument::renderChunks(const MidiFile& midi, const ChunkSink& sink,
+                                       InstrumentRenderReport* report, double tail, Tick minimum_end_tick) {
+  impl_->requireEditable();
+  if (!sink) throw std::invalid_argument("chunk sink is empty");
+  validateInstrumentStatePerformance(impl_->kind, state(), midi);
+  const auto sequence = makeMidiSampleSequence(midi, 48000, tail, kMaxStreamAudioFrames, minimum_end_tick);
+  renderSequence(sequence, sink, report, false);
+}
+void AudioUnitInstrument::renderSequence(const MidiSampleSequence& sequence, const ChunkSink& sink,
+                                         InstrumentRenderReport* report, bool clip_output) {
+  const auto rate = sequence.sample_rate;
   impl_->consumed = true;
   AudioStreamBasicDescription format{};
   format.mSampleRate = rate;
@@ -222,6 +239,7 @@ AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderRe
   // startup phase occurs before sample zero; it is not added to the score timing.
   serviceAudioUnitRuntime(descriptor().startup_seconds);
   std::array<float, kBlock> left{}, right{};
+  std::array<float, kBlock * 2> chunk{};
   struct StereoBuffers { UInt32 count; ::AudioBuffer buffers[2]; } buffers{};
   InstrumentRenderReport diagnostics;
   double energy = 0.0, tail_energy = 0.0;
@@ -264,14 +282,14 @@ AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderRe
           ++diagnostics.over_unity_samples;
           if (clip_output) ++diagnostics.clipped_samples;
         }
-        output.samples[(frame + i) * 2 + channel] = clip_output ? std::clamp(value, -1.0F, 1.0F) : value;
+        chunk[i * 2 + channel] = clip_output ? std::clamp(value, -1.0F, 1.0F) : value;
       }
     }
+    sink(frame, chunk.data(), frames);
   }
-  diagnostics.rms = std::sqrt(energy / static_cast<double>(output.samples.size()));
+  diagnostics.rms = std::sqrt(energy / static_cast<double>(sequence.frames * 2));
   diagnostics.last_second_rms = std::sqrt(tail_energy / static_cast<double>(2 * tail_frames));
   if (report) *report = diagnostics;
-  return output;
 }
 
 }  // namespace daw

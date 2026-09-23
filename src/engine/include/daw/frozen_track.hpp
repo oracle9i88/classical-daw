@@ -37,6 +37,8 @@ class FrozenTrackReader {
   FrozenTrackReader(const FrozenTrackReader&) = delete;
   FrozenTrackReader& operator=(const FrozenTrackReader&) = delete;
   std::size_t frameCount() const noexcept;
+  const std::string& presetName() const noexcept;
+  std::uint32_t componentVersion() const noexcept;
   // Reads exactly count stereo frames. Bounds checked before writing. A disk
   // failure throws; caller must not publish any partially written block.
   void readFrames(std::size_t start, std::size_t count, float* stereo);

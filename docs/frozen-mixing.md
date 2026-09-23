@@ -35,8 +35,8 @@ Use actual stable part IDs shown by `--show`. Boolean options accept only 0/1;
 gains accept -60..+12 dB and balance accepts -1..+1. Unknown IDs, invalid values
 and existing destinations fail without overwriting the original. Edited session
 files must remain in the same directory so their sibling references stay valid.
-The editor saves a new settings file; an in-memory undoable mix-command stack
-and atomic replacement of an existing mix file are not yet implemented.
+The editor saves a new settings file. Native playback now has shared in-memory
+undo/redo and mix recovery; replacement of existing mix files remains unsupported.
 
 ## Mute/solo contract
 
@@ -91,9 +91,9 @@ exported WAV stems for interchange. It retains values above unity before faders
 without clipping. Buffered mixing here is limited to 32 Mi frames per track; score input is
 bounded to 64 MiB, AU state to 16 MiB per track / 64 MiB total, and frozen identity
 to 81 MiB. Each file stores its own source binding, so large scores/states add
-disk and temporary memory overhead. Reuse currently reads one complete track,
-mixes it and writes a self-contained new bundle; this is not streaming playback
-or a disk-deduplicating cache.
+disk and temporary memory overhead. Default `--frozen` reuse reads one complete
+track at a time. New `--stream-frozen` reuse uses bounded chunks and writes the
+same self-contained bundle; neither is a disk-deduplicating cache.
 
 Plugin binaries and licensing are not needed to reuse existing frozen audio.
 The current remix executable is built on macOS and still links Apple frameworks;
@@ -131,7 +131,8 @@ The bounce/editor above provide saved **offline mixing**. A separate native
 CLI mix controls and new-session saving. Live instrument-plugin audition, graphical editing
 and audio-device recovery remain future integration work.
 
-The separate streaming reader/chunk writer now support up to two hours at
-48 kHz including tail in the same DAWFRZ01 layout. This does not lift the
-buffered offline mixing limit above. See [long-track playback and writer
-boundaries](session-playback.md) for usage, compatibility and test evidence.
+The streaming reader/chunk writers now support up to two hours at 48 kHz
+including tail in the same DAWFRZ01 layout. Use `daw_session_render --stream-frozen`
+for a streamed remix and `--stream` for a fresh instrument render. This does not
+lift the default buffered limit above. See [streamed export](streaming-export.md)
+and [long-track playback](session-playback.md) for commands and test evidence.

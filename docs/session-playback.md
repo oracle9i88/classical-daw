@@ -186,10 +186,11 @@ Streaming score planning and `FrozenTrackReader` now allow **two hours per
 track including release tail**, at fixed 48 kHz stereo (345,600,000 frames).
 The existing DAWFRZ01 uint32 frame field already accommodates this duration;
 no file-layout migration is needed, and byte offsets use 64-bit arithmetic.
-The 64-track limit is unchanged. Buffer-based APIs and offline AU session
-rendering/WAV bounce still retain the old 32 Mi-frame session budget (about
-11.65 minutes including tail). Longer playback does not yet mean a complete
-long-form instrument-render/export workflow. The stream is fixed
+The 64-track limit is unchanged. Buffer-based APIs and the default offline
+session bounce retain the old 32 Mi-frame session budget (about 11.65 minutes
+including tail). The new renderer `--stream`/`--stream-frozen` modes also use the
+two-hour budget; see [streamed export and verification](streaming-export.md).
+Real long plugin performances remain an endurance-test gap. The stream is fixed
 48 kHz stereo frozen audio, not realtime AU instruments, recording or editable
 clips. Browser/native document integration and GUI controls remain separate work.
 
@@ -354,7 +355,8 @@ build/daw_frozen_stream_writer_tests --long
 ASAN_OPTIONS=detect_leaks=0 build-sanitize/daw_frozen_stream_writer_tests --long
 ```
 
-Next producer work: connect chunked AU rendering and streamed master/stem WAV
-export to the new writer, then verify real long works and sustained storage
-performance. The native CLI currently consumes already-produced frozen audio;
-it does not create a long instrument performance through this API by itself.
+The producer connection is now implemented by `daw_session_render --stream`
+and `--stream-frozen`: [commands, checks and remaining limits](streaming-export.md).
+Next work is real long performances and sustained storage validation, alongside
+live instrument input and device recovery. Short real export and synthetic
+duration checks are not a substitute for that endurance test.

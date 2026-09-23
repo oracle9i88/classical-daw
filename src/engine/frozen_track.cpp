@@ -142,6 +142,8 @@ FrozenTrack readFrozenTrack(const std::string& path, const std::string& identity
 struct FrozenTrackReader::Impl {
   Reader reader;
   std::size_t frames = 0;
+  std::string preset;
+  std::uint32_t version = 0;
   std::streamoff offset = 0;
   Impl(const std::string& path, const std::string& identity, std::size_t expected) : reader(path) {
     frames = expected;
@@ -157,7 +159,7 @@ struct FrozenTrackReader::Impl {
       require(std::memcmp(block.data(), identity.data() + at, count) == 0, "frozen audio source identity mismatch");
       at += count;
     }
-    reader.text(4096); reader.u32(); // Preset and component version; bounded metadata.
+    preset = reader.text(4096); version = reader.u32();
     const auto rate = reader.u32(), channels = reader.u32(), stored = reader.u32();
     require(rate == 48000 && channels == 2 && stored == frames, "frozen audio timing/format mismatch");
     offset = reader.stream.tellg();
@@ -188,6 +190,8 @@ FrozenTrackReader::FrozenTrackReader(const std::string& path, const std::string&
 }
 FrozenTrackReader::~FrozenTrackReader() = default;
 std::size_t FrozenTrackReader::frameCount() const noexcept { return impl_->frames; }
+const std::string& FrozenTrackReader::presetName() const noexcept { return impl_->preset; }
+std::uint32_t FrozenTrackReader::componentVersion() const noexcept { return impl_->version; }
 void FrozenTrackReader::readFrames(std::size_t start, std::size_t count, float* stereo) {
   require(start <= impl_->frames && count <= impl_->frames - start && count <= kReadFrames && (!count || stereo),
           "frozen block read out of bounds");
