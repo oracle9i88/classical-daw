@@ -6,6 +6,11 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Persist mute/solo in backward-readable session v2; add a non-destructive CLI
+  for saved static mix edits. Freeze pre-fader float audio with exact source
+  binding and corruption checks; explicitly reuse it without AU loading for
+  bit-exact unchanged mixes and unmute. Graphical/realtime mixing remains pending.
+  See [frozen mixing](frozen-mixing.md).
 - Add offline independent piano/cello routes per score part, persisted static
   gain/balance/state, shared tempo/end timing, aligned stems and a master mix.
   Verify controller isolation even on equal MIDI channels, saved-session reload,
@@ -147,8 +152,9 @@ timeline edit → deterministic WAV export.
 
 Extend the piano/SWAM Cello per-part offline host to the other installed SWAM instruments.
 Validate continuous expression, legato/articulation and saved state per instrument.
-Resolve initial-versus-reopened SWAM waveform differences and add audio freeze/cache
-reuse for exact repeatability. Add mute/solo and realtime track mixing separately.
+Resolve initial-versus-reopened SWAM waveform differences; offline frozen reuse
+now preserves captured audio, but plugin rerendering itself remains unproven.
+Extend saved mute/solo to realtime track mixing and a graphical control surface.
 Keep optional synthesized orchestral effects on the same future track/bus path;
 the user's synth-demo screenshots are design references, not audited DSP code.
 
@@ -160,6 +166,6 @@ the renderer an orchestral solution.
 ### M3: notation and assisted composition
 
 Add score editing/engraving, articulations, orchestral instrument libraries,
-freeze/render caches, and AI services behind the same command boundary. AI must
+incremental per-part cache invalidation, and AI services behind the same command boundary. AI must
 not run in the realtime callback or become a substitute for deterministic
 project state.

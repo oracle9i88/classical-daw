@@ -47,7 +47,18 @@ void validateSession(const Session& session) {
     require(route.preset.size() <= 4096 && (route.state_file.empty() || safeName(route.state_file)), "invalid preset/state reference");
     require(route.preset.empty() || route.state_file.empty(), "choose a preset OR saved state for each route");
     require(route.state_file.empty() || route.state_file != session.score_file, "score and state must be different files");
+    require(route.frozen_file.empty() || (safeName(route.frozen_file) &&
+        !route.state_file.empty() && route.frozen_file != session.score_file &&
+        route.frozen_file != route.state_file), "frozen audio requires a separate sibling file and saved state");
   }
+}
+
+std::vector<bool> audibleSessionRoutes(const Session& session) {
+  validateSession(session);
+  const bool solo = std::any_of(session.routes.begin(), session.routes.end(), [](const auto& r) { return r.solo; });
+  std::vector<bool> result;
+  for (const auto& route : session.routes) result.push_back(!route.mute && (!solo || route.solo));
+  return result;
 }
 
 Session parseSession(const std::string& text) {
@@ -56,7 +67,7 @@ Session parseSession(const std::string& text) {
   input.imbue(std::locale::classic());
   token(input, "CLASSICAL_DAW_SESSION");
   int version = 0;
-  require(static_cast<bool>(input >> version) && version == 1, "unsupported session version");
+  require(static_cast<bool>(input >> version) && (version == 1 || version == 2), "unsupported session version");
   Session result;
   token(input, "score"); input >> std::quoted(result.score_file);
   token(input, "master_gain_db"); input >> result.master_gain_db;
@@ -68,6 +79,12 @@ Session parseSession(const std::string& text) {
     InstrumentRoute route;
     require(static_cast<bool>(input >> std::quoted(route.part_id) >> std::quoted(route.instrument) >>
         route.gain_db >> route.balance >> std::quoted(route.preset) >> std::quoted(route.state_file)), "truncated route");
+    if (version == 2) {
+      int mute = -1, solo = -1;
+      require(static_cast<bool>(input >> mute >> solo >> std::quoted(route.frozen_file)) &&
+          (mute == 0 || mute == 1) && (solo == 0 || solo == 1), "invalid mute/solo/frozen fields");
+      route.mute = mute == 1; route.solo = solo == 1;
+    }
     result.routes.push_back(std::move(route));
   }
   token(input, "end");
@@ -81,12 +98,13 @@ std::string serializeSession(const Session& session) {
   validateSession(session);
   std::ostringstream output;
   output.imbue(std::locale::classic());
-  output << std::setprecision(17) << "CLASSICAL_DAW_SESSION 1\nscore " << std::quoted(session.score_file)
+  output << std::setprecision(17) << "CLASSICAL_DAW_SESSION 2\nscore " << std::quoted(session.score_file)
          << "\nmaster_gain_db " << session.master_gain_db << "\nroutes " << session.routes.size() << '\n';
   for (const auto& route : session.routes) {
     output << "route " << std::quoted(route.part_id) << ' ' << std::quoted(route.instrument) << ' '
            << route.gain_db << ' ' << route.balance << ' ' << std::quoted(route.preset) << ' '
-           << std::quoted(route.state_file) << '\n';
+           << std::quoted(route.state_file) << ' ' << static_cast<int>(route.mute) << ' '
+           << static_cast<int>(route.solo) << ' ' << std::quoted(route.frozen_file) << '\n';
   }
   output << "end\n";
   return output.str();

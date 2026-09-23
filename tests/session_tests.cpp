@@ -35,6 +35,24 @@ int main() {
     const auto original = session();
     const auto text = daw::serializeSession(original);
     require(daw::serializeSession(daw::parseSession(text)) == text, "session persistence changed routing/mix/preset");
+    auto settings = original;
+    require(daw::audibleSessionRoutes(settings) == std::vector<bool>({true, true}), "default tracks not audible");
+    settings.routes[0].solo = true;
+    require(daw::audibleSessionRoutes(settings) == std::vector<bool>({true, false}), "solo selection wrong");
+    settings.routes[0].mute = true;
+    require(daw::audibleSessionRoutes(settings) == std::vector<bool>({false, false}), "mute must win over solo");
+    settings.routes[1].solo = true;
+    require(daw::audibleSessionRoutes(settings) == std::vector<bool>({false, true}), "multiple solos wrong");
+    settings.routes[0].preset.clear(); settings.routes[0].state_file = "cello.aupreset";
+    settings.routes[0].frozen_file = "cello.dawfreeze";
+    const auto saved_settings = daw::parseSession(daw::serializeSession(settings));
+    require(saved_settings.routes[0].mute && saved_settings.routes[0].solo &&
+        saved_settings.routes[0].frozen_file == "cello.dawfreeze", "mute/solo/freeze reference not saved");
+    const auto legacy = daw::parseSession("CLASSICAL_DAW_SESSION 1\nscore \"s.dawproj\"\nmaster_gain_db -6\nroutes 1\nroute \"p\" \"pianoteq\" 0 0 \"\" \"\"\nend\n");
+    require(!legacy.routes[0].mute && !legacy.routes[0].solo && legacy.routes[0].frozen_file.empty(), "v1 defaults wrong");
+    rejects([&] { daw::parseSession("CLASSICAL_DAW_SESSION 2\nscore \"s\"\nmaster_gain_db 0\nroutes 1\nroute \"p\" \"pianoteq\" 0 0 \"\" \"\" 2 0 \"\"\nend"); });
+    settings.routes[0].frozen_file = "../bad";
+    rejects([&] { daw::serializeSession(settings); });
     auto plan = daw::planSession(original, score(), 48000, 1);
     require(plan.tracks.size() == 2 && plan.end_tick == 3840 && plan.frames == 216000, "shared tempo/end extent wrong");
     require(plan.tracks[0].midi.tracks[0].notes[0].pitch == 48 &&
@@ -110,7 +128,7 @@ int main() {
     daw::AudioBuffer large{48000, 2, {std::numeric_limits<float>::max(), 0}};
     rejects([&] { daw::addStereoTrack(large, large); });
     require(large.samples[0] == std::numeric_limits<float>::max(), "overflow add modified output");
-    std::cout << "Session routing, persistence, isolation, alignment and mix tests passed\n";
+    std::cout << "Session routing, persistence, isolation, alignment, mute/solo and mix tests passed\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n'; return 1;

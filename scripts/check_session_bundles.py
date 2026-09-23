@@ -28,14 +28,14 @@ def audio(path, frames):
 
 def bundle(folder):
     report = json.loads((folder / "report.json").read_text())
-    require(report["format"] == "classical-daw-session-bounce-1", "report format")
+    require(report["format"] in ("classical-daw-session-bounce-1", "classical-daw-session-bounce-2"), "report format")
     require(report["frames"] == 1517594 and report["end_tick"] == 34560,
             "tempo map or terminal silent measure changed")
     require(report["sample_rate"] == 48000 and report["channels"] == 2
             and report["tail_seconds"] == 5, "session audio format")
     require(report["clipped_samples"] == 0 and report["master_gain_db"] == -3,
             "master configuration or headroom changed")
-    require(report["stem_tap"] == "post-track-fader, pre-master", "unknown stem tap")
+    require(report["stem_tap"] in ("post-track-fader, pre-master", "post-track-fader-and-mute-solo, pre-master"), "unknown stem tap")
     expected = [("piano", "pianoteq", -4.5, -.2), ("cello", "swam-cello", -6, .2)]
     require([(s["part_id"], s["instrument"], s["gain_db"], s["balance"])
              for s in report["stems"]] == expected, "routing or faders changed")

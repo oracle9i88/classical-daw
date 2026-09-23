@@ -21,6 +21,10 @@ validating score timing and audio rendering before platform integration.
   terminal silent bars. Saved state/MIDI round-trips are verified; SWAM's initial
   versus reopened waveform differs, so exact rerendering is not promised. See
   [session format, commands and measured limits](docs/sessions.md).
+- Saved offline mute/solo and mix edits, with pre-fader float audio freezing.
+  Explicit frozen reuse changes gain/balance or track selection without loading
+  instruments; source matching and corruption checks reject stale audio. Unchanged
+  mixes and unmute restore the captured audio exactly. See [frozen mixing](docs/frozen-mixing.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.

@@ -15,6 +15,9 @@ struct InstrumentRoute {
   double balance = 0;  // -1 left, 0 unchanged stereo, +1 right
   std::string preset;
   std::string state_file;  // sibling filename, exclusive with preset
+  bool mute = false;
+  bool solo = false;
+  std::string frozen_file;  // optional pre-fader audio, explicitly reused by CLI
 };
 struct Session {
   std::string score_file;
@@ -31,12 +34,14 @@ struct SessionPlan {
   std::size_t frames = 0;
 };
 
-// Session v1 references a sibling project and sibling instrument state files.
+// Session v2 adds mute/solo/frozen audio; v1 loads with all tracks audible.
 // Text is bounded to 1 MiB / 64 routes; paths cannot escape that directory.
 // Parsing returns a new value; malformed input cannot partially modify a session.
 Session parseSession(const std::string& text);
 std::string serializeSession(const Session& session);
 void validateSession(const Session& session);
+// Any solo selects only solo tracks; mute always wins, including muted solos.
+std::vector<bool> audibleSessionRoutes(const Session& session);
 
 // Exactly one independent instrument per score part, matched by stable part ID,
 // never by UI route order or MIDI channel. No cross-part controller inheritance.

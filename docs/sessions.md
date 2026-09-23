@@ -6,6 +6,10 @@ another part uses the same MIDI channel. Routes use stable part IDs, not their
 position in a UI or MIDI channel number. This is the first offline multi-instrument
 slice, not a realtime mixer or complete orchestral host.
 
+Session v2 now adds saved mute/solo and explicit pre-fader frozen-audio reuse.
+See [frozen mixing](frozen-mixing.md) for the edit/reuse commands; the v1 example
+below remains readable, while current output uses v2.
+
 ## Reproduce locally
 
 Both licensed plugins must already be installed and ready on this Mac. The
@@ -45,7 +49,7 @@ route "cello" "swam-cello" -6 0.2 "Cello" ""
 end
 ```
 
-Each route is `part_id instrument gain_db balance preset state_file`. There
+Each v1 route is `part_id instrument gain_db balance preset state_file`. There
 must be exactly one route per score part. Preset and saved-state filename are
 exclusive; both empty selects the instrument's default preset. Reopened bundles
 use saved state files rather than reselecting factory presets.
@@ -73,7 +77,8 @@ AU bounce, matching the single-instrument host.
 
 Output is stereo 48 kHz PCM16:
 
-- `track-N.wav`: after track gain/balance, before master gain.
+- `track-N.wav`: after track gain/balance and mute/solo, before master gain.
+- `track-N.dawfreeze`: pre-fader float audio with its exact source binding (v2).
 - `track-N.mid` and `track-N.aupreset`: that part's isolated MIDI and state.
 - `mix.wav`: sum of the float stems, then master gain.
 - `score.dawproj`, `session.dawsession`, `report.json`: score, reload entry point,
@@ -123,10 +128,11 @@ The integration checker strictly compares saved routing/state/MIDI and piano
 waveform tolerance. For all audio it checks total level, 100 ms energy envelope,
 onset, length, headroom and stem-sum reconstruction, while explicitly reporting
 sample differences. Its passing result is **not** a deterministic-waveform claim.
-Use the already bounced WAVs when exact audio repeatability matters; automatic
-freeze/cache reuse has not yet been implemented.
+Use bounced WAVs or the new explicit [frozen reuse](frozen-mixing.md) when exact
+audio repeatability matters. Automatic per-part rerendering/invalidation has not
+yet been implemented.
 
 Still pending: additional SWAM instruments, articulation/legato validation,
-real-time plugin playback, mute/solo, effects buses, automation, latency compensation,
+real-time plugin playback and mixer controls, effects buses, automation, latency compensation,
 plugin UI and a graphical mixer. These commands are not integrated into the web
 prototype or a finished macOS application shell. No GitHub workflow is required.

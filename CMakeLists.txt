@@ -9,6 +9,7 @@ add_library(daw_engine STATIC
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
   src/engine/history.cpp
+  src/engine/frozen_track.cpp
   src/engine/project.cpp
   src/engine/render.cpp
   src/engine/score.cpp
@@ -138,9 +139,14 @@ add_test(NAME daw_midi_sequence_tests COMMAND daw_midi_sequence_tests)
 add_executable(daw_session_tests tests/session_tests.cpp)
 target_link_libraries(daw_session_tests PRIVATE daw_engine)
 add_test(NAME daw_session_tests COMMAND daw_session_tests)
+add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
+target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
+add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)
 
 add_executable(daw_session_fixture tools/session_fixture.cpp)
 target_link_libraries(daw_session_fixture PRIVATE daw_engine)
+add_executable(daw_session_edit tools/session_edit.cpp)
+target_link_libraries(daw_session_edit PRIVATE daw_engine)
 
 add_executable(daw_midi_roundtrip tools/midi_roundtrip.cpp)
 target_link_libraries(daw_midi_roundtrip PRIVATE daw_engine)
