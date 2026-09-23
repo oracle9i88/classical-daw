@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Opt-in native CLI save/reopen check; opens the output device but never plays.
 
-Usage: python3 scripts/check_session_live_save.py BUNDLE [BUILD_DIRECTORY]
+Usage: python3 scripts/check_session_live_save.py BUNDLE [BUILD_DIRECTORY] [--stream]
 Works on a temporary copy of the canonical piano/cello bundle.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -14,14 +15,20 @@ import tempfile
 
 
 def main():
-    source = Path(sys.argv[1]).resolve()
     repo = Path(__file__).resolve().parents[1]
-    build = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else repo / "build"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("build", type=Path, nargs="?", default=repo / "build")
+    parser.add_argument("--stream", action="store_true")
+    options = parser.parse_args()
+    source, build = options.bundle.resolve(), options.build.resolve()
 
     def hashes():
         return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in source.iterdir() if p.is_file()}
 
     def run(name, *args, stdin=None):
+        if options.stream and name == "daw_session_play":
+            args = ("--stream-check", *args[1:]) if args[0] == "--check" else ("--stream", *args)
         result = subprocess.run([str(build / name), *map(str, args)], input=stdin,
                                 capture_output=True, text=True, timeout=30)
         assert result.returncode == 0, result.stderr

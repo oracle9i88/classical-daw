@@ -50,13 +50,15 @@ void help() {
 }
 int main(int argc, char** argv) {
   try {
-    const bool check = argc == 3 && std::string(argv[1]) == "--check";
-    const bool device_check = argc == 3 && std::string(argv[1]) == "--device-check";
-    if (!(argc == 2 && argv[1][0] != '-') && !check && !device_check) {
-      std::cerr << "Usage: daw_session_play [--check | --device-check] SESSION.dawsession\n";
+    const std::string option = argc == 3 ? argv[1] : "";
+    const bool streaming = option == "--stream" || option == "--stream-check" || option == "--stream-device-check";
+    const bool check = option == "--check" || option == "--stream-check";
+    const bool device_check = option == "--device-check" || option == "--stream-device-check";
+    if (!(argc == 2 && argv[1][0] != '-') && !check && !device_check && !streaming) {
+      std::cerr << "Usage: daw_session_play [--check | --device-check | --stream | --stream-check | --stream-device-check] SESSION.dawsession\n";
       return 2;
     }
-    const fs::path path(argv[check || device_check ? 2 : 1]);
+    const fs::path path(argv[check || device_check || streaming ? 2 : 1]);
     const auto source_bytes = read(path, 1024U * 1024U);
     const auto session = daw::parseSession(source_bytes);
     const auto root = path.parent_path();
@@ -65,9 +67,10 @@ int main(int argc, char** argv) {
     std::string error;
     if (!daw::readProjectFile((root / session.score_file).string(), &score, &error)) throw std::runtime_error(error);
     const auto plan = daw::planSession(session, score);
-    if (plan.frames > daw::SessionPlayer::kMaxAudioBytes / sizeof(float) / 2 / session.routes.size())
-      throw std::runtime_error("playback audio exceeds 512 MiB; streaming is not yet supported");
+    if (!streaming && plan.frames > daw::SessionPlayer::kMaxAudioBytes / sizeof(float) / 2 / session.routes.size())
+      throw std::runtime_error("playback audio exceeds 512 MiB; use --stream");
     std::vector<daw::AudioBuffer> audio;
+    std::vector<std::unique_ptr<daw::FrozenTrackReader>> readers;
     std::size_t state_total = 0;
     for (std::size_t i = 0; i < session.routes.size(); ++i) {
       const auto& r = session.routes[i];
@@ -79,9 +82,14 @@ int main(int argc, char** argv) {
       if (r.instrument == "swam-cello") daw::validateInstrumentStatePerformance(
           daw::InstrumentKind::SwamCello3, state, plan.tracks[i].midi);
       const auto identity = daw::frozenTrackIdentity(score_bytes, r.part_id, r.instrument, state);
-      audio.push_back(std::move(daw::readFrozenTrack((root / r.frozen_file).string(), identity, plan.frames).audio));
+      if (streaming) readers.push_back(std::make_unique<daw::FrozenTrackReader>((root / r.frozen_file).string(), identity, plan.frames));
+      else audio.push_back(std::move(daw::readFrozenTrack((root / r.frozen_file).string(), identity, plan.frames).audio));
     }
-    daw::SessionPlayer player(session, std::move(audio));
+    auto stream = streaming ? std::make_unique<daw::StreamingAudio>(std::move(readers)) : nullptr;
+    auto* stream_view = stream.get(); // Borrowed until player destruction; same render consumer in --check.
+    auto player_owner = streaming ? std::make_unique<daw::SessionPlayer>(std::move(stream), session) :
+                                    std::make_unique<daw::SessionPlayer>(session, std::move(audio));
+    auto& player = *player_owner;
     daw::SessionMixState mix(session);
     if (check) {
       player.enqueue({daw::PlaybackAction::Play});
@@ -90,6 +98,16 @@ int main(int argc, char** argv) {
       const std::size_t total = player.frameCount() + daw::SessionPlayer::kRampFrames;
       for (std::size_t frame = 0; frame < total;) {
         const auto n = static_cast<std::uint32_t>(std::min<std::size_t>(256, total - frame));
+        // Offline check runs faster than wall clock. Wait only on this control
+        // thread, before render, so compare identical samples without starvation.
+        if (stream_view && frame < player.frameCount()) {
+          const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+          while (!stream_view->frame(frame)) {
+            if (stream_view->failed() || std::chrono::steady_clock::now() > deadline)
+              throw std::runtime_error("stream prefetch failed or timed out");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          }
+        }
         player.render(block.data(), n);
         peak = std::max(peak, player.status().block_peak);
         for (std::size_t j = 0; j < n * 2; ++j) energy += static_cast<double>(block[j]) * block[j];
@@ -120,6 +138,8 @@ int main(int argc, char** argv) {
                 << " silent frames, no instrument plugins loaded.\n";
       return 0;
     }
+    if (stream_view) std::cout << "Streaming with " << stream_view->bufferBytes()
+                               << " bytes of audio page buffers; all frozen files validated.\n";
     std::cout << "Loaded " << player.trackCount() << " independent tracks, "
               << static_cast<double>(player.frameCount()) / 48000 << " seconds.\n";
     for (const auto& r : session.routes) std::cout << "  " << std::quoted(r.part_id) << ": " << r.instrument
@@ -190,6 +210,8 @@ int main(int argc, char** argv) {
           std::cout << (s.playing ? "Playing " : "Paused ") << static_cast<double>(s.frame) / 48000
                     << "s, last-block peak=" << s.block_peak << ", clipped samples=" << s.clipped_samples
                     << ", rejected commands=" << s.rejected_commands << ", callback errors=" << output.xrunCount()
+                    << ", buffering frames=" << s.buffering_frames << ", buffering=" << s.buffering
+                    << ", stream failed=" << s.stream_failed
                     << ", recovery saved revision=" << (recovery ? recovery->savedRevision() : 0)
                     << ", mix revision=" << mix.revision() << ", undo=" << mix.canUndo() << ", redo=" << mix.canRedo() << '\n';
           continue;

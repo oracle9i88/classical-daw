@@ -27,7 +27,20 @@ SessionPlayer::SessionPlayer(const Session& session, std::vector<AudioBuffer> au
       throw std::invalid_argument("playback requires aligned stereo 48 kHz audio");
     for (const auto sample : a.samples) if (!std::isfinite(sample))
       throw std::invalid_argument("playback audio contains non-finite samples");
-    const auto& r = session.routes[i];
+  }
+  initialize(session);
+}
+SessionPlayer::SessionPlayer(std::unique_ptr<StreamingAudio> audio, const Session& session)
+    : stream_(std::move(audio)) {
+  validateSession(session);
+  if (!stream_ || stream_->trackCount() != session.routes.size())
+    throw std::invalid_argument("playback route/stream count mismatch");
+  frames_ = stream_->frameCount();
+  initialize(session);
+}
+void SessionPlayer::initialize(const Session& session) {
+  for (const auto& r : session.routes) {
+    const auto i = part_ids_.size();
     part_ids_.push_back(r.part_id); instruments_.push_back(r.instrument);
     tracks_[i].gain = r.gain_db; tracks_[i].balance = r.balance;
     tracks_[i].mute = r.mute; tracks_[i].solo = r.solo;
@@ -56,16 +69,16 @@ bool SessionPlayer::enqueue(const PlaybackCommand& c) noexcept {
     default: valid = false;
   }
   if (c.action == PlaybackAction::Gain || c.action == PlaybackAction::Balance ||
-      c.action == PlaybackAction::Mute || c.action == PlaybackAction::Solo) valid = valid && c.track < audio_.size();
+      c.action == PlaybackAction::Mute || c.action == PlaybackAction::Solo) valid = valid && c.track < trackCount();
   if (valid && commands_.push(c)) return true;
   rejected_.fetch_add(1, std::memory_order_relaxed);
   return false;
 }
 void SessionPlayer::targets(bool immediate) noexcept {
   bool solo = false;
-  for (std::size_t i = 0; i < audio_.size(); ++i) solo = solo || tracks_[i].solo;
+  for (std::size_t i = 0; i < trackCount(); ++i) solo = solo || tracks_[i].solo;
   constexpr double half_pi = 1.57079632679489661923;
-  for (std::size_t i = 0; i < audio_.size(); ++i) {
+  for (std::size_t i = 0; i < trackCount(); ++i) {
     auto& t = tracks_[i];
     const double gain = t.mute || (solo && !t.solo) ? 0 : std::pow(10., t.gain / 20.);
     const double left = gain * (t.balance >= 1 ? 0 : t.balance > 0 ? std::cos(t.balance * half_pi) : 1);
@@ -101,12 +114,17 @@ void SessionPlayer::render(float* stereo, std::uint32_t frames) noexcept {
   double peak = 0;
   for (std::uint32_t f = 0; f < frames; ++f) {
     if (playing_ && position_ == frames_) { playing_ = false; transition(); }
+    const float* disk = stream_ ? stream_->frame(position_) : nullptr;
+    const bool ready = !stream_ || disk;
+    const bool buffering = playing_ && !ready;
+    if (buffering != buffering_) { buffering_ = buffering; transition(); }
+    if (buffering_) ++buffering_frames_;
     std::array<double, 2> sample{};
-    for (std::size_t i = 0; i < audio_.size(); ++i) {
+    for (std::size_t i = 0; i < trackCount(); ++i) {
       const double l = tracks_[i].left.next(), r = tracks_[i].right.next();
-      if (playing_) {
-        sample[0] += audio_[i].samples[position_ * 2] * l;
-        sample[1] += audio_[i].samples[position_ * 2 + 1] * r;
+      if (playing_ && ready) {
+        sample[0] += (stream_ ? disk[i * 2] : audio_[i].samples[position_ * 2]) * l;
+        sample[1] += (stream_ ? disk[i * 2 + 1] : audio_[i].samples[position_ * 2 + 1]) * r;
       }
     }
     const double master = master_.next();
@@ -120,10 +138,12 @@ void SessionPlayer::render(float* stereo, std::uint32_t frames) noexcept {
       stereo[static_cast<std::size_t>(f) * 2 + channel] = static_cast<float>(last_[channel]);
     }
     if (transition_left_) --transition_left_;
-    if (playing_) ++position_;
+    if (playing_ && ready) ++position_;
   }
   // Mark EOF even when it coincides exactly with the callback boundary.
   if (playing_ && position_ == frames_) { playing_ = false; transition(); }
+  visible_buffering_frames_.store(buffering_frames_, std::memory_order_relaxed);
+  visible_buffering_.store(buffering_, std::memory_order_relaxed);
   visible_position_.store(position_, std::memory_order_relaxed);
   visible_playing_.store(playing_, std::memory_order_relaxed);
   visible_clipped_.store(clipped_, std::memory_order_relaxed);
@@ -132,6 +152,7 @@ void SessionPlayer::render(float* stereo, std::uint32_t frames) noexcept {
 PlaybackStatus SessionPlayer::status() const noexcept {
   return {visible_position_.load(std::memory_order_relaxed), visible_clipped_.load(std::memory_order_relaxed),
           rejected_.load(std::memory_order_relaxed), visible_playing_.load(std::memory_order_relaxed),
-          visible_peak_.load(std::memory_order_relaxed)};
+          visible_peak_.load(std::memory_order_relaxed), visible_buffering_frames_.load(std::memory_order_relaxed),
+          visible_buffering_.load(std::memory_order_relaxed), stream_ && stream_->failed()};
 }
 }

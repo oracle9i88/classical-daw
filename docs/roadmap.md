@@ -6,6 +6,13 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Add optional disk-streamed frozen playback: bounded block reader with full
+  startup validation, one prefetch worker and four owned pages, shared transport/
+  mix/history/recovery controls. Verify page handoff with ThreadSanitizer,
+  resident sample parity, seek/EOF/disk-failure behavior, 64-route capacity and
+  real output callbacks. Long-duration/slow-storage performance, longer frozen
+  files, streaming offline bounce and live instruments remain pending.
+
 - Automatically checkpoint native mix edits/undo/redo to isolated per-run
   recovery directories. Add source-bound, checksummed recovery to a new sibling,
   saved-revision/error reporting, explicit retry and startup discovery. Verify
@@ -153,7 +160,7 @@ not count as completion.
 ## Next gates
 
 Cross-cutting priority: unify Score/Session/media revisions and command/history
-boundaries; add streaming audio for large orchestral sessions and bridge realtime
+boundaries; stress the initial streaming path on longer real orchestral sessions and bridge realtime
 MIDI input to a real instrument. The browser's separate document model and AI
 tool execution remain explicit integration gaps. The framework audit above
 defines acceptance conditions; adding a UI shell does not close them.

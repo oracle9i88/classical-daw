@@ -129,16 +129,69 @@ manually. Generated recovery data is ignored by Git.
 Every route requires a saved state and frozen audio reference. Before opening
 the device, the loader validates source identity, CRC, finite samples, common
 frame count and SWAM transposition/note range. Stale/corrupt/missing files fail;
-there is no automatic plugin reload. All audio is preloaded, limited to 64
-tracks / 512 MiB total float samples, plus transient metadata/source overhead.
-Long sessions need future streaming support.
+there is no automatic plugin reload. Default resident playback is limited to
+64 tracks / 512 MiB total float samples, plus transient metadata/source overhead.
+Use the optional streaming path below to avoid the aggregate audio-memory limit.
 
-The audio thread uses bounded SPSC commands, immutable audio, fixed track state
+The audio thread uses bounded SPSC commands, owned audio pages, fixed track state
 and lock-free status fields. It does not read files or instantiate plugins.
 Track/master changes use 240-frame ramps (5 ms at 48 kHz); transport discontinuities
 use short output transitions. Status fields are independent atomic observations.
 The source must outlive the output callback; attachment/replacement is only
 allowed while output is stopped. One thread owns the command producer.
+
+## Disk streaming
+
+```sh
+build/daw_session_play --stream path/to/session.dawsession
+build/daw_session_play --stream-check path/to/session.dawsession
+build/daw_session_play --stream-device-check path/to/session.dawsession
+```
+
+`--stream` uses the existing player, transport, mix edits, undo/redo, saving and
+recovery. A single worker reads four fixed 4096-frame pages containing all tracks
+at the same position. The render callback only acquires a ready page and reads
+samples; it never performs file I/O, allocates, sleeps or waits for the worker.
+This takes **128 KiB of audio page buffers per track**, or **8 MiB at 64 tracks**,
+independent of session duration. This number excludes score, MIDI plans, plugin
+state/identity metadata, file-stream buffers, stacks and OS caches; it is not a
+whole-process memory measurement.
+
+Opening still scans every frozen file completely, checking source identity,
+CRC, timing and finite samples before audio starts. Validation uses a 64 KiB
+scratch block instead of loading the whole waveform or copying a second large
+identity string. Large sessions therefore have bounded audio memory, but still
+incur startup disk I/O proportional to all files. Keep cache contents immutable
+while open. Later truncation/read failures and non-finite samples are detected;
+finite in-place mutations after validation are not continuously checksummed.
+
+The consumer publishes the requested page; the worker prefetches it and up to
+three following pages. Acquire/release ownership prevents a page being replaced
+while rendering it. Seek abandons old page requests; stopped/paused callbacks
+also request the target so it can be ready before play. Construction preloads
+the first pages, and destruction stops/joins the worker only after audio stops.
+Disk reads in progress cannot be forcibly interrupted; storage stalls may delay
+shutdown on the control thread.
+
+If a whole aligned page is unavailable, **every track holds the same musical
+position** and output fades to silence; position resumes when the page arrives.
+It never plays only the tracks that happened to load. Mix ramps and commands
+continue while buffering. `status` exposes `buffering`, cumulative
+`buffering frames` (output frames spent waiting), and `stream failed`. Disk failure
+is terminal for that open stream: pause/stop still work, then reopen after fixing
+the files. This avoids musical-position drift but can create an audible gap and
+wall-clock delay. It is not a guarantee of dropout-free streaming.
+
+Current frozen format/score planning still cap each track at 32 Mi frames,
+about 11.65 minutes including tail at 48 kHz; 64 tracks is still the track limit.
+Offline AU rendering and WAV bounce remain buffer-based. The stream is fixed
+48 kHz stereo frozen audio, not realtime AU instruments, recording or editable
+clips. Browser/native document integration and GUI controls remain separate work.
+
+`--stream-check` waits for pages on its non-realtime control thread before each
+render block to compare offline results deterministically. It cannot measure
+hardware underruns or disk deadlines. `--stream-device-check` starts/stops real
+output while paused; the explicit probe below also exercises playing/seek/mix.
 
 ## CoreAudio correction
 
@@ -221,4 +274,34 @@ native save/reopen regressions also pass. No sound is emitted by these checks.
 
 ```sh
 python3 scripts/check_session_recovery.py out/swam-note-audit-20260923/corrected
+```
+
+Streaming validation: **34/34 normal + 34/34 ASan/UBSan tests passed**. The stream
+suite also passed **ThreadSanitizer**, with 300 page-position changes under a
+concurrent worker. It checks exact sample parity, shared mix undo, pause/seek,
+EOF, stop/restart, reader bounds/corruption, worker read failure, aligned clock
+freeze and zero intercepted C++ allocation/deallocation in render.
+
+The optional capacity test traverses all 1,100,000 frames of 64 synthetic routes
+using independent readers of one constant test file: 563,200,000 bytes (~537 MiB)
+would be required for resident audio, while streaming audio pages stay at
+8,388,608 bytes. It passed normally and under ASan/UBSan, with no buffering after
+control-thread prefetch. This is a capacity/numerical check, not a 64-instrument
+real-device performance claim or a measured process RSS figure.
+
+The real piano/cello bundle's `--stream-check` matched resident output exactly
+in frame count, peak, RMS, clipping and end state. Streamed native save/reopen
+and forced-exit recovery checks also passed. Both resident and streaming hardware
+probes processed 10,032 frames before restart with zero callback errors; streaming
+reported zero buffering frames. Their speaker output was silenced throughout.
+Reproduce locally, without GitHub Actions:
+
+```sh
+build/daw_streaming_audio_tests --capacity
+build/daw_output_probe --stream
+python3 scripts/check_session_live_save.py out/swam-note-audit-20260923/corrected --stream
+python3 scripts/check_session_recovery.py out/swam-note-audit-20260923/corrected --stream
+cmake -S . -B build-stream-tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
+cmake --build build-stream-tsan --target daw_streaming_audio_tests --parallel 4
+build-stream-tsan/daw_streaming_audio_tests
 ```

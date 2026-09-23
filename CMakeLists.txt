@@ -19,11 +19,13 @@ add_library(daw_engine STATIC
   src/engine/session.cpp
   src/engine/session_mix.cpp
   src/engine/session_recovery.cpp
+  src/engine/streaming_audio.cpp
   src/engine/session_player.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
   src/engine/wav.cpp
 )
+target_link_libraries(daw_engine PUBLIC Threads::Threads)
 target_include_directories(daw_engine PUBLIC src/engine/include)
 target_compile_features(daw_engine PUBLIC cxx_std_17)
 if(MSVC)
@@ -155,6 +157,9 @@ add_test(NAME daw_session_mix_history_tests COMMAND daw_session_mix_history_test
 add_executable(daw_session_recovery_tests tests/session_recovery_tests.cpp)
 target_link_libraries(daw_session_recovery_tests PRIVATE daw_engine)
 add_test(NAME daw_session_recovery_tests COMMAND daw_session_recovery_tests)
+add_executable(daw_streaming_audio_tests tests/streaming_audio_tests.cpp)
+target_link_libraries(daw_streaming_audio_tests PRIVATE daw_engine)
+add_test(NAME daw_streaming_audio_tests COMMAND daw_streaming_audio_tests)
 add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
 target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)

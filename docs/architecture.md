@@ -290,3 +290,29 @@ This is process-interruption recovery for mix targets, not fsync-backed power
 loss durability, a media backup, a persisted history or a unified Score/Session
 transaction. Each run retains one score copy and its latest checkpoint until
 manually removed; retention policy and full-document persistence remain open.
+
+## Frozen streaming ownership
+
+`SessionPlayer` now accepts either immutable resident buffers or an owned
+`StreamingAudio`; both paths share the same musical position, ramps, commands
+and mix-history controller. `FrozenTrackReader` validates source identity and
+all samples/CRC in bounded chunks on construction, retains that file handle and
+provides bounded random reads to a worker. Cache contents are immutable by caller
+contract for the duration of playback.
+
+`StreamingAudio` owns four preallocated frame-major pages, each containing every
+track, plus one disk worker. A page passes through Empty → Filling → Ready →
+Reading → Empty. The worker alone writes tags/sample data; the consumer acquires
+Reading before inspecting them, pins a matching page, and releases it when the
+position leaves. The worker can reclaim obsolete Ready pages via CAS but cannot
+write a Reading page. All publication uses acquire/release atomics. One atomic
+requested-page index supplies the latest seek/prefetch target. Scans are bounded
+to four pages; the render consumer never waits for disk or locks.
+
+All tracks freeze on the same sample when data is absent, with short output
+transitions and explicit buffering/error status. The worker prepares up to three
+pages beyond the requested one and rechecks changed requests between page reads.
+Read errors publish a terminal fault without publishing partially filled data.
+Stop/join and file destruction happen after callbacks stop. This is a first
+bounded streaming path; long-session storage stress, live AU audio, clip edits,
+per-track extended duration and streamed offline export are still separate gates.

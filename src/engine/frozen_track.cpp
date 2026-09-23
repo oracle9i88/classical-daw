@@ -135,4 +135,70 @@ FrozenTrack readFrozenTrack(const std::string& path, const std::string& identity
   require(bool(in.stream) && decoded(checksum.data()) == (in.crc.value ^ 0xffffffffU), "frozen audio checksum mismatch");
   return result;
 }
+
+struct FrozenTrackReader::Impl {
+  Reader reader;
+  std::size_t frames = 0;
+  std::streamoff offset = 0;
+  Impl(const std::string& path, const std::string& identity, std::size_t expected) : reader(path) {
+    frames = expected;
+    std::array<char, 65536> block{};
+    reader.bytes(block.data(), 8);
+    require(std::string(block.data(), 8) == "DAWFRZ01", "unknown frozen audio format");
+    const auto length = reader.u32();
+    require(length == identity.size(), "frozen audio source identity mismatch");
+    // Compare identity incrementally, never allocate a second score/state copy.
+    for (std::size_t at = 0; at < length;) {
+      const auto count = std::min(block.size(), length - at);
+      reader.bytes(block.data(), count);
+      require(std::memcmp(block.data(), identity.data() + at, count) == 0, "frozen audio source identity mismatch");
+      at += count;
+    }
+    reader.text(4096); reader.u32(); // Preset and component version; bounded metadata.
+    const auto rate = reader.u32(), channels = reader.u32(), stored = reader.u32();
+    require(rate == 48000 && channels == 2 && stored == frames, "frozen audio timing/format mismatch");
+    offset = reader.stream.tellg();
+    reader.stream.seekg(0, std::ios::end);
+    require(reader.stream.tellg() == offset + static_cast<std::streamoff>(frames * 8 + 4),
+            "frozen audio has truncated or trailing bytes");
+    reader.stream.seekg(offset);
+    for (std::size_t at = 0; at < frames;) {
+      const auto count = std::min(kReadFrames, frames - at);
+      reader.bytes(block.data(), count * 8);
+      for (std::size_t i = 0; i < count * 2; ++i) {
+        const auto bits = decoded(block.data() + i * 4);
+        float value; std::memcpy(&value, &bits, 4);
+        require(std::isfinite(value), "non-finite frozen audio");
+      }
+      at += count;
+    }
+    reader.stream.read(block.data(), 4);
+    require(bool(reader.stream) && decoded(block.data()) == (reader.crc.value ^ 0xffffffffU), "frozen audio checksum mismatch");
+  }
+};
+FrozenTrackReader::FrozenTrackReader(const std::string& path, const std::string& identity, std::size_t frames) {
+  require(!identity.empty() && identity.size() <= max_identity && frames > 0 && frames <= max_frames,
+          "invalid expected frozen identity/frames");
+  require(std::filesystem::is_regular_file(std::filesystem::symlink_status(path)), "frozen audio must be a regular file, not a symlink");
+  require(std::filesystem::file_size(path) <= max_identity + max_frames * 8ULL + 8192, "frozen audio exceeds file size limit");
+  impl_ = std::make_unique<Impl>(path, identity, frames);
+}
+FrozenTrackReader::~FrozenTrackReader() = default;
+std::size_t FrozenTrackReader::frameCount() const noexcept { return impl_->frames; }
+void FrozenTrackReader::readFrames(std::size_t start, std::size_t count, float* stereo) {
+  require(start <= impl_->frames && count <= impl_->frames - start && count <= kReadFrames && (!count || stereo),
+          "frozen block read out of bounds");
+  if (!count) return;
+  auto& in = impl_->reader.stream;
+  in.clear(); in.seekg(impl_->offset + static_cast<std::streamoff>(start * 8));
+  std::array<char, 65536> bytes{};
+  in.read(bytes.data(), static_cast<std::streamsize>(count * 8));
+  require(bool(in), "frozen block read failed");
+  for (std::size_t i = 0; i < count * 2; ++i) {
+    const auto bits = decoded(bytes.data() + i * 4);
+    float sample; std::memcpy(&sample, &bits, 4);
+    require(std::isfinite(sample), "non-finite frozen audio after validation");
+    stereo[i] = sample;
+  }
+}
 }  // namespace daw

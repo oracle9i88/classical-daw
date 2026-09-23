@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Opt-in macOS crash/recovery check. Real output opens paused; no notes play.
 
-Usage: python3 scripts/check_session_recovery.py BUNDLE [BUILD_DIRECTORY]
+Usage: python3 scripts/check_session_recovery.py BUNDLE [BUILD_DIRECTORY] [--stream]
 Uses a temporary bundle copy, kills only its own child process after an
 acknowledged checkpoint, restores to a new session and compares offline output.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -17,14 +18,20 @@ import threading
 
 
 def main():
-    source = Path(sys.argv[1]).resolve()
     repo = Path(__file__).resolve().parents[1]
-    build = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else repo / "build"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("build", type=Path, nargs="?", default=repo / "build")
+    parser.add_argument("--stream", action="store_true")
+    options = parser.parse_args()
+    source, build = options.bundle.resolve(), options.build.resolve()
 
     def hashes():
         return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in source.iterdir() if p.is_file()}
 
     def run(name, *args, stdin=None):
+        if options.stream and name == "daw_session_play":
+            args = ("--stream-check", *args[1:]) if args[0] == "--check" else ("--stream", *args)
         result = subprocess.run([str(build / name), *map(str, args)], input=stdin,
                                 capture_output=True, text=True, timeout=30)
         assert result.returncode == 0, result.stderr
@@ -37,7 +44,7 @@ def main():
         session = root / "session.dawsession"
         # Seed bundles may already contain recovery copies from manual use.
         previous = set(root.glob("session.dawsession.mix-recovery-*"))
-        process = subprocess.Popen([str(build / "daw_session_play"), str(session)],
+        process = subprocess.Popen([str(build / "daw_session_play"), *(["--stream"] if options.stream else []), str(session)],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True, bufsize=1)
         lines = queue.Queue()

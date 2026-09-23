@@ -31,6 +31,11 @@ an initial native frozen-track playback path; it is not a finished DAW.
   startup readiness checks. Hardware callbacks and controls were verified with
   speaker-silenced probes. GUI and realtime instrument hosting remain pending.
   See [playback commands and measured limits](docs/session-playback.md).
+- Optional native `--stream` playback prefetches frozen audio on a disk worker.
+  Fixed audio pages use 8 MiB at 64 tracks, independent of duration, while the
+  existing resident path retains its 512 MiB limit. Missing data freezes the
+  shared clock and reports buffering; seek and mixing use the same player.
+  See [streaming limits and validation](docs/session-playback.md).
 - Shared mix-edit state for offline and native playback controls. Inspect accepted
   mix targets and save them to a new sibling session without overwriting originals;
   queue-rejected edits cannot become falsely saved changes. Full project-state

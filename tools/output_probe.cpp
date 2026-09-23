@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <filesystem>
 #include <stdexcept>
 #include <thread>
 
@@ -39,14 +40,37 @@ class SilentObserver final : public daw::AudioOutputSource {
   std::atomic<double> peak{0};
 };
 }
-int main() {
+int main(int argc, char** argv) {
   try {
+    const bool streaming = argc == 2 && std::string(argv[1]) == "--stream";
+    require(argc == 1 || streaming, "usage: daw_output_probe [--stream]");
+    struct Temporary {
+      std::filesystem::path path;
+      ~Temporary() { if (!path.empty()) { std::error_code ec; std::filesystem::remove_all(path, ec); } }
+    } temp;
     daw::Session session{"score.dawproj", 0, {{"piano", "pianoteq", 0, 0, "", ""},
                                            {"cello", "swam-cello", 0, 0, "", ""}}};
     std::vector<daw::AudioBuffer> buffers;
     buffers.push_back({48000, 2, std::vector<float>(48000 * 2 * 10, .1F)});
     buffers.push_back({48000, 2, std::vector<float>(48000 * 2 * 10, .2F)});
-    daw::SessionPlayer player(session, std::move(buffers));
+    std::unique_ptr<daw::StreamingAudio> stream;
+    if (streaming) {
+      const auto candidate = std::filesystem::temp_directory_path() / ("daw-hardware-stream-" +
+          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+      require(std::filesystem::create_directory(candidate), "cannot reserve probe directory");
+      temp.path = candidate;
+      std::vector<std::unique_ptr<daw::FrozenTrackReader>> readers;
+      for (std::size_t i = 0; i < buffers.size(); ++i) {
+        const auto path = (temp.path / (std::to_string(i) + ".dawfreeze")).string();
+        daw::writeFrozenTrack(buffers[i], "probe", "probe", 1, path);
+        readers.push_back(std::make_unique<daw::FrozenTrackReader>(path, "probe", buffers[i].frameCount()));
+      }
+      stream = std::make_unique<daw::StreamingAudio>(std::move(readers));
+      buffers.clear(); buffers.shrink_to_fit();
+    }
+    auto owner = streaming ? std::make_unique<daw::SessionPlayer>(std::move(stream), session) :
+                             std::make_unique<daw::SessionPlayer>(session, std::move(buffers));
+    auto& player = *owner;
     daw::SessionMixState mix(session);
     SilentObserver observer(player);
     daw::CoreAudioOutput output;
@@ -85,6 +109,9 @@ int main() {
     require(player.status().frame > 96000, "resume failed");
     send(A::Stop);
     until([&] { return !player.status().playing && player.status().frame == 0; }, "stop failed"); level(0);
+    require(!player.status().stream_failed, "stream disk error during hardware probe");
+    std::cout << "mode=" << (streaming ? "streaming" : "resident")
+              << " buffering_frames=" << player.status().buffering_frames << '\n';
     std::cout << output.diagnostics() << '\n';
     output.stop();
     const auto stopped_frames = output.renderedFrames();
