@@ -20,6 +20,8 @@ struct InstrumentDescriptor {
   double startup_seconds;
 };
 const InstrumentDescriptor& instrumentDescriptor(InstrumentKind kind);
+// No plugin loading. Saved SWAM state is checked even for frozen audio reuse.
+void validateInstrumentStatePerformance(InstrumentKind kind, const std::vector<std::uint8_t>& state, const MidiFile& midi);
 
 
 struct InstrumentRenderReport {
@@ -46,6 +48,8 @@ class AudioUnitInstrument {
 
   const InstrumentDescriptor& descriptor() const;
   std::vector<std::string> factoryPresets() const;
+  // New SWAM factory selections explicitly use concert pitch (transpose 0).
+  // Restoring user state preserves its transposition, with note-range validation.
   void selectFactoryPreset(const std::string& name);
   std::string presetName() const;
   std::uint32_t componentVersion() const;

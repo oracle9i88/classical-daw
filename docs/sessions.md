@@ -104,6 +104,13 @@ crash sandbox. Completed bounced stems are preserved for direct audio reuse.
 
 ## Local evidence, 2026-09-23
 
+**Correction:** the original aggregate figures below describe a cello render
+with five missing low notes, exposed by the user's listening report. They remain
+useful as routing/mix evidence but are not complete-performance acceptance. The
+[SWAM pitch fix and new per-note checks](swam-note-coverage.md) pass all eight
+notes on both the corrected bounce and its saved-state reopen. The session audio
+checker now needs optional `mido` and `numpy` and rejects those earlier files.
+
 Pianoteq 9.2.2 and SWAM Cello 3.12.2 produced two aligned stems and a master:
 **1,517,594 frames each (31.6165 seconds)**, common end tick 34,560, zero clipping.
 The first master peak was 0.131348 and RMS 0.019743. Independent checks compare

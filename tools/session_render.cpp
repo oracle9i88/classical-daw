@@ -98,6 +98,8 @@ int main(int argc, char** argv) {
         state_bytes += raw.size();
         if (state_bytes > 64U * 1024U * 1024U) throw std::runtime_error("session instrument states exceed 64 MiB");
         bytes.assign(raw.begin(), raw.end());
+        if (route.instrument == "swam-cello") daw::validateInstrumentStatePerformance(
+            daw::InstrumentKind::SwamCello3, bytes, plan.tracks[source_states.size()].midi);
       }
       source_states.push_back(std::move(bytes));
     }
@@ -130,6 +132,7 @@ int main(int argc, char** argv) {
         bytes = setup.state();
       }
       state_bytes += bytes.size();
+      daw::validateInstrumentStatePerformance(kind, bytes, plan.tracks[i].midi);
       if (state_bytes > 64U * 1024U * 1024U) throw std::runtime_error("session instrument states exceed 64 MiB");
       states.push_back({kind, setup.presetName(), setup.componentVersion(), std::move(bytes)});
     }

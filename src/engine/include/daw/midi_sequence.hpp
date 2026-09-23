@@ -40,5 +40,8 @@ bool isInstrumentSelection(const MidiSampleEvent& event) noexcept;
 // Expressive instruments such as SWAM need CC11 before the first attack on
 // each used MIDI channel. Fail clearly rather than silently invent automation.
 void requireInitialExpression(const MidiSampleSequence& sequence);
+// Reject notes outside a known instrument range after its saved transposition.
+// Source notes are never shifted or dropped by this validation.
+void requireNoteRange(const MidiFile& midi, int lowest, int highest, int transpose);
 
 }  // namespace daw

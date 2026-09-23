@@ -5,6 +5,19 @@ The macOS offline AU host now supports **Pianoteq 9** and **SWAM Cello 3**.
 remains a piano-only compatibility command. Both use the same host, MIDI
 timeline, state persistence and stereo WAV writer.
 
+**2026-09-23 correction:** the earlier eight-bar duet played only three of its
+eight cello notes. The captured factory state had `transpose=-12`; written
+notes 44, 41, 43, 46 and 43 therefore fell below the stored 36..89 instrument
+range. The user's listening report exposed a gap in the original whole-file
+RMS/reload checks. Those older files are not accepted as complete performances.
+See [the incident, fix and note-level gate](swam-note-coverage.md).
+
+New factory selections now explicitly set concert pitch in a copied AU document
+state. Saved user states keep their transposition; notes outside the resulting
+range fail before rendering, including when reusing frozen audio. No source MIDI
+notes are transposed or discarded. The current adapter validates the observed
+SWAM Cello 3.12.2 state schema and range; other schemas fail explicitly.
+
 ```sh
 cmake -S . -B build
 cmake --build build --parallel 4
@@ -46,7 +59,11 @@ Pianoteq, raw AU state byte equality is not a failure gate for SWAM; the observe
 comparison is reported. The read-only integration checker compares the complete
 property list and JUCE XML with only that datetime value excluded, plus audio.
 
-## Verified locally, 2026-09-23
+## Earlier local measurements, 2026-09-23
+
+These aggregate measurements predate the missing-note fix. They establish the
+listed state/level properties, **not complete note coverage**; the new checker
+also requires every sustained fixture note to pass an audio-energy/harmonic check.
 
 SWAM Cello 3.12.2, AU identity `aumu / Sce3 / AuMo`, factory preset `Cello`:
 
@@ -60,7 +77,8 @@ SWAM Cello 3.12.2, AU identity `aumu / Sce3 / AuMo`, factory preset `Cello`:
 - The existing Pianoteq phrase still renders through the refactored shared host
   at its expected level, with zero clipping.
 
-Reproduce only when the local instrument is installed and ready:
+Reproduce only when the local instrument is installed and ready. The read-only
+audio checkers now require the optional developer packages `mido` and `numpy`:
 
 ```sh
 python3 scripts/make_swam_fixture.py out/my-swam-check

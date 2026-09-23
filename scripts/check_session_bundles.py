@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import sys
 import wave
+from check_cello_notes import audit_notes
 
 
 def require(condition, message):
@@ -57,6 +58,11 @@ def main():
     root = parser.parse_args().directory
     first, before, error_a = bundle(root / "first")
     second, after, error_b = bundle(root / "reloaded")
+    for name, report in (("first", first), ("reloaded", second)):
+        cello = next(stem for stem in report["stems"] if stem["part_id"] == "cello")
+        notes = audit_notes(root / name / cello["midi"], root / name / cello["audio"])
+        require(notes["result"] == "PASS" and notes["notes_total"] == 8,
+                f"{name}: cello note-level audio audit failed: {notes['notes_passed']}/8")
     for name in ("score.dawproj", "session.dawsession"):
         require((root / "first" / name).read_bytes() == (root / "reloaded" / name).read_bytes(),
                 f"reload changed {name}")

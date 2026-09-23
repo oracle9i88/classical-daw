@@ -53,7 +53,12 @@ void requireIdentity(CFPropertyListRef value, const InstrumentDescriptor& descri
     throw std::runtime_error(std::string("AU state does not belong to ") + descriptor.name);
   }
 }
+
 }  // namespace
+
+void validateInstrumentStatePerformance(InstrumentKind kind, const std::vector<std::uint8_t>& state, const MidiFile& midi) {
+  if (kind == InstrumentKind::SwamCello3) requireNoteRange(midi, 36, 89, swamCelloStateTranspose(state));
+}
 
 const InstrumentDescriptor& instrumentDescriptor(InstrumentKind kind) {
   static const InstrumentDescriptor piano{'Pt9q', 'Mdrt', "pianoteq", "Pianoteq 9", "NY Steinway D Classical", "aumu/Pt9q/Mdrt", 0.0};
@@ -125,6 +130,14 @@ void AudioUnitInstrument::selectFactoryPreset(const std::string& name) {
     if (preset && utf8(preset->presetName) == name) {
       check(AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global,
                                 0, preset, sizeof(*preset)), "select AU factory preset");
+      if (impl_->kind == InstrumentKind::SwamCello3) {
+        // Edit the new preset snapshot through the AU document-state path.
+        // Direct AU parameter writes update serialized state asynchronously;
+        // pumping a setup instance's message loop before disposal also disturbed
+        // later SWAM instances in local probes. Avoid that premature startup.
+        restoreState(swamCelloConcertPitchState(state()));
+        if (swamCelloStateTranspose(state()) != 0) throw std::runtime_error("SWAM did not retain concert pitch in saved state");
+      }
       return;
     }
   }
@@ -179,6 +192,7 @@ void AudioUnitInstrument::restoreState(const std::vector<std::uint8_t>& bytes) {
 AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderReport* report, std::uint32_t rate, double tail,
                                        bool clip_output, Tick minimum_end_tick) {
   impl_->requireEditable();
+  validateInstrumentStatePerformance(impl_->kind, state(), midi);
   const auto sequence = makeMidiSampleSequence(midi, rate, tail, 64U * 1024U * 1024U, minimum_end_tick);
   AudioBuffer output;
   output.sample_rate = rate;

@@ -9,6 +9,7 @@ import plistlib
 import sys
 import wave
 import xml.etree.ElementTree as ET
+from check_cello_notes import audit_notes
 
 
 def require(condition, message):
@@ -49,6 +50,10 @@ def main():
     root = parser.parse_args().directory
     first, a = load(root / "first")
     second, b = load(root / "reloaded")
+    for name in ("first", "reloaded"):
+        notes = audit_notes(root / name / "performance.mid", root / name / "instrument.wav")
+        require(notes["result"] == "PASS" and notes["notes_total"] == 8,
+                f"{name}: cello note-level audio audit failed: {notes['notes_passed']}/8")
     require(first["preset"] == second["preset"] == "Cello", "preset changed")
     require(first["frames"] == second["frames"], "reload changed duration")
     require(state(root / "first") == state(root / "reloaded"), "reload changed instrument state beyond datetime")

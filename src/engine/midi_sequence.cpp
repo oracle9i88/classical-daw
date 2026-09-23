@@ -8,6 +8,19 @@
 
 namespace daw {
 
+void requireNoteRange(const MidiFile& midi, int lowest, int highest, int transpose) {
+  if (lowest < 0 || highest > 127 || lowest > highest || transpose < -127 || transpose > 127)
+    throw std::invalid_argument("invalid instrument pitch range/transposition");
+  for (const auto& track : midi.tracks) for (const auto& note : track.notes) {
+    const int sounding = static_cast<int>(note.pitch) + transpose;
+    if (sounding < lowest || sounding > highest) throw std::invalid_argument(
+        "MIDI note " + std::to_string(note.pitch) + " at tick " + std::to_string(note.start) +
+        " with instrument transpose " + std::to_string(transpose) + " sounds as " + std::to_string(sounding) +
+        ", outside playable range " + std::to_string(lowest) + ".." + std::to_string(highest) +
+        "; select a suitable instrument state and render again");
+  }
+}
+
 void requireInitialExpression(const MidiSampleSequence& sequence) {
   std::array<bool, 16> initialized{};
   for (const auto& event : sequence.events) {

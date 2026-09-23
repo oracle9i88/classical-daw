@@ -67,6 +67,9 @@ state, and reports the original cached plugin version on reuse. No MIDI is sent
 in frozen mode; plugin overload diagnostics are null because no plugin ran.
 `--check` remains a lightweight routing/source-file preflight and does not verify
 frozen audio contents. `--show` reports the presence of references, not their validity.
+Saved SWAM state now additionally receives a note-range/transposition check,
+even in frozen mode. Historical caches with the missing-low-note fault must be
+regenerated; see [the correction](swam-note-coverage.md).
 
 Each frozen file contains stereo 48 kHz IEEE float32 samples, preset/version
 metadata, and an exact length-prefixed binding to the source score bytes, stable

@@ -13,7 +13,8 @@ validating score timing and audio rendering before platform integration.
   the Mac realtime callback and browser do not yet use the plugin. See
   [Pianoteq setup and verification](docs/pianoteq.md).
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
-  Cocoa startup handling and saved state. Other installed SWAM instruments and
+  Cocoa startup handling, concert-pitch factory initialization, saved-state
+  pitch-range validation and per-note fixture audio checks. Other installed SWAM instruments and
   realtime playback remain pending. See [SWAM Cello setup](docs/swam.md).
 - Offline multi-instrument sessions route each score part to an independent
   piano/cello instance, with saved gain, stereo balance and instrument state.

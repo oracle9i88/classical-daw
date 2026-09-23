@@ -8,6 +8,7 @@ import argparse
 import array
 import json
 import math
+import plistlib
 from pathlib import Path
 import shutil
 import struct
@@ -130,7 +131,12 @@ def main():
             path = source / filename
             original = path.read_bytes()
             try:
-                changed = original.replace(b"bpm 84\n", b"bpm 85\n", 1) if filename == "score.dawproj" else original + b"\n"
+                if filename == "score.dawproj":
+                    changed = original.replace(b"bpm 84\n", b"bpm 85\n", 1)
+                else:
+                    value = plistlib.loads(original)
+                    value["freeze_test_marker"] = 1
+                    changed = plistlib.dumps(value, fmt=plistlib.FMT_BINARY)
                 require(changed != original, "fixture mutation did not change input")
                 path.write_bytes(changed)
                 bounce(source / "session.dawsession", "stale-" + filename, "frozen audio is stale")

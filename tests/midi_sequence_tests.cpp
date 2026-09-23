@@ -81,7 +81,23 @@ int main() {
     midi.tracks[0].channel_events[0].channel = 3;
     midi.tracks[0].channel_events[0].tick = 961;
     rejects([&] { daw::requireInitialExpression(daw::makeMidiSampleSequence(midi)); });
-    std::cout << "MIDI sample sequence tests passed\n";
+    midi = fixture();
+    midi.tracks[0].notes[0].pitch = 41;
+    daw::requireNoteRange(midi, 36, 89, 0);
+    rejects([&] { daw::requireNoteRange(midi, 36, 89, -12); });
+    midi.tracks[0].notes[0].pitch = 48;
+    daw::requireNoteRange(midi, 36, 89, -12);
+    for (const auto key : {36, 89}) {
+      midi.tracks[0].notes[0].pitch = static_cast<std::uint8_t>(key);
+      daw::requireNoteRange(midi, 36, 89, 0);
+    }
+    for (const auto key : {35, 90}) {
+      midi.tracks[0].notes[0].pitch = static_cast<std::uint8_t>(key);
+      rejects([&] { daw::requireNoteRange(midi, 36, 89, 0); });
+    }
+    rejects([&] { daw::requireNoteRange(midi, 89, 36, 0); });
+    rejects([&] { daw::requireNoteRange(midi, 36, 89, std::numeric_limits<int>::max()); });
+    std::cout << "MIDI sample sequence and instrument pitch-range tests passed\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n'; return 1;

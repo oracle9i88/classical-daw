@@ -6,6 +6,10 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Correct SWAM's captured -12-semitone default that suppressed five low notes
+  in the duet. New factory states use concert pitch; saved/frozen states get
+  per-note range validation. Require note-level energy/harmonic evidence, not
+  only whole-file RMS and repeatability. See [incident and correction](swam-note-coverage.md).
 - Persist mute/solo in backward-readable session v2; add a non-destructive CLI
   for saved static mix edits. Freeze pre-fader float audio with exact source
   binding and corruption checks; explicitly reuse it without AU loading for
