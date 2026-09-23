@@ -30,6 +30,8 @@ play
 solo cello 0
 mute piano 1
 status
+mix
+save cello-balance.dawsession
 stop
 quit
 ```
@@ -41,9 +43,20 @@ Any solo selects solo tracks only; mute always wins, even on a soloed track.
 the session's actual duration, including its render tail. End of audio stops
 playback; use `stop` or `seek 0` before replaying from the beginning.
 
-Commands are temporary monitoring adjustments. No source files are changed.
-Use `daw_session_edit` to save static mix settings to a new sibling session
-and the offline renderer to export WAV. There is no live save/undo control yet.
+Mix commands pass through the shared control-thread `SessionMixState`, also
+used by `daw_session_edit`. `mix` prints the current accepted target settings;
+`save NEW_FILENAME` saves them to a new sibling session referencing the same
+score, state and frozen audio. Existing files are never overwritten, including
+dangling symlinks. Invalid edits or a full audio command queue leave the saved
+target state unchanged. The save records accepted targets, not intermediate
+gain-ramp samples. Reopen the new session to restore them; use the offline
+renderer to export WAV. Original source files remain unchanged. Mix undo/redo,
+scheduled autosave and whole-project transactions remain pending.
+
+New-session saving writes a complete staged file and atomically publishes it
+with an exclusive hard link. Unsupported filesystems fail explicitly; no
+power-loss durability is claimed. A stale `FILENAME.saving` directory left by
+a crash is preserved, not deleted automatically; choose a different new name.
 No automatic normalization is applied. A monitoring clamp prevents samples
 outside -1..1 reaching the device; `status` reports pre-clamp last-block peak
 and cumulative affected sample count. Lower gains if that count increases.
@@ -97,6 +110,7 @@ python3 scripts/check_session_playback.py out/swam-note-audit-20260923/corrected
 build/daw_session_play --check out/swam-note-audit-20260923/corrected/session.dawsession
 build/daw_session_play --device-check out/swam-note-audit-20260923/corrected/session.dawsession
 build/daw_output_probe
+python3 scripts/check_session_live_save.py out/swam-note-audit-20260923/corrected
 ```
 
 `--check` processes the entire source through the player without a device or
@@ -109,6 +123,8 @@ hashes. It expects the original duet fixture with a -3 dB master.
 the actual player through hardware callbacks, measuring mixed samples before
 replacing them with zeros sent to the speaker. It tests play/pause/seek/stop,
 mute/solo/gain/master, source/device replacement guards and output restart.
+`check_session_live_save.py` additionally tests native commands, save/reopen,
+invalid edits and overwrite protection on a temporary copy while staying paused.
 These opt-in hardware checks are deliberately outside CTest and GitHub CI.
 They do not capture microphone input or change system volume.
 

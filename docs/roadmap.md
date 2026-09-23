@@ -6,6 +6,12 @@ not count as completion.
 
 ## Completed in this iteration
 
+- Unify mix commands in control-thread `SessionMixState`, used by offline edits
+  and the native player. Add live-target inspection and no-overwrite sibling
+  saving; invalid/queue-rejected edits leave the document unchanged. Verify
+  saved/reopened mix parity and competing saves. Full document transactions,
+  mix undo and autosave remain pending. See the [framework audit](architecture-audit-20260923.md).
+
 - Add native frozen-track playback and live CLI track mixing. Fix CoreAudio
   output callback registration and AU slice capacity versus device-buffer/rate
   conversion; require actual callbacks before reporting startup ready. Verify
@@ -133,6 +139,12 @@ not count as completion.
   build on every local iteration.
 
 ## Next gates
+
+Cross-cutting priority: unify Score/Session/media revisions and command/history
+boundaries; add streaming audio for large orchestral sessions and bridge realtime
+MIDI input to a real instrument. The browser's separate document model and AI
+tool execution remain explicit integration gaps. The framework audit above
+defines acceptance conditions; adding a UI shell does not close them.
 
 ### M0: realtime audio
 

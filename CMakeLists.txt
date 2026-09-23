@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(classical_daw VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
+find_package(Threads REQUIRED)
 enable_testing()
 
 add_library(daw_engine STATIC
@@ -16,6 +17,7 @@ add_library(daw_engine STATIC
   src/engine/score_midi.cpp
   src/engine/score_tempo.cpp
   src/engine/session.cpp
+  src/engine/session_mix.cpp
   src/engine/session_player.cpp
   src/engine/tempo_map.cpp
   src/engine/timeline.cpp
@@ -143,6 +145,9 @@ add_test(NAME daw_session_tests COMMAND daw_session_tests)
 add_executable(daw_session_player_tests tests/session_player_tests.cpp)
 target_link_libraries(daw_session_player_tests PRIVATE daw_engine)
 add_test(NAME daw_session_player_tests COMMAND daw_session_player_tests)
+add_executable(daw_session_mix_tests tests/session_mix_tests.cpp)
+target_link_libraries(daw_session_mix_tests PRIVATE daw_engine Threads::Threads)
+add_test(NAME daw_session_mix_tests COMMAND daw_session_mix_tests)
 add_executable(daw_frozen_track_tests tests/frozen_track_tests.cpp)
 target_link_libraries(daw_frozen_track_tests PRIVATE daw_engine)
 add_test(NAME daw_frozen_track_tests COMMAND daw_frozen_track_tests)

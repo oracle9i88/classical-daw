@@ -1,4 +1,5 @@
 #include "daw/session.hpp"
+#include "daw/session_mix.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -48,30 +49,22 @@ int main(int argc, char** argv) {
       return 0;
     }
     const fs::path output(argv[2]);
-    auto parent = [](const fs::path& p) { return fs::canonical(p.has_parent_path() ? p.parent_path() : fs::path(".")); };
-    if (parent(input) != parent(output)) throw std::runtime_error("edited session must stay beside its score/state/audio files");
-    if (fs::exists(fs::symlink_status(output))) throw std::runtime_error("output session must be new");
+    daw::SessionMixState mix(session);
     for (int i = 3; i < argc;) {
       const std::string option(argv[i++]);
       if (option == "--master") {
         if (i == argc) throw std::runtime_error("--master requires dB");
-        session.master_gain_db = number(argv[i++]); continue;
+        mix.apply({daw::MixParameter::Master, "", number(argv[i++])}); continue;
       }
       if (option != "--mute" && option != "--solo" && option != "--gain" && option != "--balance")
         throw std::runtime_error("unknown edit option");
       if (i + 1 >= argc) throw std::runtime_error("track edit requires part ID and value");
       const std::string part(argv[i++]), value(argv[i++]);
-      auto found = std::find_if(session.routes.begin(), session.routes.end(), [&](const auto& r) { return r.part_id == part; });
-      if (found == session.routes.end()) throw std::runtime_error("unknown part ID");
-      if (option == "--mute") found->mute = flag(value);
-      if (option == "--solo") found->solo = flag(value);
-      if (option == "--gain") found->gain_db = number(value);
-      if (option == "--balance") found->balance = number(value);
+      const auto parameter = option == "--mute" ? daw::MixParameter::Mute : option == "--solo" ?
+          daw::MixParameter::Solo : option == "--gain" ? daw::MixParameter::Gain : daw::MixParameter::Balance;
+      mix.apply({parameter, part, option == "--mute" || option == "--solo" ? static_cast<double>(flag(value)) : number(value)});
     }
-    const auto updated = daw::serializeSession(session);
-    std::ofstream saved(output, std::ios::binary);
-    saved.write(updated.data(), static_cast<std::streamsize>(updated.size())); saved.close();
-    if (!saved) { std::error_code ignored; fs::remove(output, ignored); throw std::runtime_error("session write failed"); }
+    daw::saveNewSessionMix(mix.current(), input.string(), output.string());
     std::cout << "Saved mix settings: " << output << '\n';
     return 0;
   } catch (const std::exception& error) {

@@ -1,4 +1,5 @@
 #include "daw/session_player.hpp"
+#include "daw/session_mix.hpp"
 #include "daw/frozen_track.hpp"
 #include "daw/project.hpp"
 #include "audio_unit_instrument.hpp"
@@ -41,8 +42,8 @@ void end(std::istringstream& input) {
 void help() {
   std::cout << "play | pause | stop | seek SECONDS | master DB\n"
                "gain PART DB | balance PART -1..1 | mute PART 0|1 | solo PART 0|1\n"
-               "status | help | quit\n"
-               "Starts paused. Mix changes are temporary; source files are never modified.\n";
+               "mix | save NEW_FILENAME | status | help | quit\n"
+               "Starts paused. Save writes a new sibling session; originals are never overwritten.\n";
 }
 }
 int main(int argc, char** argv) {
@@ -78,6 +79,7 @@ int main(int argc, char** argv) {
       audio.push_back(std::move(daw::readFrozenTrack((root / r.frozen_file).string(), identity, plan.frames).audio));
     }
     daw::SessionPlayer player(session, std::move(audio));
+    daw::SessionMixState mix(session);
     if (check) {
       player.enqueue({daw::PlaybackAction::Play});
       std::array<float, 512> block{};
@@ -128,6 +130,22 @@ int main(int argc, char** argv) {
         if (word.empty()) continue;
         if (word == "quit") { end(input); break; }
         if (word == "help") { end(input); help(); continue; }
+        if (word == "mix") {
+          end(input);
+          std::cout << daw::serializeSession(mix.current());
+          continue;
+        }
+        if (word == "save") {
+          std::string filename;
+          if (!(input >> std::quoted(filename)) || filename.empty()) throw std::runtime_error("save requires a new filename");
+          end(input);
+          const fs::path name(filename);
+          if (name.has_parent_path() || name.filename() != name || filename == "." || filename == "..")
+            throw std::runtime_error("save requires a sibling filename, not a path");
+          daw::saveNewSessionMix(mix.current(), path.string(), (root / name).string());
+          std::cout << "Saved accepted mix settings: " << (root / name) << '\n';
+          continue;
+        }
         if (word == "status") {
           end(input); const auto s = player.status();
           std::cout << (s.playing ? "Playing " : "Paused ") << static_cast<double>(s.frame) / 48000
@@ -144,16 +162,16 @@ int main(int argc, char** argv) {
           const double seconds = number(input);
           if (seconds < 0 || seconds > static_cast<double>(player.frameCount()) / 48000) throw std::runtime_error("seek outside session");
           command.frame = static_cast<std::uint64_t>(std::llround(seconds * 48000));
-        } else if (word == "master") {
-          command.action = daw::PlaybackAction::Master; command.value = number(input);
-        } else if (word == "gain" || word == "balance" || word == "mute" || word == "solo") {
-          std::string part; input >> std::quoted(part);
-          auto found = std::find_if(session.routes.begin(), session.routes.end(), [&](const auto& r) { return r.part_id == part; });
-          if (found == session.routes.end()) throw std::runtime_error("unknown part ID");
-          command.track = static_cast<std::size_t>(found - session.routes.begin());
-          command.value = number(input);
-          command.action = word == "gain" ? daw::PlaybackAction::Gain : word == "balance" ?
-              daw::PlaybackAction::Balance : word == "mute" ? daw::PlaybackAction::Mute : daw::PlaybackAction::Solo;
+        } else if (word == "master" || word == "gain" || word == "balance" || word == "mute" || word == "solo") {
+          std::string part;
+          if (word != "master") input >> std::quoted(part);
+          const double value = number(input);
+          end(input);
+          const auto parameter = word == "master" ? daw::MixParameter::Master : word == "gain" ?
+              daw::MixParameter::Gain : word == "balance" ? daw::MixParameter::Balance :
+              word == "mute" ? daw::MixParameter::Mute : daw::MixParameter::Solo;
+          if (!mix.apply({parameter, part, value}, &player)) throw std::runtime_error("command queue full; mix edit not applied or saved");
+          continue;
         } else throw std::runtime_error("unknown command; enter help");
         end(input);
         if (!player.enqueue(command)) throw std::runtime_error("value out of range or command queue full; command not applied");

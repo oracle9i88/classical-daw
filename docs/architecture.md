@@ -2,6 +2,12 @@
 
 This document records the boundaries that keep the audio engine safe to extend.
 
+See the [2026-09-23 framework audit](architecture-audit-20260923.md) for current
+cross-layer gaps, severity and acceptance gates. `SessionMixState` now supplies
+shared control-thread mix edits and new-session saving to both the offline CLI
+and the native player. It records accepted target settings only after successful
+queue submission; it is not yet a unified Score/Session/media undo document.
+
 ## Time domains
 
 - `Tick` is the musical edit domain. Alpha fixes the project resolution at 960
@@ -17,7 +23,7 @@ This document records the boundaries that keep the audio engine safe to extend.
 
 ## Realtime boundary
 
-The future CoreAudio callback must only consume preallocated buffers and a
+The CoreAudio callback must only consume preallocated buffers and a
 bounded stream of timestamped events. It must not allocate memory, take a
 contended lock, read files, parse JSON, scan plugins, or make network calls.
 Project edits will be represented as commands and applied at an audio-block

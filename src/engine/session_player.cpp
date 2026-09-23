@@ -28,6 +28,7 @@ SessionPlayer::SessionPlayer(const Session& session, std::vector<AudioBuffer> au
     for (const auto sample : a.samples) if (!std::isfinite(sample))
       throw std::invalid_argument("playback audio contains non-finite samples");
     const auto& r = session.routes[i];
+    part_ids_.push_back(r.part_id); instruments_.push_back(r.instrument);
     tracks_[i].gain = r.gain_db; tracks_[i].balance = r.balance;
     tracks_[i].mute = r.mute; tracks_[i].solo = r.solo;
   }
@@ -36,6 +37,12 @@ SessionPlayer::SessionPlayer(const Session& session, std::vector<AudioBuffer> au
 }
 bool SessionPlayer::acceptsFormat(double rate, std::uint32_t channels) const noexcept {
   return rate == 48000 && channels == 2;
+}
+bool SessionPlayer::matchesRoutes(const Session& session) const noexcept {
+  if (session.routes.size() != part_ids_.size()) return false;
+  for (std::size_t i = 0; i < part_ids_.size(); ++i)
+    if (session.routes[i].part_id != part_ids_[i] || session.routes[i].instrument != instruments_[i]) return false;
+  return true;
 }
 bool SessionPlayer::enqueue(const PlaybackCommand& c) noexcept {
   bool valid = std::isfinite(c.value);

@@ -31,6 +31,10 @@ an initial native frozen-track playback path; it is not a finished DAW.
   startup readiness checks. Hardware callbacks and controls were verified with
   speaker-silenced probes. GUI and realtime instrument hosting remain pending.
   See [playback commands and measured limits](docs/session-playback.md).
+- Shared mix-edit state for offline and native playback controls. Inspect accepted
+  mix targets and save them to a new sibling session without overwriting originals;
+  queue-rejected edits cannot become falsely saved changes. Full project-state
+  unification remains pending; see the [architecture audit](docs/architecture-audit-20260923.md).
 - A fixed 960 ticks-per-quarter-note score timeline and piecewise constant BPM
   tempo map, with tick/second/sample conversion.
 - MIDI note, track, and file data structures.

@@ -33,6 +33,8 @@ class SessionPlayer final : public AudioOutputSource {
   PlaybackStatus status() const noexcept;
   std::size_t frameCount() const noexcept { return frames_; }
   std::size_t trackCount() const noexcept { return audio_.size(); }
+  // Immutable route identity; safe to inspect from the control thread.
+  bool matchesRoutes(const Session& session) const noexcept;
 
  private:
   struct Ramp {
@@ -50,6 +52,7 @@ class SessionPlayer final : public AudioOutputSource {
   void apply(const PlaybackCommand& command) noexcept;
   void transition() noexcept;
   std::vector<AudioBuffer> audio_;
+  std::vector<std::string> part_ids_, instruments_;
   std::array<Track, kCapacity> tracks_{};
   SpscRing<PlaybackCommand, kCapacity> commands_;
   Ramp master_;

@@ -127,6 +127,6 @@ stale source/state, corrupt audio and master overload were rejected with no
 partial output left behind.
 
 The bounce/editor above provide saved **offline mixing**. A separate native
-[frozen-track player](session-playback.md) now exposes realtime transport and
-temporary CLI mix controls. Live instrument-plugin audition, graphical editing
+[frozen-track player](session-playback.md) now exposes realtime transport, shared
+CLI mix controls and new-session saving. Live instrument-plugin audition, graphical editing
 and audio-device recovery remain future integration work.
