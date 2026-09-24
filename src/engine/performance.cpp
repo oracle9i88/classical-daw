@@ -338,6 +338,13 @@ void WorkEditor::apply(const Change& c, bool forward) {
   } else {
     auto take=document_.performances.at(c.take);
     if(c.kind==Kind::Note)update(take,c.id,forward?c.after:c.before);
+    else if(c.kind==Kind::NoteRange) {
+      require(c.notes_after&&c.notes_before,"range edit lost its contents");
+      // Undo clears everything the edit wrote before restoring what it
+      // replaced, so a note that had no override before has none after.
+      for(const auto& note:*c.notes_after)update(take,note.note_id,forward?std::optional<NotePerformance>(note):std::nullopt);
+      if(!forward)for(const auto& note:*c.notes_before)update(take,note.note_id,note);
+    }
     else if(c.kind==Kind::CurveLane) {
       auto at=std::find_if(take.curves.begin(),take.curves.end(),[&](const auto& curve){return curve.id==c.id;});
       const auto& value=forward?c.curve_after:c.curve_before;
@@ -364,6 +371,45 @@ bool WorkEditor::set(const NotePerformance& value) {
   const auto prior=lookup(document_.performances[document_.active],value.note_id);
   if(prior&&prior->onset_seconds==value.onset_seconds&&prior->duration_scale==value.duration_scale&&prior->velocity==value.velocity)return false;
   Change c;c.take=document_.active;c.id=value.note_id;c.before=prior;c.after=value;return commit(c);
+}
+std::size_t WorkEditor::shapeRange(double from_seconds,double to_seconds,Shape field,
+                                  double from_value,double to_value) {
+  require(std::isfinite(from_seconds)&&std::isfinite(to_seconds)&&from_seconds>=0&&to_seconds>=from_seconds,
+          "range must be two finite seconds in order");
+  require(std::isfinite(from_value)&&std::isfinite(to_value),"range values must be finite");
+  const auto& take=document_.performances[document_.active];
+  const auto sequence=compilePerformance(document_.score,take);
+  std::map<std::uint64_t,double> heard;
+  for(const auto& e:sequence.events)
+    if((e.status&0xf0)==0x90&&e.data2)heard.emplace(e.note_id,static_cast<double>(e.frame)/48000);
+  auto written=std::make_shared<std::vector<NotePerformance>>();
+  auto replaced=std::make_shared<std::vector<NotePerformance>>();
+  const double span=to_seconds-from_seconds;
+  for(const auto& mapping:take.mapping) {
+    const auto at=heard.find(mapping.id);
+    if(at==heard.end()||at->second<from_seconds||at->second>to_seconds)continue;
+    const double position=span>0?(at->second-from_seconds)/span:0;
+    const double value=from_value+(to_value-from_value)*position;
+    const auto prior=lookup(take,mapping.id);
+    NotePerformance next=prior?*prior:NotePerformance{mapping.id,0,1,-1};
+    next.note_id=mapping.id;
+    if(field==Shape::OnsetMilliseconds)next.onset_seconds=value/1000;
+    else if(field==Shape::DurationScale)next.duration_scale=value;
+    else next.velocity=static_cast<int>(std::lround(value));
+    if(prior&&prior->onset_seconds==next.onset_seconds&&prior->duration_scale==next.duration_scale&&
+       prior->velocity==next.velocity)continue;
+    // A ramp that happens to land on the written value at its own endpoint
+    // must not leave an override behind that changes nothing: the list of
+    // edits is how you see what you did, and it stays worth reading.
+    if(!prior&&next.onset_seconds==0&&next.duration_scale==1&&next.velocity==-1)continue;
+    written->push_back(next);
+    if(prior)replaced->push_back(*prior);
+  }
+  if(written->empty())return 0;
+  Change c;c.kind=Kind::NoteRange;c.take=document_.active;
+  c.notes_after=written;c.notes_before=replaced;
+  commit(c);
+  return written->size();
 }
 bool WorkEditor::setPitch(std::uint64_t id,ScorePitch pitch) {
   Change c;c.kind=Kind::Pitch;c.take=document_.active;c.id=id;c.pitch_after=pitch;

@@ -87,7 +87,7 @@ int main(int argc,char** argv) {
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
@@ -134,6 +134,18 @@ int main(int argc,char** argv) {
             while(true){in>>std::ws;if(in.eof())break;daw::CurvePoint point;in>>point.id>>point.seconds>>point.value;
               if(!in)throw std::runtime_error("curve point requires ID SECONDS VALUE");curve.points.push_back(point);}
             editor.putCurve(std::move(curve));std::cout<<"Explicit curve overrides imported messages on this CC lane; undo restores them.\n";
+          }
+          else if(command=="shape") {
+            double from,to,a,b;std::string field;
+            in>>from>>to>>field>>a>>b;parsed();
+            auto which=daw::WorkEditor::Shape::OnsetMilliseconds;
+            if(field=="offset_ms")which=daw::WorkEditor::Shape::OnsetMilliseconds;
+            else if(field=="scale")which=daw::WorkEditor::Shape::DurationScale;
+            else if(field=="velocity")which=daw::WorkEditor::Shape::Velocity;
+            else throw std::runtime_error("field must be offset_ms, scale or velocity");
+            const auto touched=editor.shapeRange(from,to,which,a,b);
+            std::cout<<"Shaped "<<touched<<" notes; one undo puts the passage back.\n";
+            if(touched==0)continue;
           }
           else if(command=="curve-adopt") {
             std::uint64_t id;int channel,cc;in>>id>>channel>>cc;parsed();

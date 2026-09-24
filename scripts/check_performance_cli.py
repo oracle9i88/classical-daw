@@ -17,7 +17,9 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     # The path that follows listening: you heard something at a moment, you did
     # not count bars to get there, and you still have to reach that note's ID.
     commands = ["notes", "notes-near 2 4", "notes-near 0 2", "notes-near -1",
-                'pitch 2 F 0 4', 'edit 1 120 .94 80', "edits", 'curve 2 2 105',
+                'pitch 2 F 0 4', 'edit 1 120 .94 80', "edits",
+                'shape 0 4 velocity 60 110', "undo", 'shape 4 0 velocity 1 2',
+                'curve 2 2 105',
                 f'save "{root / "edited"}"', "undo", "undo", "undo",
                 f'save "{root / "undone"}"', "redo", "redo", "redo",
                 f'save "{root / "redone"}"', "curve 2 2 128", "edit 999 0 1 80",
@@ -25,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     result = subprocess.run([str(args.build.resolve() / "daw_performance_play"), str(args.document)],
                             input="\n".join(commands) + "\n", capture_output=True, text=True, timeout=30)
     require(result.returncode == 0, result.stdout + result.stderr)
-    require(result.stdout.count("Command failed:") == 3, result.stdout)
+    require(result.stdout.count("Command failed:") == 4, result.stdout)
     # A window around a moment must be centred on it, not started at it.
     around = [line for line in result.stdout.splitlines() if "attack_seconds=" in line]
     near = [line for line in around if line.startswith("performed=")]
@@ -34,6 +36,7 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     require(len(near) > 0, "notes-near returned nothing")
     # An override is invisible in where a note sounds, so the listing says so.
     require("edited_offset_ms=120" in result.stdout, "an override is not visible in the listing")
+    require("Shaped " in result.stdout, "a passage edit reported nothing")
     require("performed=8 notation=8,9," in result.stdout, "tie mapping not visible")
     require("revision=9 active=1" in result.stdout, "invalid edit affected revision")
     require(hashes(root / "undone") == source, "unified undo did not restore complete document")

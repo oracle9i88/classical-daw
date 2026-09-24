@@ -98,6 +98,13 @@ class WorkEditor {
   bool putCurve(ControlCurve curve);
   bool removeCurve(std::uint64_t curve_id);
   bool setGain(double db);
+  // Shaping a passage is one musical act, so it is one command and one undo.
+  // The value ramps linearly with each note's position between the two times,
+  // by where the note is heard now rather than where it was written, and only
+  // the named field moves: a crescendo does not discard timing already given.
+  enum class Shape { OnsetMilliseconds, DurationScale, Velocity };
+  std::size_t shapeRange(double from_seconds, double to_seconds, Shape field,
+                         double from_value, double to_value);
   bool undo();
   bool redo();
   std::uint64_t revision() const noexcept { return revision_; }
@@ -109,13 +116,17 @@ class WorkEditor {
   using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
   void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:
-  enum class Kind { Note, Pitch, Curve, Gain, CurveLane };
+  enum class Kind { Note, Pitch, Curve, Gain, CurveLane, NoteRange };
   struct Change {
     Kind kind = Kind::Note; std::size_t take = 0; std::uint64_t id = 0, point = 0;
     std::optional<NotePerformance> before, after;
     ScorePitch pitch_before{}, pitch_after{};
     double value_before = 0, value_after = 0;
     std::shared_ptr<const ControlCurve> curve_before, curve_after;
+    // A range edit carries every override it writes and every one it replaced.
+    // Held by handle so a Change stays nothrow-copyable and history mutation
+    // after a successful apply still cannot fail.
+    std::shared_ptr<const std::vector<NotePerformance>> notes_before, notes_after;
   };
   bool commit(Change change);
   void apply(const Change& change, bool forward);

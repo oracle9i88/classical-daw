@@ -54,6 +54,14 @@ before it, so what you heard has context on both sides. `status` reports the
 playing position in seconds for exactly this handoff: play, hear it, `status`,
 `notes-near`, `edit`. `notes-at` remains the way in when you do know the bar.
 
+`shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO` shapes a passage
+rather than a note. The value ramps linearly with each note's position between
+the two times, measured by where the note is heard now rather than where it
+was written. Only the named field moves, so a crescendo keeps timing already
+given to a note inside it. It is one command and one undo: a phrase is one
+musical act, and taking twenty undos to put one back would make the history
+useless for the thing it exists for.
+
 `edits [OFFSET COUNT]` lists only the notes carrying an override, and every
 listing now shows the override beside the note that has one. A note moved
 forty milliseconds sounds exactly where a note written there would, so nothing

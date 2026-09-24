@@ -499,6 +499,59 @@ int main() {
       refuses([&] { (void)daw::curveFromScoreMessages(score, 0, 64, 0, nullptr); });
     }
 
+    // Shaping a passage is one musical act. It has to be one command: the way
+    // to know it is one is that a single undo puts the whole passage back.
+    {
+      daw::Score score; daw::ScorePart part;
+      for (int bar = 0; bar < 4; ++bar) {
+        daw::ScoreMeasure measure;
+        measure.number = bar + 1; measure.start = bar * 3840; measure.duration = 3840;
+        for (int beat = 0; beat < 4; ++beat) {
+          measure.notes.push_back(at(measure.start + beat * 960, 720, "CDEG"[beat], 4));
+        }
+        part.measures.push_back(measure);
+      }
+      score.parts.push_back(part);
+      daw::assignNoteIds(score);
+      daw::PerformanceDocument document;
+      document.score = score;
+      document.piano_state.assign(64, 0);
+      document.performances.push_back(daw::makePerformance(document.score, "take"));
+      daw::WorkEditor editor(document);
+
+      // Timing given to one note must survive a crescendo over it.
+      require(editor.set({3, -0.025, 1.2, -1}), "single edit refused");
+      const auto touched = editor.shapeRange(0, 4, daw::WorkEditor::Shape::Velocity, 60, 110);
+      require(touched >= 8, "the crescendo reached too few notes");
+      const auto& shaped = editor.document().performances.at(0).notes;
+      const auto kept = std::find_if(shaped.begin(), shaped.end(),
+                                     [](const auto& n) { return n.note_id == 3; });
+      require(kept != shaped.end(), "the shaped passage lost a note that already had timing");
+      require(kept->onset_seconds == -0.025 && kept->duration_scale == 1.2,
+              "a crescendo discarded timing it was not asked to touch");
+      require(kept->velocity > 60 && kept->velocity < 110, "the ramp did not reach this note");
+
+      // One undo, not one per note.
+      const auto revision = editor.revision();
+      require(editor.undo(), "the passage could not be undone");
+      require(editor.revision() == revision + 1, "undo did not advance one revision");
+      const auto& restored = editor.document().performances.at(0).notes;
+      require(restored.size() == 1 && restored.front().note_id == 3 &&
+              restored.front().velocity == -1,
+              "one undo did not put the whole passage back");
+      require(editor.redo(), "the passage could not be redone");
+      require(editor.document().performances.at(0).notes.size() == shaped.size(),
+              "redo did not restore the whole passage");
+
+      // A ramp landing on the written value leaves nothing behind.
+      require(editor.shapeRange(100, 200, daw::WorkEditor::Shape::Velocity, 60, 110) == 0,
+              "a range with no notes in it still wrote something");
+      bool threw = false;
+      try { (void)editor.shapeRange(4, 0, daw::WorkEditor::Shape::Velocity, 60, 110); }
+      catch (const std::exception&) { threw = true; }
+      require(threw, "a backwards range was accepted");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;
