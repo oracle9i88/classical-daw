@@ -1,6 +1,7 @@
 #include "performance_audition.hpp"
 #include "coreaudio_output.hpp"
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -10,7 +11,12 @@
 #include <map>
 
 namespace {
-void listNotes(const daw::PerformanceDocument& d, const std::string& label, std::size_t offset, std::size_t count) {
+// A measure label selects notes when you know where you are in the score.
+// A time selects them when you do not: you heard something at a moment and
+// have no idea which bar that was. The second is the case that follows
+// listening, so it centres its window on the moment rather than starting there.
+void listNotes(const daw::PerformanceDocument& d, const std::string& label, std::size_t offset,
+               std::size_t count, const double* around_seconds = nullptr) {
   if(count==0||count>200)throw std::runtime_error("notes count must be 1..200");
   struct Location {const daw::ScorePart* part;const daw::ScoreMeasure* measure;const daw::ScoreNote* note;std::size_t ordinal;};
   std::map<std::uint64_t,Location> locations;
@@ -19,6 +25,17 @@ void listNotes(const daw::PerformanceDocument& d, const std::string& label, std:
   const auto& take=d.performances[d.active];const auto sequence=daw::compilePerformance(d.score,take);
   std::map<std::uint64_t,std::size_t> attacks;
   for(const auto& e:sequence.events)if((e.status&0xf0)==0x90&&e.data2)attacks[e.note_id]=e.frame;
+  // Centre the window on the requested moment: half the notes before it, so
+  // what you heard has context on both sides instead of starting at the edge.
+  if(around_seconds!=nullptr) {
+    const auto target=static_cast<double>(*around_seconds)*48000;
+    std::size_t before=0;
+    for(const auto& mapping:take.mapping) {
+      const auto found=attacks.find(mapping.id);
+      if(found!=attacks.end() && static_cast<double>(found->second)<target)++before;
+    }
+    offset = before > count/2 ? before-count/2 : 0;
+  }
   std::size_t matched=0,shown=0;
   for(const auto& mapping:take.mapping) {
     const auto& at=locations.at(mapping.notation_ids.front());const auto& n=*at.note;const auto& m=*at.measure;
@@ -55,7 +72,7 @@ int main(int argc,char** argv) {
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [POINT_ID SECONDS VALUE ...] | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [POINT_ID SECONDS VALUE ...] | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
@@ -76,16 +93,19 @@ int main(int argc,char** argv) {
           if(command=="play"){end();play();continue;}
           if(command=="stop"){end();stop();continue;}
           if(command=="save"){std::string path;in>>std::quoted(path);parsed();daw::savePerformanceDocument(editor.document(),path);std::cout<<"Saved "<<path<<'\n';continue;}
-          if(command=="notes"||command=="notes-at") {
-            std::string label;std::size_t offset=0,count=50;
+          if(command=="notes"||command=="notes-at"||command=="notes-near") {
+            std::string label;std::size_t offset=0,count=50;double seconds=0;
             if(command=="notes-at"){in>>std::quoted(label);if(!in||label.empty())throw std::runtime_error("measure label required");}
-            in>>std::ws;if(!in.eof()){in>>offset>>count;parsed();}
-            listNotes(editor.document(),label,offset,count);continue;
+            if(command=="notes-near"){in>>seconds;if(!in||!std::isfinite(seconds)||seconds<0)throw std::runtime_error("seconds must be a non-negative number");count=20;}
+            in>>std::ws;if(!in.eof()){if(command=="notes-near"){in>>count;parsed();}else{in>>offset>>count;parsed();}}
+            listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr);continue;
           }
           if(command=="curves") {end();for(const auto& curve:editor.document().performances[editor.document().active].curves){
             std::cout<<"curve="<<curve.id<<" channel="<<static_cast<int>(curve.channel)<<" cc="<<static_cast<int>(curve.controller)<<'\n';
             for(const auto& p:curve.points)std::cout<<" point="<<p.id<<" seconds="<<p.seconds<<" value="<<p.value<<'\n';}continue;}
-          if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active<<" frame="<<(audition?audition->frame():0)
+          if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active
+            <<" seconds="<<(audition?static_cast<double>(audition->frame())/48000:0.0)
+            <<" frame="<<(audition?audition->frame():0)
             <<" applied_revision="<<(audition?audition->appliedRevision():editor.revision())<<" applied_frame="<<(audition?audition->appliedFrame():0)<<'\n';continue;}
           // Admission waits for the callback decision before history acceptance.
           // Rejected/cancelled updates leave BOTH document and playback intact.

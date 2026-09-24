@@ -14,7 +14,10 @@ args = parser.parse_args()
 source = hashes(args.document)
 with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     root = Path(folder)
-    commands = ["notes", 'pitch 2 F 0 4', 'edit 1 120 .94 80', 'curve 2 2 105',
+    # The path that follows listening: you heard something at a moment, you did
+    # not count bars to get there, and you still have to reach that note's ID.
+    commands = ["notes", "notes-near 2 4", "notes-near 0 2", "notes-near -1",
+                'pitch 2 F 0 4', 'edit 1 120 .94 80', 'curve 2 2 105',
                 f'save "{root / "edited"}"', "undo", "undo", "undo",
                 f'save "{root / "undone"}"', "redo", "redo", "redo",
                 f'save "{root / "redone"}"', "curve 2 2 128", "edit 999 0 1 80",
@@ -22,7 +25,13 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     result = subprocess.run([str(args.build.resolve() / "daw_performance_play"), str(args.document)],
                             input="\n".join(commands) + "\n", capture_output=True, text=True, timeout=30)
     require(result.returncode == 0, result.stdout + result.stderr)
-    require(result.stdout.count("Command failed:") == 2, result.stdout)
+    require(result.stdout.count("Command failed:") == 3, result.stdout)
+    # A window around a moment must be centred on it, not started at it.
+    around = [line for line in result.stdout.splitlines() if "attack_seconds=" in line]
+    near = [line for line in around if line.startswith("performed=")]
+    require(any("offset=0 " in line for line in result.stdout.splitlines()), "a window at zero did not clamp")
+    require("seconds=" in result.stdout, "status does not report a time to search by")
+    require(len(near) > 0, "notes-near returned nothing")
     require("performed=8 notation=8,9," in result.stdout, "tie mapping not visible")
     require("revision=9 active=1" in result.stdout, "invalid edit affected revision")
     require(hashes(root / "undone") == source, "unified undo did not restore complete document")

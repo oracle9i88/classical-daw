@@ -47,6 +47,13 @@ stop
 quit
 ```
 
+`notes-near SECONDS [COUNT]` answers the question listening actually asks. You
+hear something wrong at a moment; you did not count bars to get there, and you
+still need that note's ID. It centres its window on the moment, half the notes
+before it, so what you heard has context on both sides. `status` reports the
+playing position in seconds for exactly this handoff: play, hear it, `status`,
+`notes-near`, `edit`. `notes-at` remains the way in when you do know the bar.
+
 `edit` takes a **performed-note ID**, onset offset in milliseconds, duration
 scale and velocity (`-1` inherits score velocity). `pitch` takes a **notation
 segment ID**, letter, alteration and octave. `curve` takes a curve ID, point ID
