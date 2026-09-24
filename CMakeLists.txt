@@ -19,6 +19,7 @@ add_library(daw_engine STATIC
   src/engine/project.cpp
   src/engine/render.cpp
   src/engine/score.cpp
+  src/engine/score_repair.cpp
   src/engine/score_midi.cpp
   src/engine/score_tempo.cpp
   src/engine/session.cpp
@@ -90,6 +91,10 @@ add_test(NAME daw_midi_import_tests COMMAND daw_midi_import_tests)
 add_executable(daw_score_tie_tests tests/score_tie_tests.cpp)
 target_link_libraries(daw_score_tie_tests PRIVATE daw_engine)
 add_test(NAME daw_score_tie_tests COMMAND daw_score_tie_tests)
+
+add_executable(daw_score_import_repair_tests tests/score_import_repair_tests.cpp)
+target_link_libraries(daw_score_import_repair_tests PRIVATE daw_engine)
+add_test(NAME daw_score_import_repair_tests COMMAND daw_score_import_repair_tests)
 
 add_executable(daw_musicxml_entry_tests tests/musicxml_entry_tests.cpp)
 target_link_libraries(daw_musicxml_entry_tests PRIVATE daw_engine)

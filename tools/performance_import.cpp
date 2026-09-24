@@ -18,11 +18,13 @@ int main(int argc, char** argv) {
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
     daw::PerformanceDocument d;std::string error;
     stage="score_read";bool ok=false;
-    if(extension==".xml"||extension==".musicxml")ok=daw::readMusicXmlFile(source.string(),&d.score,&error);
+    daw::MusicXmlImportReport repairs;
+    if(extension==".xml"||extension==".musicxml")ok=daw::readMusicXmlFile(source.string(),&d.score,&error,&repairs);
     else if(extension==".mid"||extension==".midi")ok=daw::readMidiScoreFile(source.string(),&d.score,&error);
     else if(extension==".dawproj")ok=daw::readProjectFile(source.string(),&d.score,&error);
     else throw std::runtime_error("unsupported source extension (compressed .mxl is not supported)");
     if(!ok)throw std::runtime_error(error);
+    stage="repair";daw::ScoreRepairReport fixes;daw::repairScoreForAudition(d.score,&fixes);
     stage="identity_mapping";daw::assignNoteIds(d.score);
     d.performances.push_back(daw::makePerformance(d.score,"Imported timing"));
     stage="performance_compile";
@@ -41,6 +43,14 @@ int main(int argc, char** argv) {
     std::cout<<"PASS parts="<<d.score.parts.size()<<" measures="<<measures<<" notation_elements="<<notes
              <<" performed_notes="<<d.performances.front().mapping.size()<<" curves=0 frames="<<sequence.frames
              <<" plugins_opened=0 output_devices_opened=0\n";
+    std::cout<<"Repairs: repeats_separated="<<fixes.repeats_separated
+             <<" overlaps_trimmed="<<fixes.overlaps_trimmed
+             <<" overlaps_silenced="<<fixes.overlaps_silenced
+             <<" broken_ties_released="<<fixes.broken_tie_chains_released
+             <<" grace_notes_timed="<<repairs.grace_notes_timed
+             <<" grace_notes_dropped="<<repairs.grace_notes_dropped
+             <<" conflicting_tempos_resolved="<<repairs.conflicting_tempos_resolved
+             <<" extra_lyrics_dropped="<<repairs.extra_lyrics_dropped<<'\n';
     std::cout<<"Scope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.\n";
   }catch(const std::exception& e){std::cerr<<"FAIL stage="<<stage<<" reason="<<e.what()<<'\n';return 1;}
 }

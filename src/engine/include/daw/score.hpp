@@ -129,6 +129,40 @@ struct MusicXmlExportReport {
 };
 bool writeMusicXmlFile(const Score& score, const std::string& path, std::string* error = nullptr,
                        MusicXmlExportReport* report = nullptr);
-bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr);
+// Import repairs. Passing a report ASKS the reader to repair recoverable
+// constructs instead of refusing the whole file, and to state exactly what it
+// changed. Passing nullptr keeps the strict behavior every round-trip test
+// relies on. A repair changes sounding music: it is an interpretation of an
+// unrepresentable construct, never a claim of a lossless read.
+struct MusicXmlImportReport {
+  // Grace notes carry no written duration. Each borrows its notated type value
+  // from the note it decorates, and that note keeps at least half of its own.
+  std::uint64_t grace_notes_timed = 0;
+  // Nothing in the voice had room to lend time; those graces are dropped.
+  std::uint64_t grace_notes_dropped = 0;
+  // Two different tempos declared at one tick; the later declaration wins.
+  std::uint64_t conflicting_tempos_resolved = 0;
+  // Verses beyond the first, and malformed lyric blocks, are dropped.
+  std::uint64_t extra_lyrics_dropped = 0;
+};
+bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr,
+                      MusicXmlImportReport* report = nullptr);
+
+// Make an imported score playable by the audition path. MIDI 1.0 cannot address
+// two same-pitch notes on one channel at once, and the score-to-MIDI bridge only
+// follows a tie whose segments join exactly; real engraving produces both all
+// the time. Passing nullptr does nothing, so the engine keeps its strict view.
+struct ScoreRepairReport {
+  // A repeated note whose release landed exactly on the next attack. One tick
+  // of silence is inserted; at 960 PPQ that is well under a millisecond.
+  std::uint64_t repeats_separated = 0;
+  // A genuine overlap: the earlier note was audibly shortened to make room.
+  std::uint64_t overlaps_trimmed = 0;
+  // Two attacks coincided, or nothing could be shortened; the later is silenced.
+  std::uint64_t overlaps_silenced = 0;
+  // A tie whose segments did not join exactly; it becomes a second attack.
+  std::uint64_t broken_tie_chains_released = 0;
+};
+void repairScoreForAudition(Score& score, ScoreRepairReport* report);
 
 }  // namespace daw

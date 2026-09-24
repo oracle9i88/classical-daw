@@ -437,6 +437,20 @@ double metronomeTempo(const std::string& xml, const XmlBlock& metronome) {
   return bpm;
 }
 
+// A grace note has no <duration>; its notated <type> is the only written hint
+// at how long it should sound. Dots and tuplet modification are ignored here:
+// the value is capped against the principal note anyway, and an unwritten type
+// falls back to an eighth, which is what engravers use when they omit it.
+Tick notatedTypeTicks(const std::string& xml, const XmlBlock& note_block) {
+  static const std::map<std::string, double> units{{"maxima",32},{"long",16},{"breve",8},{"whole",4},
+      {"half",2},{"quarter",1},{"eighth",0.5},{"16th",0.25},{"32nd",0.125},
+      {"64th",0.0625},{"128th",0.03125},{"256th",0.015625},{"512th",0.0078125},{"1024th",0.00390625}};
+  const auto found = units.find(textIn(xml, "type", note_block.content_start, note_block.content_end));
+  const double quarters = found == units.end() ? 0.5 : found->second;
+  const auto ticks = static_cast<Tick>(quarters * static_cast<double>(kTicksPerQuarter));
+  return ticks > 0 ? ticks : 1;
+}
+
 std::uint8_t noteVelocity(const std::string& opening) {
   bool present = false;
   const std::string value = trim(attribute(opening, "dynamics", &present));
@@ -815,7 +829,8 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
   }
 }
 
-bool readMusicXmlFile(const std::string& path, Score* score, std::string* error) {
+bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
+                      MusicXmlImportReport* report) {
   if (score == nullptr) {
     if (error) *error = "score output pointer is null";
     return false;
@@ -881,6 +896,12 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       ScorePart parsed_part;
       parsed_part.id = attribute(part_block.opening, "id");
       parsed_part.name = part_name.empty() ? parsed_part.id : part_name;
+      // A grace note is commonly the last thing written in a bar, decorating
+      // the downbeat of the next one, so this buffer outlives one measure.
+      // It is settled against the principal note wherever that note falls.
+      using GraceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
+      struct PendingGrace { ScoreNote note; Tick nominal; };
+      std::map<GraceKey, std::vector<PendingGrace>> pending_graces;
       Tick measure_start = 0;
       // Legacy files with no declaration use 960. Explicit declarations are
       // inherited within this part only, never from a preceding part.
@@ -1003,7 +1024,12 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
             const Tick tick = measure_start + local_tick;
             const auto found = global_tempos.find(tick);
             if (found != global_tempos.end()) {
-              if (found->second != bpm) throw std::runtime_error("conflicting MusicXML tempos at the same tick");
+              if (found->second != bpm) {
+                if (report == nullptr) throw std::runtime_error("conflicting MusicXML tempos at the same tick");
+                // A reader meeting two marks at one tick ends on the later one.
+                found->second = bpm;
+                ++report->conflicting_tempos_resolved;
+              }
             } else {
               if (global_tempos.size() >= kMaxScoreTempoChanges + 1) throw std::runtime_error("MusicXML tempo count exceeds limit");
               global_tempos.emplace(tick, bpm);
@@ -1035,9 +1061,15 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
           continue;  // Directions never advance the note cursor or bar extent.
         }
         have_timed_event = true;
-        const auto raw_duration = timingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
-        const Tick duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
-        if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
+        const bool is_grace = event.tag == "note" &&
+            hasSelfClosingTag(xml, "grace", event.block.content_start, event.block.content_end);
+        if (is_grace && report == nullptr) throw std::runtime_error("MusicXML is missing <duration>");
+        Tick duration = 0;
+        if (!is_grace) {
+          const auto raw_duration = timingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
+          duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
+          if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
+        }
         if (event.tag == "backup") {
           if (duration > cursor) throw std::runtime_error("MusicXML backup crosses measure start");
           cursor -= duration;
@@ -1067,6 +1099,40 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         note.staff = static_cast<std::uint16_t>(staff_number);
         const VoiceKey key{note.staff, note.voice};
         if (note.chord && !have_notes[key]) throw std::runtime_error("MusicXML chord cannot be the first note in a voice");
+        // Settle graces waiting on this voice before the principal claims the
+        // cursor. They sound at the cursor and push the principal later; the
+        // principal keeps at least half of its written value.
+        if (!is_grace && !note.chord && !note.rest && !pending_graces[key].empty()) {
+          auto& waiting = pending_graces[key];
+          Tick wanted = 0;
+          for (const auto& pending : waiting) wanted += pending.nominal;
+          const Tick granted = std::min(wanted, duration / 2);
+          if (granted <= 0) {
+            report->grace_notes_dropped += waiting.size();
+          } else {
+            Tick spent = 0;
+            for (std::size_t index = 0; index < waiting.size(); ++index) {
+              const bool last = index + 1 == waiting.size();
+              Tick share = last ? granted - spent
+                                : static_cast<Tick>(waiting[index].nominal * granted / wanted);
+              if (share <= 0) share = 1;
+              if (spent + share > granted) share = granted - spent;
+              if (share <= 0) { ++report->grace_notes_dropped; continue; }
+              ScoreNote resolved = waiting[index].note;
+              resolved.start = measure_start + cursor + spent;
+              resolved.duration = share;
+              measure.notes.push_back(resolved);
+              spent += share;
+              ++report->grace_notes_timed;
+            }
+            cursor += spent;
+            duration -= spent;
+            // note.duration was taken from the unshortened value above.
+            note.duration = duration;
+            have_notes[key] = true;
+          }
+          waiting.clear();
+        }
         const Tick local_start = note.chord ? last_note_starts[key] : cursor;
         if (local_start < 0 || measure_start > std::numeric_limits<Tick>::max() - local_start) {
           throw std::runtime_error("MusicXML tick overflow");
@@ -1103,11 +1169,23 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
         note.tie_stop = hasSelfClosingAttribute(xml, "tie", "type", "stop", event.block.content_start, event.block.content_end) ||
                          hasSelfClosingAttribute(xml, "tied", "type", "stop", event.block.content_start, event.block.content_end);
         const auto lyrics = findBlocks(xml, "lyric", event.block.content_start, event.block.content_end);
-        if (lyrics.size() > 1) throw std::runtime_error("MusicXML notes may contain only one lyric in Alpha");
+        if (lyrics.size() > 1) {
+          if (report == nullptr) throw std::runtime_error("MusicXML notes may contain only one lyric in Alpha");
+          report->extra_lyrics_dropped += lyrics.size() - 1;
+        }
         if (!lyrics.empty()) {
           const auto text_blocks = findBlocks(xml, "text", lyrics.front().content_start, lyrics.front().content_end);
-          if (text_blocks.size() != 1) throw std::runtime_error("MusicXML lyric must contain one text element");
-          note.lyric = textIn(xml, "text", lyrics.front().content_start, lyrics.front().content_end, true);
+          if (text_blocks.size() != 1) {
+            if (report == nullptr) throw std::runtime_error("MusicXML lyric must contain one text element");
+            ++report->extra_lyrics_dropped;
+          }
+          if (!text_blocks.empty()) {
+            note.lyric = textIn(xml, "text", lyrics.front().content_start, lyrics.front().content_end, true);
+          }
+        }
+        if (is_grace) {
+          if (!note.rest) pending_graces[key].push_back({note, notatedTypeTicks(xml, event.block)});
+          continue;
         }
         measure.notes.push_back(note);
         have_notes[key] = true;
@@ -1132,6 +1210,12 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error)
       }
       part_meters.push_back(std::move(local_meters));
       part_ends.push_back(measure_start);
+      // Graces still waiting when the part ends decorate nothing that this
+      // slice can place; they are dropped rather than invented a home.
+      for (auto& leftover : pending_graces) {
+        if (report != nullptr) report->grace_notes_dropped += leftover.second.size();
+        leftover.second.clear();
+      }
       return parsed_part;
     };
 
