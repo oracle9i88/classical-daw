@@ -62,11 +62,17 @@ bool scoreToMidiFile(const Score& score, MidiFile* midi, std::string* error = nu
 // notes within a track are rejected: this model has no independent tie
 // identity for them. Adjacent reattacks and different-channel overlaps remain
 // valid. Failures leave the caller's score unchanged.
-bool midiToScore(const MidiFile& midi, Score* score, std::string* error = nullptr);
+// A recorded or exported MIDI track routinely sounds one pitch twice on one
+// channel before the first release. One channel becomes one score voice here,
+// which cannot hold that, so the conversion refuses it. Passing a repair report
+// asks it to shorten the earlier note instead, and to say how often it did.
+bool midiToScore(const MidiFile& midi, Score* score, std::string* error = nullptr,
+                 ScoreRepairReport* report = nullptr);
 
 // Read an SMF and then convert it to the score model without exposing a
 // partially parsed score when either operation fails.
-bool readMidiScoreFile(const std::string& path, Score* score, std::string* error = nullptr);
+bool readMidiScoreFile(const std::string& path, Score* score, std::string* error = nullptr,
+                       ScoreRepairReport* report = nullptr);
 
 // Convert first and then write through the existing SMF writer. Conversion is
 // completed before touching the destination, and writing uses a temporary

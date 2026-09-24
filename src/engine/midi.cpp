@@ -255,7 +255,8 @@ bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* e
   }
 }
 
-bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, MidiImportReport* report) {
+bool readMidiFile(const std::string& path, MidiFile* file, std::string* error,
+                  MidiImportReport* report, ScoreRepairReport* repairs) {
   if (file == nullptr) {
     if (error) *error = "file output pointer is null";
     return false;
@@ -408,10 +409,19 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error, M
             active[{channel, pitch}].push_back({tick, value, event_order});
           } else if (command == 0x80 || (command == 0x90 && value == 0)) {
             auto& stack = active[{channel, pitch}];
-            if (stack.empty()) throw std::runtime_error("MIDI note-off has no matching note-on");
+            if (stack.empty()) {
+              if (repairs == nullptr) throw std::runtime_error("MIDI note-off has no matching note-on");
+              ++repairs->dropped_orphan_releases;
+              continue;
+            }
             const auto [start, velocity, on_order] = stack.back();
             stack.pop_back();
-            if (tick <= start) throw std::runtime_error("MIDI note duration must be positive");
+            if (tick <= start) {
+              if (repairs == nullptr) throw std::runtime_error("MIDI note duration must be positive");
+              // Released at or before its own attack: it cannot sound at all.
+              ++repairs->dropped_silent_notes;
+              continue;
+            }
             const Tick normalized_start = canonicalTick(start, division, &diagnostics.rounded_note_boundaries);
             const Tick normalized_end = canonicalTick(tick, division, &diagnostics.rounded_note_boundaries);
             if (normalized_end <= normalized_start) {

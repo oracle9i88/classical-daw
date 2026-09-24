@@ -18,13 +18,13 @@ int main(int argc, char** argv) {
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
     daw::PerformanceDocument d;std::string error;
     stage="score_read";bool ok=false;
-    daw::MusicXmlImportReport repairs;
+    daw::MusicXmlImportReport repairs;daw::ScoreRepairReport fixes;
     if(extension==".xml"||extension==".musicxml")ok=daw::readMusicXmlFile(source.string(),&d.score,&error,&repairs);
-    else if(extension==".mid"||extension==".midi")ok=daw::readMidiScoreFile(source.string(),&d.score,&error);
+    else if(extension==".mid"||extension==".midi")ok=daw::readMidiScoreFile(source.string(),&d.score,&error,&fixes);
     else if(extension==".dawproj")ok=daw::readProjectFile(source.string(),&d.score,&error);
     else throw std::runtime_error("unsupported source extension (compressed .mxl is not supported)");
     if(!ok)throw std::runtime_error(error);
-    stage="repair";daw::ScoreRepairReport fixes;daw::repairScoreForAudition(d.score,&fixes);
+    stage="repair";daw::repairScoreForAudition(d.score,&fixes);
     stage="identity_mapping";daw::assignNoteIds(d.score);
     d.performances.push_back(daw::makePerformance(d.score,"Imported timing"));
     stage="performance_compile";

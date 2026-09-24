@@ -2,6 +2,7 @@
 // and what they must still refuse. Strict callers pass no report and must see
 // exactly the old behavior, because every other round-trip test relies on it.
 #include "daw/score.hpp"
+#include "daw/midi.hpp"
 #include "daw/score_midi.hpp"
 #include <chrono>
 #include <filesystem>
@@ -146,6 +147,38 @@ int main() {
       require(report.overlaps_silenced == 1, "coincident unison not silenced");
       require(score.parts[0].measures[0].notes[1].rest, "silenced note still sounds");
     }
+    // A silenced chain must not hide a longer one still sounding underneath it.
+    // Following only the previous chain in start order left the collision
+    // between the long chain and a later attack completely unexamined.
+    {
+      daw::ScoreNote shorter = at(0, 240, 'C', 4); shorter.voice = 2;
+      daw::Score score = build({at(0, 960, 'C', 4), shorter, at(960, 480, 'C', 4)});
+      daw::ScoreRepairReport report;
+      daw::repairScoreForAudition(score, &report);
+      require(report.overlaps_silenced == 1, "coincident attack not silenced");
+      require(report.repeats_separated == 1, "long chain hidden behind the silenced one");
+      std::string error; daw::MidiFile midi;
+      require(daw::scoreToMidiFile(score, &midi, &error), error);
+    }
+    // Releasing a tie leaves its segments sounding separately. A collision pass
+    // still holding the old grouping trims the wrong note and leaves the two
+    // halves abutting, which is exactly what the audition refuses.
+    {
+      daw::ScoreNote head = at(0, 240, 'C', 4); head.tie_start = true;
+      daw::ScoreNote body = at(240, 2880, 'C', 4); body.tie_stop = true; body.tie_start = true;
+      daw::ScoreNote later = at(1920, 480, 'C', 4); later.voice = 2;
+      daw::Score score = build({head, body, later});
+      daw::ScoreRepairReport report;
+      daw::repairScoreForAudition(score, &report);
+      const auto& notes = score.parts[0].measures[0].notes;
+      require(!notes[0].tie_start && !notes[1].tie_stop, "unterminated chain not released");
+      // The released head must not still be abutting its old continuation.
+      require(notes[0].start + notes[0].duration < notes[1].start ||
+              notes[1].rest || notes[0].rest, "released segments left abutting");
+      std::string error; daw::MidiFile midi;
+      require(daw::scoreToMidiFile(score, &midi, &error), error);
+    }
+
     // A tie whose segments do not join becomes two attacks, and the score that
     // comes out has to survive the bridge that refused the original.
     {
@@ -163,6 +196,64 @@ int main() {
       daw::MidiFile accepted;
       require(daw::scoreToMidiFile(score, &accepted, &error), "repaired score still refused: " + error);
     }
+    // The MIDI entry refuses an overlap during conversion, before the repair
+    // pass could ever see the score. Asking for repairs there shortens the
+    // sounding note instead; a second attack at the same instant is dropped.
+    {
+      daw::MidiFile midi;
+      midi.format = 0;
+      midi.ticks_per_quarter = daw::kTicksPerQuarter;
+      daw::MidiTrack track;
+      track.notes.push_back({0, 960, 60, 90, 0, 0, 0, 0, 0, {}});
+      track.notes.push_back({480, 960, 60, 90, 0, 0, 0, 0, 0, {}});
+      midi.tracks.push_back(track);
+
+      daw::Score refused; std::string error;
+      require(!daw::midiToScore(midi, &refused, &error, nullptr), "strict MIDI accepted an overlap");
+      require(error.find("overlap") != std::string::npos, "strict MIDI error lost its reason");
+
+      daw::Score score; daw::ScoreRepairReport report;
+      require(daw::midiToScore(midi, &score, &error, &report), error);
+      require(report.overlaps_trimmed == 1 && report.overlaps_silenced == 0, "MIDI overlap not trimmed once");
+      daw::MidiFile round_trip;
+      require(daw::scoreToMidiFile(score, &round_trip, &error), "repaired MIDI score still refused: " + error);
+    }
+    {
+      daw::MidiFile midi;
+      midi.format = 0;
+      midi.ticks_per_quarter = daw::kTicksPerQuarter;
+      daw::MidiTrack track;
+      track.notes.push_back({0, 960, 60, 90, 0, 0, 0, 0, 0, {}});
+      track.notes.push_back({0, 480, 60, 70, 0, 0, 0, 0, 0, {}});
+      midi.tracks.push_back(track);
+      daw::Score score; std::string error; daw::ScoreRepairReport report;
+      require(daw::midiToScore(midi, &score, &error, &report), error);
+      require(report.overlaps_silenced == 1, "coincident MIDI attack not dropped");
+    }
+
+    // A note released at or before its own attack, and a release with nothing
+    // to close. Exporters emit both; neither can sound, so neither is music
+    // that dropping could lose. Strict reads still refuse the file.
+    {
+      const unsigned char bytes[] = {
+        'M','T','h','d',0,0,0,6,0,0,0,1,0x03,0xC0,
+        'M','T','r','k',0,0,0,16,
+        0x00,0x90,60,90,   0x00,0x80,60,0,      // zero-length note
+        0x00,0x80,62,0,                         // orphan release
+        0x00,0xFF,0x2F,0x00
+      };
+      const auto path = (root / "degenerate.mid").string();
+      { std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(bytes), sizeof(bytes)); }
+      daw::MidiFile refused; std::string error;
+      require(!daw::readMidiFile(path, &refused, &error), "strict read accepted a silent note");
+      daw::MidiFile file; daw::ScoreRepairReport repairs;
+      require(daw::readMidiFile(path, &file, &error, nullptr, &repairs), error);
+      require(repairs.dropped_silent_notes == 1, "silent note not dropped once");
+      require(repairs.dropped_orphan_releases == 1, "orphan release not dropped once");
+      require(file.tracks.at(0).notes.empty(), "a dropped note was stored anyway");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

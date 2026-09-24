@@ -246,7 +246,8 @@ bool writeScoreMidiFile(const Score& score, const std::string& path, std::string
   return true;
 }
 
-bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
+bool midiToScore(const MidiFile& midi, Score* score, std::string* error,
+                 ScoreRepairReport* report) {
   if (score == nullptr) {
     if (error) *error = "score output pointer is null";
     return false;
@@ -326,18 +327,44 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
       // voice, especially after splitting at barlines. Fail before returning
       // a score that could not be exported again without guessing.
       using VoicePitch = std::pair<std::uint16_t, std::uint8_t>;
-      std::map<VoicePitch, Tick> previous_ends;
-      for (const ScoreNote& note : notes) {
+      std::map<VoicePitch, std::size_t> previous_index;
+      std::vector<bool> dropped(notes.size(), false);
+      for (std::size_t index = 0; index < notes.size(); ++index) {
+        ScoreNote& note = notes[index];
         const std::uint8_t pitch = toMidiPitch(note.pitch);
         const VoicePitch key{note.voice, pitch};
-        const auto previous = previous_ends.find(key);
-        if (previous != previous_ends.end() && note.start < previous->second) {
+        const auto previous = previous_index.find(key);
+        const Tick previous_end = previous == previous_index.end()
+            ? 0 : notes[previous->second].start + notes[previous->second].duration;
+        if (previous != previous_index.end() && note.start < previous_end && report != nullptr) {
+          // Shorten the sounding note so the new attack can be addressed. A
+          // second attack at the same instant leaves nothing to shorten, so
+          // that one is dropped; nothing here can recover which was meant.
+          ScoreNote& earlier = notes[previous->second];
+          const Tick room = note.start - earlier.start;
+          if (room > 0) {
+            earlier.duration = room;
+            ++report->overlaps_trimmed;
+          } else {
+            dropped[index] = true;
+            ++report->overlaps_silenced;
+            continue;
+          }
+        } else if (previous != previous_index.end() && note.start < previous_end) {
           throw std::invalid_argument("MIDI same-channel same-pitch overlap cannot be represented by one score voice in track " +
                                       std::to_string(track_index + 1U) + " at tick " + std::to_string(note.start) +
                                       " (channel " + std::to_string(note.voice - 1U) + ", MIDI pitch " +
                                       std::to_string(pitch) + ")");
         }
-        previous_ends[key] = note.start + note.duration;
+        previous_index[key] = index;
+      }
+      if (std::any_of(dropped.begin(), dropped.end(), [](bool v) { return v; })) {
+        std::vector<ScoreNote> kept;
+        kept.reserve(notes.size());
+        for (std::size_t index = 0; index < notes.size(); ++index) {
+          if (!dropped[index]) kept.push_back(std::move(notes[index]));
+        }
+        notes.swap(kept);
       }
       // Channel events do not require notated bars. An event-only track gets
       // one editable measure even if its final controller is very late.
@@ -416,18 +443,19 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error) {
   }
 }
 
-bool readMidiScoreFile(const std::string& path, Score* score, std::string* error) {
+bool readMidiScoreFile(const std::string& path, Score* score, std::string* error,
+                       ScoreRepairReport* report) {
   if (path.empty()) {
     if (error) *error = "MIDI input path is empty";
     return false;
   }
   MidiFile midi;
   std::string read_error;
-  if (!readMidiFile(path, &midi, &read_error)) {
+  if (!readMidiFile(path, &midi, &read_error, nullptr, report)) {
     if (error) *error = read_error;
     return false;
   }
-  return midiToScore(midi, score, error);
+  return midiToScore(midi, score, error, report);
 }
 
 }  // namespace daw

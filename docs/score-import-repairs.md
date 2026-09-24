@@ -6,9 +6,12 @@ corruption is worse than failure. It is the wrong rule for an importer: an
 author cannot start work if the file will not open, and every notation program
 emits constructs this engine has no model for.
 
-Measured on the local 1,105-file MusicXML corpus, the end-to-end import entry
-went from **9 files to 465**. Nothing below relaxes an engine invariant: the
-strict path is unchanged and is still what every round-trip test exercises.
+Measured on the local corpora, the end-to-end import entry went from **9 of
+1,105 MusicXML files to 589**, and imports **1,707 of 2,598 local MIDI files**.
+Excluding scores with more than one part, which is a product decision rather
+than a reader limit, 589 of 678 single-part MusicXML files import. Nothing
+below relaxes an engine invariant: the strict path is unchanged and is still
+what every round-trip test exercises.
 
 ## Asking for repairs
 
@@ -46,6 +49,25 @@ exactly. Real engraving produces all three situations constantly.
 | Two attacks at one instant on one pitch | The later one is silenced. Nothing here can decide which voice the author meant. |
 | A tie whose segments do not join | The whole chain is released into separate attacks. Releasing only one flag would strand the other end. |
 
+Collision repair follows the chain that reaches furthest, not merely the one
+before it in start order: a short or silenced chain otherwise hides a long one
+still sounding underneath it, and the collision it conceals is exactly what the
+audition refuses later. Chains are rebuilt after the tie pass, because a
+released tie leaves its old grouping describing notes that no longer sound as
+one, and reasoning from that stale grouping trims the wrong note.
+
+## MIDI entry repairs
+
+| Situation | Repair |
+|---|---|
+| Same channel and pitch sounding twice before the first release | One channel is one score voice, which cannot hold that. The sounding note is shortened; a second attack at the same instant is dropped. |
+| A note released at or before its own attack | Dropped. It cannot sound, so there is no music to lose; exporters emit these routinely. |
+| A release with nothing to close | Dropped. Nothing identifies what it referred to. |
+
+`readMidiFile` takes the repair report as a separate argument from its existing
+`MidiImportReport`, because several callers already pass that report only to
+observe and must keep refusing malformed input.
+
 Counts are reported separately on purpose: on a Grieg lyric piece the first row
 accounts for 156 of 164 changes, and reporting one total would badly overstate
 what happened to the music.
@@ -55,13 +77,10 @@ what happened to the music.
 - **More than one part** (427 of the corpus). This is the two-live-instrument
   product decision, not a reader limit. It is the single largest remaining
   category and needs a product answer, not a parser fix.
-- **Same-pitch retrigger after repair** (124). The repair pass does not yet
-  reproduce every grouping the audition performs. Not diagnosed here.
 - **Chord as the first note in a voice** (35), **durations not exactly
   representable at 960 PPQ** (25), **unsynchronized part measure starts** (14),
   **more than 4,096 attacks** (11), and a handful of metronome and polymeter
-  cases.
+  cases. On the MIDI side, 740 files have more than one track and 74 exceed the
+  attack limit.
 
-Compressed `.mxl` remains unsupported. The MIDI entry still refuses a
-same-channel same-pitch overlap during conversion, before the repair pass can
-run; that path is not covered by this change.
+Compressed `.mxl` remains unsupported.

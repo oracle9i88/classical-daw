@@ -41,6 +41,15 @@ struct Chain {
   long long pitch = 0;
 };
 
+void silence(const Chain& chain) {
+  for (ScoreNote* segment : chain.segments) {
+    segment->rest = true;
+    segment->tie_start = false;
+    segment->tie_stop = false;
+    segment->lyric.clear();
+  }
+}
+
 void release(const Chain& chain, ScoreRepairReport* report) {
   for (ScoreNote* segment : chain.segments) {
     segment->tie_start = false;
@@ -110,6 +119,26 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
     // may itself carry a stop, so clearing only the starts would strand it.
     for (const auto& leftover : open) release(chains[leftover.second], report);
 
+    // Releasing a tie above left the chains that carried it describing notes
+    // that no longer sound as one. Rebuild from the flags that survived, so
+    // the collision pass never reasons about a grouping that is already gone.
+    chains.clear();
+    open.clear();
+    for (ScoreNote* note : ordered) {
+      const TieKey key = keyOf(*note);
+      const auto held = open.find(key);
+      if (note->tie_stop && held != open.end()) {
+        Chain& chain = chains[held->second];
+        chain.segments.push_back(note);
+        chain.end = note->start + note->duration;
+        if (!note->tie_start) open.erase(held);
+        continue;
+      }
+      chains.push_back({{note}, note->start, note->start + note->duration, channelOf(*note),
+                        soundingPitch(note->pitch)});
+      if (note->tie_start) open.emplace(key, chains.size() - 1U);
+    }
+
     // Pass two: the audition groups sounding notes by channel and pitch only,
     // so chains from different voices collide there even when the notation is
     // unambiguous. A coincident end and attack also counts as a collision.
@@ -122,32 +151,42 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
       std::stable_sort(indices.begin(), indices.end(), [&](std::size_t left, std::size_t right) {
         return chains[left].start < chains[right].start;
       });
+      // Follow the sounding chain that reaches furthest, not merely the one
+      // before this in start order. A short or silenced chain would otherwise
+      // hide a long one still sounding underneath it, and the collision it
+      // conceals is exactly what the audition refuses later.
+      std::size_t frontier = indices.front();
       for (std::size_t i = 1; i < indices.size(); ++i) {
-        Chain& previous = chains[indices[i - 1U]];
+        Chain& previous = chains[frontier];
         Chain& current = chains[indices[i]];
-        if (previous.end < current.start) continue;
-        ScoreNote* tail = previous.segments.back();
-        // Leave one tick of silence: the audition rejects a release that lands
-        // on the next attack, not only a release that passes it.
-        const Tick wanted = current.start - 1 - tail->start;
-        if (current.start > previous.start && wanted > 0) {
-          const bool merely_adjacent = previous.end == current.start;
-          tail->duration = wanted;
-          previous.end = tail->start + wanted;
-          if (merely_adjacent) ++report->repeats_separated;
-          else ++report->overlaps_trimmed;
+        if (previous.end < current.start) {
+          frontier = indices[i];
           continue;
         }
-        // Nothing can be shortened: the two attacks coincide, or the earlier
-        // chain has no room left. Silence the later one rather than guess.
-        for (ScoreNote* segment : current.segments) {
-          segment->rest = true;
-          segment->tie_start = false;
-          segment->tie_stop = false;
-          segment->lyric.clear();
+        if (current.start > previous.start) {
+          ScoreNote* tail = previous.segments.back();
+          // Leave one tick of silence: the audition rejects a release landing
+          // on the next attack, not only one that passes it.
+          const Tick wanted = current.start - 1 - tail->start;
+          if (wanted > 0) {
+            const bool merely_adjacent = previous.end == current.start;
+            tail->duration = wanted;
+            previous.end = tail->start + wanted;
+            if (merely_adjacent) ++report->repeats_separated;
+            else ++report->overlaps_trimmed;
+            frontier = indices[i];
+            continue;
+          }
         }
-        current.end = current.start;
+        // The attacks coincide, or nothing is left to shorten. Keep whichever
+        // reaches further, so the repair loses as little sounding music as it
+        // can; nothing here can recover which voice the author meant.
+        const bool current_reaches_further = current.end > previous.end;
+        silence(current_reaches_further ? previous : current);
+        (current_reaches_further ? previous : current).end =
+            (current_reaches_further ? previous : current).start;
         ++report->overlaps_silenced;
+        if (current_reaches_further) frontier = indices[i];
       }
     }
   }

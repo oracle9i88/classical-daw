@@ -162,6 +162,11 @@ struct ScoreRepairReport {
   std::uint64_t overlaps_silenced = 0;
   // A tie whose segments did not join exactly; it becomes a second attack.
   std::uint64_t broken_tie_chains_released = 0;
+  // A note released at or before its own attack. It can never sound, so there
+  // is no music to lose by dropping it; exporters emit these routinely.
+  std::uint64_t dropped_silent_notes = 0;
+  // A release with no attack to close. Nothing identifies what it referred to.
+  std::uint64_t dropped_orphan_releases = 0;
 };
 void repairScoreForAudition(Score& score, ScoreRepairReport* report);
 

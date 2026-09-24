@@ -2,6 +2,7 @@
 
 #include "daw/tempo_map.hpp"
 #include "daw/midi_event.hpp"
+#include "daw/score.hpp"
 
 #include <cstdint>
 #include <string>
@@ -79,6 +80,7 @@ struct MidiImportReport {
 // The writer and in-memory engine model continue to require 960 PPQ.
 bool writeMidiFile(const MidiFile& file, const std::string& path, std::string* error = nullptr);
 bool readMidiFile(const std::string& path, MidiFile* file, std::string* error = nullptr,
-                  MidiImportReport* report = nullptr);
+                  MidiImportReport* report = nullptr,
+                  ScoreRepairReport* repairs = nullptr);
 
 }  // namespace daw
