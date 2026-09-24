@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     # The path that follows listening: you heard something at a moment, you did
     # not count bars to get there, and you still have to reach that note's ID.
     commands = ["notes", "notes-near 2 4", "notes-near 0 2", "notes-near -1",
-                'pitch 2 F 0 4', 'edit 1 120 .94 80', 'curve 2 2 105',
+                'pitch 2 F 0 4', 'edit 1 120 .94 80', "edits", 'curve 2 2 105',
                 f'save "{root / "edited"}"', "undo", "undo", "undo",
                 f'save "{root / "undone"}"', "redo", "redo", "redo",
                 f'save "{root / "redone"}"', "curve 2 2 128", "edit 999 0 1 80",
@@ -32,6 +32,8 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     require(any("offset=0 " in line for line in result.stdout.splitlines()), "a window at zero did not clamp")
     require("seconds=" in result.stdout, "status does not report a time to search by")
     require(len(near) > 0, "notes-near returned nothing")
+    # An override is invisible in where a note sounds, so the listing says so.
+    require("edited_offset_ms=120" in result.stdout, "an override is not visible in the listing")
     require("performed=8 notation=8,9," in result.stdout, "tie mapping not visible")
     require("revision=9 active=1" in result.stdout, "invalid edit affected revision")
     require(hashes(root / "undone") == source, "unified undo did not restore complete document")

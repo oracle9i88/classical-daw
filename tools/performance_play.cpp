@@ -15,14 +15,21 @@ namespace {
 // A time selects them when you do not: you heard something at a moment and
 // have no idea which bar that was. The second is the case that follows
 // listening, so it centres its window on the moment rather than starting there.
+// Whether a note carries an override is not visible in where it sounds: a
+// note moved forty milliseconds looks exactly like a note written there. After
+// a session of edits that is the difference between knowing what you changed
+// and guessing, so the listing says so, and `edited_only` answers the question
+// you ask on reopening a document.
 void listNotes(const daw::PerformanceDocument& d, const std::string& label, std::size_t offset,
-               std::size_t count, const double* around_seconds = nullptr) {
+               std::size_t count, const double* around_seconds = nullptr, bool edited_only = false) {
   if(count==0||count>200)throw std::runtime_error("notes count must be 1..200");
   struct Location {const daw::ScorePart* part;const daw::ScoreMeasure* measure;const daw::ScoreNote* note;std::size_t ordinal;};
   std::map<std::uint64_t,Location> locations;
   for(const auto& p:d.score.parts)for(std::size_t i=0;i<p.measures.size();++i)
     for(const auto& n:p.measures[i].notes)locations.emplace(n.id,Location{&p,&p.measures[i],&n,i+1});
   const auto& take=d.performances[d.active];const auto sequence=daw::compilePerformance(d.score,take);
+  std::map<std::uint64_t,const daw::NotePerformance*> overrides;
+  for(const auto& n:take.notes)overrides.emplace(n.note_id,&n);
   std::map<std::uint64_t,std::size_t> attacks;
   for(const auto& e:sequence.events)if((e.status&0xf0)==0x90&&e.data2)attacks[e.note_id]=e.frame;
   // Centre the window on the requested moment: half the notes before it, so
@@ -44,12 +51,20 @@ void listNotes(const daw::PerformanceDocument& d, const std::string& label, std:
     for(auto id:mapping.notation_ids){const auto& linked=*locations.at(id).measure;
       if((linked.label.empty()?std::to_string(linked.number):linked.label)==label)in_measure=true;}
     if(!in_measure)continue;
+    const auto edit=overrides.find(mapping.id);
+    if(edited_only&&edit==overrides.end())continue;
     if(matched++<offset||shown>=count)continue;
     ++shown;std::cout<<"performed="<<mapping.id<<" notation=";for(auto id:mapping.notation_ids)std::cout<<id<<',';
     std::cout<<" part="<<std::quoted(at.part->id)<<" measure="<<std::quoted(name)<<" ordinal="<<at.ordinal
       <<" staff="<<n.staff<<" voice="<<n.voice<<" pitch="<<n.pitch.step<<" alter="<<n.pitch.alter<<" octave="<<n.pitch.octave
       <<" offset_ticks="<<n.start-m.start<<" tick="<<n.start<<" duration_ticks="<<n.duration
-      <<" attack_seconds="<<static_cast<double>(attacks.at(mapping.id))/48000<<'\n';
+      <<" attack_seconds="<<static_cast<double>(attacks.at(mapping.id))/48000;
+    if(edit!=overrides.end()) {
+      std::cout<<" edited_offset_ms="<<edit->second->onset_seconds*1000
+               <<" edited_scale="<<edit->second->duration_scale
+               <<" edited_velocity="<<edit->second->velocity;
+    }
+    std::cout<<'\n';
   }
   std::cout<<"shown="<<shown<<" matched="<<matched<<" offset="<<offset<<" next_offset="<<offset+shown<<'\n';
 }
@@ -72,7 +87,7 @@ int main(int argc,char** argv) {
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
@@ -93,12 +108,12 @@ int main(int argc,char** argv) {
           if(command=="play"){end();play();continue;}
           if(command=="stop"){end();stop();continue;}
           if(command=="save"){std::string path;in>>std::quoted(path);parsed();daw::savePerformanceDocument(editor.document(),path);std::cout<<"Saved "<<path<<'\n';continue;}
-          if(command=="notes"||command=="notes-at"||command=="notes-near") {
+          if(command=="notes"||command=="notes-at"||command=="notes-near"||command=="edits") {
             std::string label;std::size_t offset=0,count=50;double seconds=0;
             if(command=="notes-at"){in>>std::quoted(label);if(!in||label.empty())throw std::runtime_error("measure label required");}
             if(command=="notes-near"){in>>seconds;if(!in||!std::isfinite(seconds)||seconds<0)throw std::runtime_error("seconds must be a non-negative number");count=20;}
             in>>std::ws;if(!in.eof()){if(command=="notes-near"){in>>count;parsed();}else{in>>offset>>count;parsed();}}
-            listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr);continue;
+            listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr,command=="edits");continue;
           }
           if(command=="curves") {end();for(const auto& curve:editor.document().performances[editor.document().active].curves){
             std::cout<<"curve="<<curve.id<<" channel="<<static_cast<int>(curve.channel)<<" cc="<<static_cast<int>(curve.controller)<<'\n';

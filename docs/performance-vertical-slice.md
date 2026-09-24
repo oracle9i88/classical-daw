@@ -54,6 +54,12 @@ before it, so what you heard has context on both sides. `status` reports the
 playing position in seconds for exactly this handoff: play, hear it, `status`,
 `notes-near`, `edit`. `notes-at` remains the way in when you do know the bar.
 
+`edits [OFFSET COUNT]` lists only the notes carrying an override, and every
+listing now shows the override beside the note that has one. A note moved
+forty milliseconds sounds exactly where a note written there would, so nothing
+about when it sounds tells you that you moved it. This is the question you ask
+on reopening a document, and the one you ask after a long session.
+
 `curve-adopt ID CHANNEL CC` turns the controller messages a score already
 carries into an editable lane, which is the difference between hearing the
 pedal a file specifies and being able to change it. A curve owns its lane, so
