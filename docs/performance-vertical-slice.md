@@ -54,6 +54,15 @@ before it, so what you heard has context on both sides. `status` reports the
 playing position in seconds for exactly this handoff: play, hear it, `status`,
 `notes-near`, `edit`. `notes-at` remains the way in when you do know the bar.
 
+`curve-adopt ID CHANNEL CC` turns the controller messages a score already
+carries into an editable lane, which is the difference between hearing the
+pedal a file specifies and being able to change it. A curve owns its lane, so
+adopting replaces those messages at playback and the lane is then read every
+ten milliseconds and interpolated. That is the whole cost, and it is reported:
+on a three-minute piece carrying 137 pedal messages, all 137 survive with
+their own values, none is moved further than one read, and none is ever
+sampled partway through a change. Undo restores the original messages.
+
 `edit` takes a **performed-note ID**, onset offset in milliseconds, duration
 scale and velocity (`-1` inherits score velocity). `pitch` takes a **notation
 segment ID**, letter, alteration and octave. `curve` takes a curve ID, point ID

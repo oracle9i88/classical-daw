@@ -6,6 +6,7 @@
 #include "daw/performance.hpp"
 #include "daw/score_midi.hpp"
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -430,6 +431,72 @@ int main() {
       require(notes[1].start == 1, "the note after a widened one did not move");
       require(notes[1].start + notes[1].duration == 4 * daw::kTicksPerQuarter + 1,
               "widening shifted the bar by something other than one tick");
+    }
+
+    // Adopting a lane makes it editable, and a curve owns its lane, so what
+    // the file specified has to survive the move. The lane is read every ten
+    // milliseconds, which is the whole cost: every message must still be there
+    // with its own value, within one read of where it was, and the reader must
+    // never sample a value partway through a change that the file never had.
+    {
+      daw::Score score; daw::ScorePart part; daw::ScoreMeasure measure;
+      measure.number = 1; measure.start = 0; measure.duration = 3840;
+      measure.notes.push_back(at(0, 3840, 'C', 4));
+      part.measures.push_back(measure);
+      const daw::Tick marks[] = {120, 500, 960, 1437, 1920, 2400, 2880, 3600};
+      bool down = true;
+      for (daw::Tick tick : marks) {
+        daw::MidiChannelEvent pedal;
+        pedal.tick = tick; pedal.type = daw::MidiChannelEventType::ControlChange;
+        pedal.channel = 0; pedal.data1 = 64; pedal.data2 = down ? 127 : 0;
+        part.midi_events.push_back(pedal);
+        down = !down;
+      }
+      score.parts.push_back(part);
+      daw::assignNoteIds(score);
+
+      daw::CurveAdoptionReport adopted;
+      const auto curve = daw::curveFromScoreMessages(score, 0, 64, 1, &adopted);
+      require(adopted.source_messages == 8, "not every message was seen");
+      require(adopted.worst_shift_seconds <= 0.01, "a message moved more than one read");
+      require(curve.points.front().seconds == 0, "a curve must start at zero");
+
+      auto pedalEvents = [&](const daw::Performance& take) {
+        std::vector<std::pair<std::size_t, int>> found;
+        for (const auto& event : daw::compilePerformance(score, take).events) {
+          if ((event.status & 0xf0) == 0xb0 && event.data1 == 64) found.push_back({event.frame, event.data2});
+        }
+        return found;
+      };
+      auto plain = daw::makePerformance(score, "plain");
+      auto editable = plain;
+      editable.curves.push_back(curve);
+      const auto before = pedalEvents(plain);
+      const auto after = pedalEvents(editable);
+      // An adopted lane states its own starting value at zero, which the file
+      // left implicit, so it may send one message more. It may not send fewer.
+      require(after.size() >= before.size() && after.size() <= before.size() + 1,
+              "adopting a lane changed how many messages it sends");
+      for (const auto& event : after) {
+        require(event.second == 0 || event.second == 127, "the lane was sampled partway through a change");
+      }
+      for (const auto& original : before) {
+        double nearest = 1e9;
+        for (const auto& moved : after) {
+          if (moved.second != original.second) continue;
+          nearest = std::min(nearest, std::abs(static_cast<double>(original.first) -
+                                               static_cast<double>(moved.first)) / 48000);
+        }
+        require(nearest <= 0.011, "a message is missing or moved further than the read grid explains");
+      }
+      // A lane with nothing in it is refused rather than adopted as silence.
+      auto refuses = [](auto call) {
+        bool threw = false;
+        try { call(); } catch (const std::exception&) { threw = true; }
+        require(threw, "an impossible adoption was accepted");
+      };
+      refuses([&] { (void)daw::curveFromScoreMessages(score, 0, 11, 2, nullptr); });
+      refuses([&] { (void)daw::curveFromScoreMessages(score, 0, 64, 0, nullptr); });
     }
 
     fs::remove_all(root);

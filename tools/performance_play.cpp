@@ -72,7 +72,7 @@ int main(int argc,char** argv) {
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [POINT_ID SECONDS VALUE ...] | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
@@ -119,6 +119,17 @@ int main(int argc,char** argv) {
             while(true){in>>std::ws;if(in.eof())break;daw::CurvePoint point;in>>point.id>>point.seconds>>point.value;
               if(!in)throw std::runtime_error("curve point requires ID SECONDS VALUE");curve.points.push_back(point);}
             editor.putCurve(std::move(curve));std::cout<<"Explicit curve overrides imported messages on this CC lane; undo restores them.\n";
+          }
+          else if(command=="curve-adopt") {
+            std::uint64_t id;int channel,cc;in>>id>>channel>>cc;parsed();
+            if(channel<0||channel>15||(cc!=11&&cc!=64))throw std::runtime_error("channel must be 0..15 and CC 11 or 64");
+            daw::CurveAdoptionReport adopted;
+            auto curve=daw::curveFromScoreMessages(editor.document().score,static_cast<std::uint8_t>(channel),
+                                                   static_cast<std::uint8_t>(cc),id,&adopted);
+            editor.putCurve(std::move(curve));
+            std::cout<<"Adopted "<<adopted.source_messages<<" messages as "<<adopted.points
+                     <<" points; the lane is now read on a 10 ms grid, worst shift "
+                     <<adopted.worst_shift_seconds*1000<<" ms. Undo restores the original messages.\n";
           }
           else if(command=="curve-remove"){std::uint64_t id;in>>id;parsed();editor.removeCurve(id);}
           else if(command=="gain"){double value;in>>value;parsed();editor.setGain(value);}

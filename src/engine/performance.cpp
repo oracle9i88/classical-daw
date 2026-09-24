@@ -170,6 +170,64 @@ MidiSampleSequence compilePerformance(const Score& score, const Performance& per
       "too many MIDI events in one realtime slice");
   return sequence;
 }
+ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, std::uint8_t controller,
+                                    std::uint64_t curve_id, CurveAdoptionReport* report) {
+  require(curve_id != 0, "curve ID must be nonzero");
+  require(controller == 11 || controller == 64, "only CC11 and CC64 lanes are editable");
+  require(channel < 16, "channel must be 0..15");
+  const auto tempo = scoreTempoMap(score);
+  std::map<double, int> changes;  // seconds -> value, later message at one tick wins
+  std::uint64_t seen = 0;
+  for (const auto& part : score.parts) {
+    for (const auto& event : part.midi_events) {
+      if (event.type != MidiChannelEventType::ControlChange) continue;
+      if (event.channel != channel || event.data1 != controller) continue;
+      ++seen;
+      changes[tempo.tickToSeconds(event.tick)] = event.data2;
+    }
+  }
+  require(!changes.empty(), "this lane carries no messages to adopt");
+  ControlCurve curve;
+  curve.id = curve_id;
+  curve.channel = channel;
+  curve.controller = controller;
+  // Before its first message a pedal is up and expression is full: the same
+  // starting values the offline renderer assumes.
+  int held = controller == 64 ? 0 : 127;
+  std::uint64_t next_point = 1;
+  double worst = 0;
+  curve.points.push_back({next_point++, 0, static_cast<double>(held)});
+  for (const auto& [seconds, value] : changes) {
+    if (value == held) continue;
+    // The lane is read every ten milliseconds and interpolated between points.
+    // Holding the old value until an arbitrary instant before the change lets
+    // a read land inside that ramp and sample a value the file never had, so
+    // the hold is placed on the read grid itself: no read can fall between it
+    // and the change, and the step arrives whole at the next read.
+    constexpr double grid = 0.01;
+    double shoulder = std::floor(seconds / grid) * grid;
+    if (shoulder >= seconds) shoulder -= grid;
+    if (shoulder > curve.points.back().seconds) {
+      curve.points.push_back({next_point++, shoulder, static_cast<double>(held)});
+    }
+    if (seconds > curve.points.back().seconds) {
+      curve.points.push_back({next_point++, seconds, static_cast<double>(value)});
+      // A change is heard at the first read at or after it, never before it,
+      // so one landing on a read is not moved at all.
+      worst = std::max(worst, std::ceil(seconds / grid) * grid - seconds);
+      held = value;
+    }
+  }
+  require(curve.points.size() >= 2, "adopting this lane would leave a curve with one point");
+  require(curve.points.size() <= 4096, "this lane has more changes than a curve can hold");
+  if (report != nullptr) {
+    report->source_messages = seen;
+    report->points = curve.points.size();
+    report->worst_shift_seconds = worst;
+  }
+  return curve;
+}
+
 void validatePerformanceDocument(const PerformanceDocument& d) {
   require(!d.performances.empty() && d.performances.size() <= 16 && d.active < d.performances.size(), "invalid performance selection");
   require(!d.piano_state.empty() && d.piano_state.size() <= 16U*1024*1024, "saved piano state required");

@@ -35,6 +35,24 @@ struct Performance {
 // The relation is stored, not inferred again on reopen. This slice executes
 // ordinary attacks/ties; ornament one-to-many expansion is not implemented yet.
 Performance makePerformance(const Score& score, const std::string& name);
+
+// Turn the controller messages a score already carries into an editable lane.
+// A curve OWNS its lane: adopting one replaces those messages at playback, and
+// the lane is then sampled every ten milliseconds and interpolated, so the
+// timing a MIDI file specified to the sample is quantised. That is a real cost
+// and the reason this is a command rather than something import does quietly.
+// The step shape survives: each change is written as the old value held until
+// one millisecond before it, then the new value. CC64 reads as released and
+// CC11 as full before the first message, matching the offline renderer.
+// Reports how many messages became how many points, and the worst shift any
+// message suffers from the ten-millisecond grid.
+struct CurveAdoptionReport {
+  std::uint64_t source_messages = 0;
+  std::uint64_t points = 0;
+  double worst_shift_seconds = 0;
+};
+ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, std::uint8_t controller,
+                                    std::uint64_t curve_id, CurveAdoptionReport* report = nullptr);
 struct PerformanceDocument {
   Score score;
   std::vector<Performance> performances;
