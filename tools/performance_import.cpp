@@ -54,7 +54,9 @@ int main(int argc, char** argv) {
              <<" grace_notes_timed="<<repairs.grace_notes_timed
              <<" grace_notes_dropped="<<repairs.grace_notes_dropped
              <<" conflicting_tempos_resolved="<<repairs.conflicting_tempos_resolved
-             <<" extra_lyrics_dropped="<<repairs.extra_lyrics_dropped<<'\n';
+             <<" extra_lyrics_dropped="<<repairs.extra_lyrics_dropped
+             <<" rounded_positions="<<repairs.rounded_positions
+             <<" notes_widened_to_one_tick="<<repairs.notes_widened_to_one_tick<<'\n';
     std::cout<<"Scope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.\n";
   }catch(const std::exception& e){std::cerr<<"FAIL stage="<<stage<<" reason="<<e.what()<<'\n';return 1;}
 }

@@ -373,6 +373,79 @@ XmlTiming timingText(const std::string& text, const std::string& field) {
 
 // raw / divisions * 960. Cancel all factors before multiplication, including
 // decimal scales; large ratios may fit even when intermediate products do not.
+// Exact rational addition, reduced at every step so a long measure of odd
+// tuplet denominators cannot overflow before the result is even used.
+XmlTiming addTiming(const XmlTiming& a, const XmlTiming& b, bool subtract) {
+  if (a.negative || b.negative) throw std::runtime_error("MusicXML timing cannot be negative");
+  const auto common = std::gcd(a.denominator, b.denominator);
+  const auto left_scale = b.denominator / common;
+  const auto right_scale = a.denominator / common;
+  if (left_scale != 0 && a.numerator > std::numeric_limits<std::uint64_t>::max() / left_scale) {
+    throw std::runtime_error("MusicXML measure position overflows");
+  }
+  if (right_scale != 0 && b.numerator > std::numeric_limits<std::uint64_t>::max() / right_scale) {
+    throw std::runtime_error("MusicXML measure position overflows");
+  }
+  const auto left = a.numerator * left_scale;
+  const auto right = b.numerator * right_scale;
+  if (a.denominator > std::numeric_limits<std::uint64_t>::max() / left_scale) {
+    throw std::runtime_error("MusicXML measure position overflows");
+  }
+  XmlTiming result;
+  result.denominator = a.denominator * left_scale;
+  if (subtract) {
+    if (right > left) throw std::runtime_error("MusicXML backup crosses measure start");
+    result.numerator = left - right;
+  } else {
+    if (left > std::numeric_limits<std::uint64_t>::max() - right) {
+      throw std::runtime_error("MusicXML measure position overflows");
+    }
+    result.numerator = left + right;
+  }
+  const auto reduce = std::gcd(result.numerator, result.denominator);
+  if (reduce > 1) { result.numerator /= reduce; result.denominator /= reduce; }
+  if (result.numerator == 0) result.denominator = 1;
+  return result;
+}
+
+// An absolute position in source units, rounded once to the nearest engine
+// tick with halves going up. Rounding a position rather than a length is the
+// same rule the MIDI reader already documents: lengths derived from two
+// rounded positions cannot accumulate drift, while rounded lengths would.
+// 960 has no factor of seven or eleven, so septuplets and eleven-tuplets
+// simply have no exact tick and refusing the file over them helps nobody.
+Tick roundedXmlTicks(const XmlTiming& position, const XmlTiming& divisions, bool* inexact) {
+  if (position.numerator == 0) return 0;
+  // ticks = position/divisions * 960, as one fraction before any division.
+  std::uint64_t numerator = position.numerator;
+  std::uint64_t denominator = position.denominator;
+  for (std::uint64_t factor : {divisions.denominator, static_cast<std::uint64_t>(kTicksPerQuarter)}) {
+    const auto common = std::gcd(denominator, factor);
+    denominator /= common;
+    const auto scaled = factor / common;
+    if (scaled != 0 && numerator > std::numeric_limits<std::uint64_t>::max() / scaled) {
+      throw std::runtime_error("MusicXML position conversion overflows tick range");
+    }
+    numerator *= scaled;
+  }
+  const auto common = std::gcd(numerator, divisions.numerator);
+  numerator /= common;
+  if (denominator > std::numeric_limits<std::uint64_t>::max() / (divisions.numerator / common)) {
+    throw std::runtime_error("MusicXML position conversion overflows tick range");
+  }
+  denominator *= divisions.numerator / common;
+  if (denominator == 0) throw std::runtime_error("MusicXML divisions must be positive");
+  const std::uint64_t whole = numerator / denominator;
+  const std::uint64_t remainder = numerator % denominator;
+  if (inexact != nullptr && remainder != 0) *inexact = true;
+  // Halves go up, matching the MIDI reader.
+  const std::uint64_t ticks = whole + (remainder * 2U >= denominator ? 1U : 0U);
+  if (ticks > static_cast<std::uint64_t>(std::numeric_limits<Tick>::max())) {
+    throw std::runtime_error("MusicXML position conversion overflows tick range");
+  }
+  return static_cast<Tick>(ticks);
+}
+
 Tick normalizeXmlTicks(const XmlTiming& raw, const XmlTiming& divisions, const std::string& field) {
   if (raw.numerator == 0) return 0;
   std::uint64_t numerators[]{raw.numerator, divisions.denominator, kTicksPerQuarter};
@@ -945,6 +1018,9 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
             name == "direction" || name == "sound") events.push_back({child.start, name, child});
       }
       Tick cursor = 0;
+      // The same place as `cursor`, kept exactly in source units so a position
+      // with no exact tick is rounded once here rather than refusing the file.
+      XmlTiming source_position{0, 1, false};
       Tick furthest_position = 0;
       Tick furthest_tempo = 0;
       using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
@@ -1106,19 +1182,43 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
             hasSelfClosingTag(xml, "grace", event.block.content_start, event.block.content_end);
         if (is_grace && report == nullptr) throw std::runtime_error("MusicXML is missing <duration>");
         Tick duration = 0;
+        XmlTiming next_position = source_position;
         if (!is_grace) {
           const auto raw_duration = timingText(textIn(xml, "duration", event.block.content_start, event.block.content_end, true), "duration");
-          duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
+          if (report == nullptr) {
+            // The strict path is byte for byte what it was: it never consults
+            // the exact accumulator, so it cannot fail on its arithmetic.
+            duration = normalizeXmlTicks(raw_duration, source_divisions, "duration");
+          } else {
+            next_position = addTiming(source_position, raw_duration, event.tag == "backup");
+            bool inexact = false;
+            const Tick here = roundedXmlTicks(source_position, source_divisions, nullptr);
+            const Tick there = roundedXmlTicks(next_position, source_divisions, &inexact);
+            duration = event.tag == "backup" ? here - there : there - here;
+            if (inexact) ++report->rounded_positions;
+            if (duration == 0 && event.tag == "note") {
+              duration = 1;
+              ++report->notes_widened_to_one_tick;
+            }
+            // A cursor move shorter than a tick moves nothing. Refusing the
+            // file over it would be refusing arithmetic, not bad notation.
+            if (duration == 0) {
+              source_position = next_position;
+              continue;
+            }
+          }
           if (duration <= 0) throw std::runtime_error("MusicXML duration must be positive");
         }
         if (event.tag == "backup") {
           if (duration > cursor) throw std::runtime_error("MusicXML backup crosses measure start");
           cursor -= duration;
+          source_position = next_position;
           continue;
         }
         if (event.tag == "forward") {
           if (cursor > std::numeric_limits<Tick>::max() - duration) throw std::runtime_error("MusicXML tick overflow");
           cursor += duration;
+          source_position = next_position;
           furthest_position = std::max(furthest_position, cursor);
           continue;
         }
@@ -1253,6 +1353,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
         if (!note.chord) {
           if (cursor > std::numeric_limits<Tick>::max() - duration) throw std::runtime_error("MusicXML tick overflow");
           cursor += duration;
+          source_position = next_position;
         }
       }
       const Tick nominal_length = measureLength(active_meter);

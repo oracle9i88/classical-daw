@@ -377,6 +377,61 @@ int main() {
       require(refused, "a burst larger than one realtime block was accepted");
     }
 
+    // 960 has no factor of seven, so a septuplet has no exact tick. Rounding
+    // POSITIONS rather than lengths is what keeps the group summing to the
+    // quarter it occupies; rounding each length would lose a tick per note.
+    {
+      std::string body = "<measure number='1'><attributes><divisions>7</divisions></attributes>";
+      for (int index = 0; index < 7; ++index) {
+        body += "<note><pitch><step>" + std::string(1, "CDEFGAB"[index]) +
+                "</step><octave>4</octave></pitch><duration>1</duration></note>";
+      }
+      body += "</measure>";
+      daw::Score refused; std::string error;
+      require(!read(body, &refused, &error, nullptr), "strict read accepted a septuplet");
+      require(error.find("exactly") != std::string::npos, "strict septuplet error lost its reason");
+
+      daw::Score score; daw::MusicXmlImportReport report;
+      require(read(body, &score, &error, &report), error);
+      require(report.rounded_positions > 0, "septuplet rounding was not reported");
+      const auto& notes = score.parts.at(0).measures.at(0).notes;
+      require(notes.size() == 7, "septuplet lost a note");
+      require(notes.front().start == 0, "septuplet did not start on the beat");
+      daw::Tick total = 0;
+      for (const auto& note : notes) {
+        require(note.duration > 0, "a septuplet note collapsed");
+        require(note.start == total, "septuplet positions drifted apart");
+        total += note.duration;
+      }
+      require(total == daw::kTicksPerQuarter, "septuplet did not sum to its quarter note");
+    }
+
+    // At high source resolutions an engraver can write a note shorter than a
+    // tick. It was written to sound, so it is widened rather than dropped, and
+    // the notes around it keep their own absolute positions.
+    {
+      const std::string body =
+          "<measure number='1'><attributes><divisions>3840</divisions></attributes>"
+          "<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>"
+          "<note><pitch><step>D</step><octave>4</octave></pitch><duration>15359</duration></note>"
+          "</measure>";
+      daw::Score refused; std::string error;
+      require(!read(body, &refused, &error, nullptr), "strict read accepted a sub-tick note");
+      daw::Score score; daw::MusicXmlImportReport report;
+      require(read(body, &score, &error, &report), error);
+      require(report.notes_widened_to_one_tick == 1, "sub-tick note was not widened once");
+      const auto& notes = score.parts.at(0).measures.at(0).notes;
+      require(notes.size() == 2, "sub-tick note was dropped");
+      require(notes[0].duration == 1, "sub-tick note did not get one tick");
+      // A note that had no room to exist has to take room from somewhere, so
+      // the bar ends one tick late per widened note. 15360 source units at
+      // 3840 per quarter is four quarters; one widening makes it four plus a
+      // tick. Half a millisecond is the honest price of not dropping a note.
+      require(notes[1].start == 1, "the note after a widened one did not move");
+      require(notes[1].start + notes[1].duration == 4 * daw::kTicksPerQuarter + 1,
+              "widening shifted the bar by something other than one tick");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

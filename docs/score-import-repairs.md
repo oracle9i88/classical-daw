@@ -7,9 +7,11 @@ author cannot start work if the file will not open, and every notation program
 emits constructs this engine has no model for.
 
 Measured on the local corpora, the end-to-end import entry went from **9 of
-1,105 MusicXML files to 623**, and imports **2,188 of 2,598 local MIDI files**.
-Excluding scores with more than one part, which is a product decision rather
-than a reader limit, 623 of 671 single-part MusicXML files import. Nothing
+1,105 MusicXML files to 643**, and imports **2,188 of 2,598 local MIDI files**.
+Scores with more than one part account for 457 of the remaining refusals, which
+is a product decision rather than a reader limit. Of the 648 files that are
+genuinely one part, **643 import**; the five that do not are metronome and time
+signature notations nobody in this corpus writes twice. Nothing
 below relaxes an engine invariant: the strict path is unchanged and is still
 what every round-trip test exercises.
 
@@ -48,6 +50,24 @@ written playback data rather than an interpretation, so it is read whether or
 not repairs were requested, and no pedalling is invented for a score that has
 none. Sostenuto and una corda marks are not read. 149 of the 1,105 corpus
 files carry pedal marks.
+
+## Positions are rounded; lengths never are
+
+960 ticks per quarter is 2^6 x 3 x 5. A septuplet or an eleven-tuplet has no
+exact tick in it, and the reader refused any file containing one. The MIDI
+reader has always handled the same problem the other way, and its own rule is
+the right one: convert an absolute position once, rounding halves up, and
+derive every length from two rounded positions. Lengths rounded on their own
+lose a tick each and the drift accumulates; positions rounded on their own
+cannot drift, and a septuplet still sums exactly to the quarter it occupies.
+
+The reader now keeps its place as an exact rational in source units alongside
+the tick cursor, and derives ticks from it. A note written shorter than one
+tick is given one rather than dropped, since it was written to sound; what
+follows it in that bar moves one tick later, because a note that had no room
+to exist has to take room from somewhere. A cursor move shorter than a tick
+moves nothing. Both are counted. The strict path is
+untouched and still refuses anything it cannot represent exactly.
 
 ## Audition repairs
 
@@ -116,8 +136,10 @@ with that check.
 - **More than one part** (427 of the corpus). This is the two-live-instrument
   product decision, not a reader limit. It is the single largest remaining
   category and needs a product answer, not a parser fix.
-- **Durations not exactly representable at 960 PPQ** (27), **unsynchronized
-  part measure starts** (16), and four metronome or time-signature cases. On the MIDI side the remaining failures are dominated by files whose
+- **Unsynchronized part measure starts** (19). Every one is a multi-part file,
+  so repairing it would free no score that the single-part limit does not
+  already hold.
+- Four metronome or time-signature notations, each appearing once. On the MIDI side the remaining failures are dominated by files whose
   tracks genuinely use separate channels, which are separate instruments.
 
 Compressed `.mxl` remains unsupported.

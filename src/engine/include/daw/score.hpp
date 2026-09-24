@@ -144,6 +144,13 @@ struct MusicXmlImportReport {
   std::uint64_t conflicting_tempos_resolved = 0;
   // Verses beyond the first, and malformed lyric blocks, are dropped.
   std::uint64_t extra_lyrics_dropped = 0;
+  // A position with no exact tick, rounded once to the nearest one. 960 has no
+  // factor of seven or eleven, so septuplets and eleven-tuplets never land on a
+  // tick. Positions are rounded, never lengths, so nothing accumulates.
+  std::uint64_t rounded_positions = 0;
+  // A written note shorter than one tick. It is given one rather than dropped:
+  // it was written to sound, and a tick is half a millisecond at this tempo.
+  std::uint64_t notes_widened_to_one_tick = 0;
 };
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr,
                       MusicXmlImportReport* report = nullptr);
