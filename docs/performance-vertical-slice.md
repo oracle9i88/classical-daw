@@ -101,6 +101,25 @@ accepted document remains saveable. The CLI uses a bounded input buffer and
 polls output health while awaiting input. EOF exits; newline-terminated commands
 are the supported scripting interface.
 
+## Bouncing the performance
+
+```sh
+build/daw_performance_render /path/to/document /path/to/new-output [--take INDEX]
+```
+
+Offline, no output device. It renders the compiled sequence rather than
+re-deriving events from notation, because a performance is not its score:
+onsets, lengths, velocities and controller lanes exist only once that layer
+has been applied, and rendering the MIDI would bounce the written music while
+quietly discarding the playing.
+
+Verified by bouncing the same document with and without its edits. Over a
+crescendo ramped to velocity 105 the audio is 3.29 times louder at the end of
+the range; outside the range it is 1.00 times, unchanged; over a passage given
+a ritardando it is 1.01 times, because moving notes in time is not supposed to
+change how loud they are. The report states how many overrides and curves the
+audio contains, so a bounce says what is in it.
+
 ## Data and command boundary
 
 - `ScoreNote::id` identifies a notation segment. `Score::next_note_id` stores

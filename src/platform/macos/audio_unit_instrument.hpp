@@ -69,6 +69,14 @@ class AudioUnitInstrument {
                      std::uint32_t rate = 48000, double tail_seconds = 5.0,
                      bool clip_output = true, Tick minimum_end_tick = 0);
 
+  // Render a sequence that is already compiled. A performance is not its
+  // score: its onsets, lengths and controller lanes exist only after the
+  // performance layer has been applied, so re-deriving events from a MIDI file
+  // here would render the written music and quietly discard the playing.
+  // Offline and bounded like render(); the caller sized the sequence.
+  AudioBuffer renderPerformance(const MidiSampleSequence& sequence,
+                                InstrumentRenderReport* report = nullptr, bool clip_output = true);
+
   using ChunkSink = std::function<void(std::size_t, const float*, std::uint32_t)>;
   // Offline fixed 48 kHz stereo, up to two hours including tail. The same AU
   // instance/clock/controller state spans every chunk. Sink runs synchronously,

@@ -207,6 +207,18 @@ AudioBuffer AudioUnitInstrument::render(const MidiFile& midi, InstrumentRenderRe
   }, report, clip_output);
   return output;
 }
+AudioBuffer AudioUnitInstrument::renderPerformance(const MidiSampleSequence& sequence,
+                                                   InstrumentRenderReport* report, bool clip_output) {
+  impl_->requireEditable();
+  AudioBuffer output;
+  output.sample_rate = 48000;
+  output.channels = 2;
+  output.samples.resize(sequence.frames * 2);
+  renderSequence(sequence, [&](std::size_t frame, const float* samples, std::uint32_t count) {
+    std::copy(samples, samples + count * 2, output.samples.begin() + static_cast<std::ptrdiff_t>(frame * 2));
+  }, report, clip_output);
+  return output;
+}
 void AudioUnitInstrument::renderChunks(const MidiFile& midi, const ChunkSink& sink,
                                        InstrumentRenderReport* report, double tail, Tick minimum_end_tick) {
   impl_->requireEditable();
