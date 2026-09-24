@@ -284,6 +284,31 @@ int main() {
               "tracks on different channels were merged anyway");
     }
 
+    // Pedal marks are written playback data, not an interpretation, so they
+    // are read whether or not repairs were asked for. A retake releases and
+    // presses again at one tick; sostenuto and una corda are not read.
+    {
+      auto pedal = [](const char* type) {
+        return "<direction><direction-type><pedal type='" + std::string(type) +
+               "'/></direction-type></direction>";
+      };
+      daw::Score score; std::string error;
+      require(read("<measure number='1'>" + pedal("start") + note("C", 4, 960) +
+                   pedal("change") + note("D", 4, 960) + pedal("stop") +
+                   "<direction><direction-type><pedal type='sostenuto'/></direction-type></direction>" +
+                   note("E", 4, 960) + "</measure>", &score, &error, nullptr), error);
+      const auto& events = score.parts.at(0).midi_events;
+      require(events.size() == 4, "pedal marks did not become four messages");
+      for (const auto& event : events) {
+        require(event.data1 == 64, "a pedal mark used the wrong controller");
+        require(event.type == daw::MidiChannelEventType::ControlChange, "pedal is not a control change");
+      }
+      require(events[0].tick == 0 && events[0].data2 == 127, "pedal press");
+      require(events[1].tick == 960 && events[1].data2 == 0, "retake did not release first");
+      require(events[2].tick == 960 && events[2].data2 == 127, "retake did not press again");
+      require(events[3].tick == 1920 && events[3].data2 == 0, "pedal release");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

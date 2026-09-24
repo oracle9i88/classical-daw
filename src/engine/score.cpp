@@ -17,6 +17,7 @@
 #include <utility>
 
 namespace daw {
+constexpr std::size_t kMaxImportedPedalEvents = 1000000;
 namespace {
 
 struct XmlBlock {
@@ -1056,6 +1057,46 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
           if (is_direction && !have_sound_tempo) {
             for (const auto& metronome : findBlocks(xml, "metronome", event.block.content_start, event.block.content_end)) {
               record(metronomeTempo(xml, metronome), direction_offset());
+            }
+          }
+          // A pedal mark is written playback data, not an interpretation: the
+          // engraver already decided where the damper lifts. Reading it is the
+          // difference between an imported piano score that sounds dry and one
+          // that sounds pedalled. Sostenuto and una corda are not read here.
+          if (is_direction) {
+            for (const auto& child : childElements(xml, event.block.content_start, event.block.content_end)) {
+              if (elementName(child) != "direction-type") continue;
+              for (const auto& mark : childElements(xml, child.content_start, child.content_end)) {
+                if (elementName(mark) != "pedal") continue;
+                const std::string kind = attribute(mark.opening, "type");
+                if (kind != "start" && kind != "stop" && kind != "change") continue;
+                const Tick offset = direction_offset();
+                if (offset < -cursor || (offset > 0 && cursor > std::numeric_limits<Tick>::max() - offset)) {
+                  throw std::runtime_error("MusicXML pedal offset crosses measure start or overflows");
+                }
+                const Tick local_tick = cursor + offset;
+                if (measure_start > std::numeric_limits<Tick>::max() - local_tick) {
+                  throw std::runtime_error("MusicXML pedal tick overflow");
+                }
+                if (parsed_part.midi_events.size() >= kMaxImportedPedalEvents) {
+                  throw std::runtime_error("MusicXML pedal event count exceeds limit");
+                }
+                MidiChannelEvent pedal;
+                pedal.tick = measure_start + local_tick;
+                pedal.type = MidiChannelEventType::ControlChange;
+                pedal.channel = static_cast<std::uint8_t>(parsed.parts.size() % 16U);
+                pedal.data1 = 64;
+                // A change mark retakes the pedal: release, then press again at
+                // the same tick. The writer's own ordering keeps them apart.
+                if (kind != "start") {
+                  pedal.data2 = 0;
+                  parsed_part.midi_events.push_back(pedal);
+                }
+                if (kind != "stop") {
+                  pedal.data2 = 127;
+                  parsed_part.midi_events.push_back(pedal);
+                }
+              }
             }
           }
           continue;  // Directions never advance the note cursor or bar extent.

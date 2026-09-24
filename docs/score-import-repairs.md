@@ -35,6 +35,20 @@ the end of a bar to decorate the downbeat of the next one. Dots and
 `steal-time-*` attributes are not interpreted; the corpus uses neither, and the
 borrowed value is capped against the principal regardless.
 
+## Pedal is read, not invented
+
+A MIDI file carries its own CC64 and always has: import preserves it, and the
+compiled audition sequence contains every one of those messages. MusicXML
+pedalling was simply not read, which is why a score imported from notation
+sounded dry while the same music imported from MIDI did not.
+
+`<pedal type="start">` and `"stop"` now become CC64 127 and 0 at the mark's
+playback position; `"change"` releases and presses again at one tick. This is
+written playback data rather than an interpretation, so it is read whether or
+not repairs were requested, and no pedalling is invented for a score that has
+none. Sostenuto and una corda marks are not read. 149 of the 1,105 corpus
+files carry pedal marks.
+
 ## Audition repairs
 
 MIDI 1.0 cannot address two same-pitch notes on one channel at once, and the
