@@ -180,4 +180,13 @@ struct ScoreRepairReport {
 };
 void repairScoreForAudition(Score& score, ScoreRepairReport* report);
 
+// Keep one part and discard the rest, one-based. An audition plays one
+// instrument, so a quartet or a two-staff export is otherwise simply
+// unopenable; this is not multi-instrument support and does not pretend to be.
+// Alone, a part's unrouted notes address channel zero, while its controller
+// messages were numbered for the part it used to be, so those follow it.
+// Messages carrying an explicit route came from a MIDI file and already agree
+// with the notes beside them, so they are left exactly as they are.
+void selectScorePart(Score& score, std::size_t one_based_part);
+
 }  // namespace daw

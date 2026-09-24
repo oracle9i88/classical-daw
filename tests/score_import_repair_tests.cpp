@@ -552,6 +552,49 @@ int main() {
       require(threw, "a backwards range was accepted");
     }
 
+    // Keeping one part of a score is the difference between a quartet being
+    // unopenable and being work you can do a line at a time. The trap is the
+    // part's own controller messages: alone, its unrouted notes address
+    // channel zero while those messages still carry the number of the part it
+    // used to be, and a pedal sent to a channel nothing listens on fails
+    // silently, which is the worst way for it to fail.
+    {
+      auto makePart = [&](const char* id, std::uint8_t channel, int note_channel) {
+        daw::ScorePart part; part.id = id; part.name = id;
+        daw::ScoreMeasure measure;
+        measure.number = 1; measure.start = 0; measure.duration = 3840;
+        daw::ScoreNote note = at(0, 960, 'C', 4);
+        note.midi_channel = static_cast<std::int16_t>(note_channel);
+        measure.notes.push_back(note);
+        part.measures.push_back(measure);
+        daw::MidiChannelEvent pedal;
+        pedal.tick = 0; pedal.type = daw::MidiChannelEventType::ControlChange;
+        pedal.channel = channel; pedal.data1 = 64; pedal.data2 = 127;
+        part.midi_events.push_back(pedal);
+        return part;
+      };
+      // Notation: no note carries a route, so messages must follow the part.
+      daw::Score notated;
+      notated.parts.push_back(makePart("P1", 0, -1));
+      notated.parts.push_back(makePart("P2", 1, -1));
+      daw::selectScorePart(notated, 2);
+      require(notated.parts.size() == 1 && notated.parts[0].id == "P2", "the wrong part was kept");
+      require(notated.parts[0].midi_events.at(0).channel == 0,
+              "a message stayed on the channel of the part it came from");
+
+      // MIDI: the notes carry their own routes and the messages already agree.
+      daw::Score routed;
+      routed.parts.push_back(makePart("P1", 0, 0));
+      routed.parts.push_back(makePart("P2", 1, 1));
+      daw::selectScorePart(routed, 2);
+      require(routed.parts[0].midi_events.at(0).channel == 1,
+              "an explicit route was rewritten out from under its notes");
+
+      bool threw = false;
+      try { daw::selectScorePart(routed, 2); } catch (const std::exception&) { threw = true; }
+      require(threw, "selecting past the end was accepted");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

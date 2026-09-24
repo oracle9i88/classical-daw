@@ -51,6 +51,21 @@ not repairs were requested, and no pedalling is invented for a score that has
 none. Sostenuto and una corda marks are not read. 149 of the 1,105 corpus
 files carry pedal marks.
 
+## One part at a time
+
+An audition plays one instrument, so a quartet or a two-staff export could not
+be opened at all. `--part N` keeps one part and discards the rest, and without
+it the importer now names the parts a score has instead of only refusing it.
+This is not multi-instrument support and does not pretend to be; it is the
+difference between those scores being unopenable and being work you can do a
+line at a time today, and it costs the eventual multi-instrument path nothing.
+
+Alone, a part's unrouted notes address channel zero while its own controller
+messages still carry the number of the part it used to be. A pedal sent to a
+channel nothing listens on fails silently, which is the worst way to fail, so
+those messages follow the part. Messages carrying an explicit route came from
+a MIDI file and already agree with the notes beside them, and are left alone.
+
 ## Positions are rounded; lengths never are
 
 960 ticks per quarter is 2^6 x 3 x 5. A septuplet or an eleven-tuplet has no

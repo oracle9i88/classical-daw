@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <map>
 #include <tuple>
+#include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace daw {
@@ -62,6 +64,24 @@ void release(const Chain& chain, ScoreRepairReport* report) {
 }
 
 }  // namespace
+
+void selectScorePart(Score& score, std::size_t one_based_part) {
+  if (one_based_part == 0 || one_based_part > score.parts.size()) {
+    throw std::invalid_argument("score has " + std::to_string(score.parts.size()) +
+                                " parts; requested " + std::to_string(one_based_part));
+  }
+  ScorePart chosen = std::move(score.parts[one_based_part - 1U]);
+  bool routed = false;
+  for (const auto& measure : chosen.measures) {
+    for (const auto& note : measure.notes) {
+      if (note.midi_channel != -1) routed = true;
+    }
+  }
+  if (!routed) {
+    for (MidiChannelEvent& event : chosen.midi_events) event.channel = 0;
+  }
+  score.parts.assign(1, std::move(chosen));
+}
 
 void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
   if (report == nullptr) return;

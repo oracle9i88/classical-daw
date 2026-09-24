@@ -6,14 +6,25 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <vector>
 #include <algorithm>
 
 int main(int argc, char** argv) {
   std::string stage="arguments";
   try {
-    const bool check=argc==3 && std::string(argv[1])=="--check";
-    if(!check && argc!=4)throw std::runtime_error("usage: daw_performance_import SCORE.{musicxml,xml,mid,midi,dawproj} PIANO.aupreset NEW_DIRECTORY | --check SCORE");
-    const std::filesystem::path source(argv[check?2:1]);
+    // One part at a time is not multi-instrument support and does not pretend
+    // to be. It is the difference between a quartet or a two-staff export being
+    // unopenable and being work you can do a line at a time today.
+    std::size_t wanted=0;
+    std::vector<std::string> plain;
+    for(int i=1;i<argc;++i) {
+      if(std::string(argv[i])=="--part"&&i+1<argc){wanted=std::stoul(argv[++i]);continue;}
+      plain.push_back(argv[i]);
+    }
+    const bool check=!plain.empty() && plain.front()=="--check";
+    if(check?plain.size()!=2:plain.size()!=3)
+      throw std::runtime_error("usage: daw_performance_import SCORE.{musicxml,xml,mid,midi,dawproj} PIANO.aupreset NEW_DIRECTORY [--part N] | --check SCORE [--part N]");
+    const std::filesystem::path source(plain.at(check?1:0));
     auto extension=source.extension().string();
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
     daw::PerformanceDocument d;std::string error;
@@ -24,6 +35,16 @@ int main(int argc, char** argv) {
     else if(extension==".dawproj")ok=daw::readProjectFile(source.string(),&d.score,&error);
     else throw std::runtime_error("unsupported source extension (compressed .mxl is not supported)");
     if(!ok)throw std::runtime_error(error);
+    stage="select_part";
+    if(wanted!=0) {
+      daw::selectScorePart(d.score,wanted);
+    } else if(d.score.parts.size()>1) {
+      std::string names;
+      for(std::size_t i=0;i<d.score.parts.size();++i)
+        names+="\n  --part "+std::to_string(i+1)+"  "+d.score.parts[i].id+"  "+d.score.parts[i].name;
+      throw std::runtime_error("this score has "+std::to_string(d.score.parts.size())+
+        " parts and the audition plays one. Choose one:"+names);
+    }
     stage="repair";daw::repairScoreForAudition(d.score,&fixes);
     stage="identity_mapping";daw::assignNoteIds(d.score);
     d.performances.push_back(daw::makePerformance(d.score,"Imported timing"));
@@ -35,12 +56,12 @@ int main(int argc, char** argv) {
     if(!daw::validateScore(d.score,&error))throw std::runtime_error(error);
     if(!check) {
       stage="state_read";
-      const auto size=std::filesystem::file_size(argv[2]);
+      const auto size=std::filesystem::file_size(plain.at(1));
       if(!size||size>16U*1024*1024)throw std::runtime_error("invalid piano state size");
-      std::ifstream in(argv[2],std::ios::binary);
+      std::ifstream in(plain.at(1),std::ios::binary);
       d.piano_state.assign(std::istreambuf_iterator<char>(in),{});
       if(in.bad()||d.piano_state.size()!=size)throw std::runtime_error("state read failed or file changed");
-      stage="save";daw::savePerformanceDocument(d,argv[3]);
+      stage="save";daw::savePerformanceDocument(d,plain.at(2));
     }
     std::size_t measures=0,notes=0;
     for(const auto& p:d.score.parts)for(const auto& m:p.measures){++measures;notes+=m.notes.size();}
