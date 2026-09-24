@@ -543,6 +543,33 @@ int main() {
       require(editor.document().performances.at(0).notes.size() == shaped.size(),
               "redo did not restore the whole passage");
 
+      // The same score played twice is what this is for. Two readings must not
+      // leak into each other, and undoing the making of one has to leave the
+      // reading you had selected, not the index the new one occupied.
+      {
+        const auto first = editor.document().performances.size();
+        require(editor.copyTake("louder"), "a second reading was refused");
+        require(editor.document().performances.size() == first + 1, "no reading was added");
+        require(editor.document().active == first, "the new reading was not selected");
+        require(editor.shapeRange(0, 4, daw::WorkEditor::Shape::Velocity, 120, 120) > 0,
+                "the copied reading could not be shaped");
+        const auto& copied = editor.document().performances.at(first).notes;
+        const auto& original = editor.document().performances.at(first - 1).notes;
+        const auto loud = std::find_if(copied.begin(), copied.end(),
+                                       [](const auto& n) { return n.velocity == 120; });
+        require(loud != copied.end(), "the copy did not take the shaping");
+        require(std::none_of(original.begin(), original.end(),
+                             [](const auto& n) { return n.velocity == 120; }),
+                "shaping one reading reached the other");
+        require(editor.undo() && editor.undo(), "the reading could not be undone");
+        require(editor.document().performances.size() == first, "undo left the reading behind");
+        require(editor.document().active == first - 1, "undo did not restore the reading you had");
+        bool named = false;
+        try { (void)editor.copyTake(editor.document().performances.front().name); }
+        catch (const std::exception&) { named = true; }
+        require(named, "two readings were allowed the same name");
+      }
+
       // A ramp landing on the written value leaves nothing behind.
       require(editor.shapeRange(100, 200, daw::WorkEditor::Shape::Velocity, 60, 110) == 0,
               "a range with no notes in it still wrote something");

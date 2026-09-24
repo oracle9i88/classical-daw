@@ -54,6 +54,14 @@ before it, so what you heard has context on both sides. `status` reports the
 playing position in seconds for exactly this handoff: play, hear it, `status`,
 `notes-near`, `edit`. `notes-at` remains the way in when you do know the bar.
 
+`take-copy "NAME"` copies the active reading, names it, and selects it. One
+score read two ways is what this whole layer exists for, and until now a
+document could only hold two readings if it was born with them: import made
+one and nothing could make another. Readings do not leak into each other, and
+undoing the making of one leaves the reading you had selected rather than the
+index the new one occupied. `take INDEX` still only selects, which is not an
+edit; making a reading is one, and is on the same history as everything else.
+
 `shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO` shapes a passage
 rather than a note. The value ramps linearly with each note's position between
 the two times, measured by where the note is heard now rather than where it

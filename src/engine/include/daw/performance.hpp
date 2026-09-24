@@ -90,6 +90,11 @@ class WorkEditor {
   explicit WorkEditor(PerformanceDocument document);
   const PerformanceDocument& document() const noexcept { return document_; }
   void select(std::size_t take);
+  // The same score played twice is the whole point, and until now a document
+  // could only hold two readings if it was born with them. Copies the active
+  // performance, names it, and selects it. Selecting is not an edit; making
+  // one is, so it is on the same history as everything else.
+  bool copyTake(const std::string& name);
   bool set(const NotePerformance& value);
   bool setPitch(std::uint64_t notation_id, ScorePitch pitch);
   bool setCurvePoint(std::uint64_t curve_id, std::uint64_t point_id, double value);
@@ -116,7 +121,7 @@ class WorkEditor {
   using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
   void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:
-  enum class Kind { Note, Pitch, Curve, Gain, CurveLane, NoteRange };
+  enum class Kind { Note, Pitch, Curve, Gain, CurveLane, NoteRange, TakeAdd };
   struct Change {
     Kind kind = Kind::Note; std::size_t take = 0; std::uint64_t id = 0, point = 0;
     std::optional<NotePerformance> before, after;
@@ -127,6 +132,8 @@ class WorkEditor {
     // Held by handle so a Change stays nothrow-copyable and history mutation
     // after a successful apply still cannot fail.
     std::shared_ptr<const std::vector<NotePerformance>> notes_before, notes_after;
+    // A new reading, held by handle for the same reason.
+    std::shared_ptr<const Performance> take_added;
   };
   bool commit(Change change);
   void apply(const Change& change, bool forward);

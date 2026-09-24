@@ -87,7 +87,7 @@ int main(int argc,char** argv) {
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | take INDEX | take-copy \"NAME\" | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
@@ -161,6 +161,12 @@ int main(int argc,char** argv) {
           else if(command=="curve-remove"){std::uint64_t id;in>>id;parsed();editor.removeCurve(id);}
           else if(command=="gain"){double value;in>>value;parsed();editor.setGain(value);}
           else if(command=="take"){std::size_t take;in>>take;parsed();editor.select(take);}
+          else if(command=="take-copy") {
+            std::string name;in>>std::quoted(name);parsed();
+            editor.copyTake(name);
+            std::cout<<"Reading "<<editor.document().active<<" is now "<<std::quoted(name)
+                     <<", a copy of what you had. Shape it without losing the other.\n";
+          }
           else if(command=="undo"){end();editor.undo();}
           else if(command=="redo"){end();editor.redo();}
           else throw std::runtime_error("unknown command");

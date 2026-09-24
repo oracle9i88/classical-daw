@@ -330,6 +330,24 @@ void WorkEditor::apply(const Change& c, bool forward) {
     require(found,"unknown notation element");const auto previous=found->pitch;
     found->pitch=forward?c.pitch_after:c.pitch_before;
     try{validatePerformanceDocument(document_);admit();}catch(...){found->pitch=previous;throw;}
+  } else if(c.kind==Kind::TakeAdd) {
+    require(static_cast<bool>(c.take_added),"take edit lost its contents");
+    auto restored=document_.performances;const auto was=document_.active;
+    if(forward) {
+      document_.performances.insert(document_.performances.begin()+static_cast<std::ptrdiff_t>(c.take),*c.take_added);
+      document_.active=c.take;
+    } else {
+      document_.performances.erase(document_.performances.begin()+static_cast<std::ptrdiff_t>(c.take));
+      document_.active=static_cast<std::size_t>(c.value_before);
+    }
+    // Not the shared admit: that one forces the active reading to this change's
+    // take index, which for every other kind is where the edit landed. Here it
+    // is where the reading was inserted, and undo has to leave the one you had.
+    try {
+      validatePerformanceDocument(document_);
+      if(admission_)admission_(document_,revision_+1);
+    } catch(...){document_.performances.swap(restored);document_.active=was;throw;}
+    return;
   } else if(c.kind==Kind::Gain) {
     const auto value=forward?c.value_after:c.value_before;
     require(std::isfinite(value)&&value>=-60&&value<=0,"invalid gain");
@@ -339,7 +357,7 @@ void WorkEditor::apply(const Change& c, bool forward) {
     auto take=document_.performances.at(c.take);
     if(c.kind==Kind::Note)update(take,c.id,forward?c.after:c.before);
     else if(c.kind==Kind::NoteRange) {
-      require(c.notes_after&&c.notes_before,"range edit lost its contents");
+      require(static_cast<bool>(c.notes_after)&&static_cast<bool>(c.notes_before),"range edit lost its contents");
       // Undo clears everything the edit wrote before restoring what it
       // replaced, so a note that had no override before has none after.
       for(const auto& note:*c.notes_after)update(take,note.note_id,forward?std::optional<NotePerformance>(note):std::nullopt);
@@ -371,6 +389,16 @@ bool WorkEditor::set(const NotePerformance& value) {
   const auto prior=lookup(document_.performances[document_.active],value.note_id);
   if(prior&&prior->onset_seconds==value.onset_seconds&&prior->duration_scale==value.duration_scale&&prior->velocity==value.velocity)return false;
   Change c;c.take=document_.active;c.id=value.note_id;c.before=prior;c.after=value;return commit(c);
+}
+bool WorkEditor::copyTake(const std::string& name) {
+  require(!name.empty()&&name.size()<=256,"a reading needs a name");
+  for(const auto& take:document_.performances)require(take.name!=name,"that name is already taken");
+  auto copy=std::make_shared<Performance>(document_.performances[document_.active]);
+  copy->name=name;
+  Change c;c.kind=Kind::TakeAdd;c.take=document_.performances.size();
+  c.value_before=static_cast<double>(document_.active);
+  c.take_added=copy;
+  return commit(c);
 }
 std::size_t WorkEditor::shapeRange(double from_seconds,double to_seconds,Shape field,
                                   double from_value,double to_value) {
