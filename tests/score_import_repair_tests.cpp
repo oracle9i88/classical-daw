@@ -622,6 +622,43 @@ int main() {
       require(threw, "selecting past the end was accepted");
     }
 
+    // Two parts that disagree about where a bar starts. Refusing the file
+    // denies every part at once, including the one the caller wanted, and a
+    // part's own notes keep their places regardless of what another part does.
+    {
+      auto voice = [&](const char* id, int first_bar_units) {
+        return "<score-part id='" + std::string(id) + "'><part-name>" + id + "</part-name></score-part>";
+      };
+      (void)voice;
+      const std::string two =
+          "<score-partwise><part-list>"
+          "<score-part id='P1'><part-name>Upper</part-name></score-part>"
+          "<score-part id='P2'><part-name>Lower</part-name></score-part>"
+          "</part-list>"
+          "<part id='P1'><measure number='1'>" + note("C", 4, 3840) + "</measure>"
+          "<measure number='2'>" + note("D", 4, 3840) + "</measure></part>"
+          // The lower part marks its first bar implicit, so its actual extent
+          // counts rather than the nominal one, and bar two starts early.
+          "<part id='P2'><measure number='1' implicit='yes'>" + note("C", 3, 1920) + "</measure>"
+          "<measure number='2'>" + note("D", 3, 3840) + "</measure></part>"
+          "</score-partwise>";
+      std::ofstream out(root / "two.xml"); out << two; out.close();
+      daw::Score refused; std::string error;
+      require(!daw::readMusicXmlFile((root / "two.xml").string(), &refused, &error, nullptr),
+              "strict read accepted parts that disagree");
+      require(error.find("measure") != std::string::npos, "the refusal did not say where");
+
+      daw::Score score; daw::MusicXmlImportReport report;
+      require(daw::readMusicXmlFile((root / "two.xml").string(), &score, &error, &report), error);
+      require(report.unsynchronized_parts >= 1, "the disagreement was not reported");
+      require(score.parts.size() == 2, "a part went missing");
+      // The part a caller keeps still has its own notes where it put them.
+      daw::selectScorePart(score, 2);
+      require(score.parts.at(0).id == "P2", "the wrong part survived");
+      require(score.parts.at(0).measures.at(1).start == 1920,
+              "the kept part lost its own bar line to another part's");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

@@ -151,6 +151,15 @@ struct MusicXmlImportReport {
   // A written note shorter than one tick. It is given one rather than dropped:
   // it was written to sound, and a tick is half a millisecond at this tempo.
   std::uint64_t notes_widened_to_one_tick = 0;
+  // Parts whose bar lines do not agree. A Score has one global meter map, so
+  // it is taken from the longest part; each part still keeps its own note
+  // positions. Meaningful when a caller goes on to keep a single part, and a
+  // warning when it does not: the bar lines you see may be another part's.
+  std::uint64_t unsynchronized_parts = 0;
+  // Parts whose time signatures disagree. Same story as the bar lines: the
+  // global map comes from the longest part, and a caller keeping one part is
+  // not harmed by what another part is in.
+  std::uint64_t conflicting_part_meters = 0;
 };
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr,
                       MusicXmlImportReport* report = nullptr);

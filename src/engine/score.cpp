@@ -595,14 +595,26 @@ NotationMeters notationMeters(const Score& score, MusicXmlExportReport& report) 
 
 // Score has one global meter map. Independent or conflicting part timelines
 // cannot be folded into it without guessing. A shorter part may be a prefix.
-std::size_t synchronousReference(const std::vector<ScorePart>& parts, const std::vector<Tick>& ends) {
+std::size_t synchronousReference(const std::vector<ScorePart>& parts, const std::vector<Tick>& ends,
+                                 MusicXmlImportReport* report = nullptr) {
   const auto longest = static_cast<std::size_t>(std::max_element(ends.begin(), ends.end()) - ends.begin());
   const auto& reference = parts[longest].measures;
   for (std::size_t p = 0; p < parts.size(); ++p) {
     const auto& measures = parts[p].measures;
     for (std::size_t m = 0; m < measures.size(); ++m) {
       if (m >= reference.size() || measures[m].start != reference[m].start) {
-        throw std::invalid_argument("MusicXML parts require synchronized measure starts in this score model");
+        // A caller that keeps one part is not harmed by another part's bar
+        // lines disagreeing, and refusing the file denies it every part at
+        // once. Count the part and move on; its own notes keep their places.
+        if (report != nullptr) { ++report->unsynchronized_parts; break; }
+        // Say where, and by how much: a bar number and a tick distance is the
+        // difference between a file you can look at and one you can only retry.
+        throw std::invalid_argument(
+            "MusicXML parts require synchronized measure starts in this score model: part " +
+            parts[p].id + " measure " + std::to_string(m + 1) + " starts at tick " +
+            std::to_string(m < measures.size() ? measures[m].start : -1) + " but part " +
+            parts[longest].id + " puts it at " +
+            std::to_string(m < reference.size() ? reference[m].start : -1));
       }
     }
     if (measures.size() < reference.size() && reference[measures.size()].start < ends[p]) {
@@ -684,12 +696,13 @@ std::vector<std::vector<Tick>> exportMeasureSpans(const Score& score, const Nota
 }
 
 void requireSharedMeters(const std::vector<NotationMeters>& maps, const std::vector<Tick>& ends,
-                         std::size_t reference) {
+                         std::size_t reference, MusicXmlImportReport* report = nullptr) {
   const auto& expected = maps[reference];
   for (std::size_t p = 0; p < maps.size(); ++p) {
     std::size_t a = 0, b = 0;
     for (;;) {
       if (!sameNotationMeter(maps[p][a].signature, expected[b].signature)) {
+        if (report != nullptr) { ++report->conflicting_part_meters; break; }
         throw std::runtime_error("conflicting MusicXML part time signatures; polymeter is unsupported");
       }
       const Tick next_a = a + 1 < maps[p].size() ? maps[p][a + 1].tick : std::numeric_limits<Tick>::max();
@@ -1390,8 +1403,8 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
       parsed.parts.push_back(parse_part(part_block, name->second));
     }
     if (seen_parts.size() != part_names.size()) throw std::runtime_error("MusicXML part-list contains an unreferenced score-part");
-    const auto reference = synchronousReference(parsed.parts, part_ends);
-    requireSharedMeters(part_meters, part_ends, reference);
+    const auto reference = synchronousReference(parsed.parts, part_ends, report);
+    requireSharedMeters(part_meters, part_ends, reference, report);
     parsed.time_signature = part_meters[reference].front().signature;
     parsed.meter_changes.assign(part_meters[reference].begin() + 1, part_meters[reference].end());
     validateMeterMap(parsed.time_signature, parsed.meter_changes);

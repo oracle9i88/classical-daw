@@ -77,7 +77,13 @@ int main(int argc, char** argv) {
              <<" conflicting_tempos_resolved="<<repairs.conflicting_tempos_resolved
              <<" extra_lyrics_dropped="<<repairs.extra_lyrics_dropped
              <<" rounded_positions="<<repairs.rounded_positions
-             <<" notes_widened_to_one_tick="<<repairs.notes_widened_to_one_tick<<'\n';
+             <<" notes_widened_to_one_tick="<<repairs.notes_widened_to_one_tick
+             <<" unsynchronized_parts="<<repairs.unsynchronized_parts
+             <<" conflicting_part_meters="<<repairs.conflicting_part_meters<<'\n';
+    if((repairs.unsynchronized_parts||repairs.conflicting_part_meters)&&wanted==0) {
+      std::cout<<"Note: parts disagree about bar lines or meter, and a score keeps one global map, "
+                 "so the bar numbers above are the longest part's. Use --part N to work from one part.\n";
+    }
     std::cout<<"Scope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.\n";
   }catch(const std::exception& e){std::cerr<<"FAIL stage="<<stage<<" reason="<<e.what()<<'\n';return 1;}
 }

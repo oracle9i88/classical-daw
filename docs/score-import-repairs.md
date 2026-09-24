@@ -60,6 +60,15 @@ This is not multi-instrument support and does not pretend to be; it is the
 difference between those scores being unopenable and being work you can do a
 line at a time today, and it costs the eventual multi-instrument path nothing.
 
+Parts that disagree about where a bar starts, or about what meter they are
+in, used to refuse the whole file. That denies every part at once, including
+the one the caller wanted, and a part's own notes keep their places regardless
+of what another part does. Both are now counted instead. A Score keeps one
+global meter map and it is taken from the longest part, so the bar numbers a
+multi-part read reports may be another part's; the importer says so when it
+sees the disagreement and no part was chosen. The strict path still refuses,
+and now says which bar and by how many ticks.
+
 Alone, a part's unrouted notes address channel zero while its own controller
 messages still carry the number of the part it used to be. A pedal sent to a
 channel nothing listens on fails silently, which is the worst way to fail, so
