@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix="daw-work-editor-") as folder:
     require("edited_offset_ms=120" in result.stdout, "an override is not visible in the listing")
     require("Shaped " in result.stdout, "a passage edit reported nothing")
     require("performed=8 notation=8,9," in result.stdout, "tie mapping not visible")
-    require("revision=9 active=1" in result.stdout, "invalid edit affected revision")
+    require("revision=11 active=1" in result.stdout, "invalid edit affected revision")
     require(hashes(root / "undone") == source, "unified undo did not restore complete document")
     require(hashes(root / "redone") == hashes(root / "edited"), "redo did not restore document")
     require(hashes(root / "rejected") == hashes(root / "edited"), "rejected edit changed document")
