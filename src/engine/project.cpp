@@ -121,7 +121,7 @@ bool validStep(char step) {
   return step >= 'A' && step <= 'G';
 }
 
-bool validateScore(const Score& score, std::string* error) {
+bool validateScoreImpl(const Score& score, std::string* error) {
   validateNoteIds(score);
   if (score.divisions <= 0 || score.divisions > 1'000'000) return fail(error, "project divisions out of range");
   (void)scoreTempoMap(score);
@@ -245,10 +245,14 @@ bool parseCount(const std::string& token, std::uint64_t limit, std::size_t* resu
 
 }  // namespace
 
+bool validateScore(const Score& score, std::string* error) {
+  return validateScoreImpl(score, error);
+}
+
 bool writeProjectFile(const Score& score, const std::string& path, std::string* error) {
   try {
     if (path.empty()) return fail(error, "project path is empty");
-    if (!validateScore(score, error)) return false;
+    if (!validateScoreImpl(score, error)) return false;
 
     std::ostringstream output;
     output.precision(17);
@@ -579,7 +583,7 @@ bool readProjectFile(const std::string& path, Score* score, std::string* error) 
     }
     if (!expectLine(&reader, "end_project", 0, &arguments, error)) return false;
     if (reader.hasTrailingData()) return false;
-    if (!validateScore(parsed, error)) return false;
+    if (!validateScoreImpl(parsed, error)) return false;
     *score = std::move(parsed);
     return true;
   } catch (const std::exception& exception) {

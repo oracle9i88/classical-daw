@@ -3,6 +3,7 @@
 // exactly the old behavior, because every other round-trip test relies on it.
 #include "daw/score.hpp"
 #include "daw/midi.hpp"
+#include "daw/performance.hpp"
 #include "daw/score_midi.hpp"
 #include <chrono>
 #include <filesystem>
@@ -53,6 +54,23 @@ int main() {
       require(notes[1].pitch.step == 'C' && notes[1].start == 480 && notes[1].duration == 480, "principal shifted");
       // Borrowing must not move anything that follows the principal.
       require(notes[1].start + notes[1].duration == 960, "grace changed the written span");
+    }
+
+    // A grace chord: its tones sound together, and the second tone is not the
+    // voice's first note just because the first one is still buffered.
+    {
+      daw::Score score; std::string error; daw::MusicXmlImportReport report;
+      const auto tone = "<note><grace/><chord/><pitch><step>B</step><octave>3</octave></pitch>"
+                        "<type>eighth</type></note>";
+      require(read("<measure number='1'>" + grace("D", 4, "eighth") + tone + note("C", 4, 960) +
+                   "</measure>", &score, &error, &report), error);
+      require(report.grace_notes_timed == 2 && report.grace_notes_dropped == 0, "grace chord not timed");
+      const auto& notes = score.parts.at(0).measures.at(0).notes;
+      require(notes.size() == 3, "grace chord did not keep both tones");
+      require(notes[0].start == notes[1].start && notes[0].duration == notes[1].duration,
+              "grace chord tones did not sound together");
+      // The chord tone borrows no time of its own, so the principal keeps half.
+      require(notes[2].start == 480 && notes[2].duration == 480, "grace chord stole extra time");
     }
 
     // Graces are commonly written at the end of a bar, decorating the downbeat
@@ -307,6 +325,56 @@ int main() {
       require(events[1].tick == 960 && events[1].data2 == 0, "retake did not release first");
       require(events[2].tick == 960 && events[2].data2 == 127, "retake did not press again");
       require(events[3].tick == 1920 && events[3].data2 == 0, "pedal release");
+    }
+
+    // The attack total and the per-block event density are two different
+    // limits that were once one number. A movement of five thousand notes must
+    // compile, and a burst that would overrun one realtime block must not.
+    {
+      static_assert(daw::kMaxAuditionAttacks > daw::kMaxEventsPerRealtimeSlice,
+                    "the attack total collapsed back into the block limit");
+      daw::Score score; daw::ScorePart part;
+      const std::size_t count = 5000;
+      for (std::size_t index = 0; index < count; ++index) {
+        daw::ScoreMeasure measure;
+        measure.number = static_cast<int>(index) + 1;
+        measure.start = static_cast<daw::Tick>(index) * 240;
+        measure.duration = 240;
+        daw::ScoreNote note = at(measure.start, 240, "CDEFGAB"[index % 7], 4);
+        measure.notes.push_back(note);
+        part.measures.push_back(measure);
+      }
+      score.parts.push_back(part);
+      daw::ScoreRepairReport report;
+      daw::repairScoreForAudition(score, &report);
+      daw::assignNoteIds(score);
+      daw::PerformanceDocument document;
+      document.score = score;
+      document.piano_state.assign(64, 0);
+      document.performances.push_back(daw::makePerformance(document.score, "long"));
+      const auto sequence = daw::compilePerformance(document.score, document.performances.front());
+      require(sequence.events.size() > count, "a five thousand note movement did not compile");
+
+      // Now pack more than one block's worth of attacks into one instant.
+      daw::Score dense; daw::ScorePart crowd; daw::ScoreMeasure bar;
+      bar.number = 1; bar.start = 0; bar.duration = 3840;
+      for (std::size_t index = 0; index <= daw::kMaxEventsPerRealtimeSlice; ++index) {
+        daw::ScoreNote note = at(0, 960, 'C', 4);
+        note.voice = static_cast<std::uint16_t>(index % 64U + 1U);
+        note.staff = static_cast<std::uint16_t>(index / 64U + 1U);
+        note.midi_channel = static_cast<std::int16_t>(index % 16U);
+        bar.notes.push_back(note);
+      }
+      crowd.measures.push_back(bar);
+      dense.parts.push_back(crowd);
+      daw::assignNoteIds(dense);
+      daw::Performance packed;
+      bool refused = false;
+      try {
+        packed = daw::makePerformance(dense, "dense");
+        (void)daw::compilePerformance(dense, packed);
+      } catch (const std::exception&) { refused = true; }
+      require(refused, "a burst larger than one realtime block was accepted");
     }
 
     fs::remove_all(root);

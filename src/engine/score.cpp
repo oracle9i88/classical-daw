@@ -1146,13 +1146,25 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
         if (!is_grace && !note.chord && !note.rest && !pending_graces[key].empty()) {
           auto& waiting = pending_graces[key];
           Tick wanted = 0;
-          for (const auto& pending : waiting) wanted += pending.nominal;
+          for (std::size_t index = 0; index < waiting.size(); ++index) {
+            if (index > 0 && waiting[index].note.chord) continue;  // sounds with its neighbour
+            wanted += waiting[index].nominal;
+          }
           const Tick granted = std::min(wanted, duration / 2);
           if (granted <= 0) {
             report->grace_notes_dropped += waiting.size();
           } else {
-            Tick spent = 0;
+            Tick spent = 0, chord_start = 0, chord_duration = 0;
             for (std::size_t index = 0; index < waiting.size(); ++index) {
+              if (index > 0 && waiting[index].note.chord && chord_duration > 0) {
+                // A grace chord tone sounds with the grace it belongs to.
+                ScoreNote tone = waiting[index].note;
+                tone.start = measure_start + cursor + chord_start;
+                tone.duration = chord_duration;
+                measure.notes.push_back(tone);
+                ++report->grace_notes_timed;
+                continue;
+              }
               const bool last = index + 1 == waiting.size();
               Tick share = last ? granted - spent
                                 : static_cast<Tick>(waiting[index].nominal * granted / wanted);
@@ -1163,6 +1175,8 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
               resolved.start = measure_start + cursor + spent;
               resolved.duration = share;
               measure.notes.push_back(resolved);
+              chord_start = spent;
+              chord_duration = share;
               spent += share;
               ++report->grace_notes_timed;
             }
@@ -1225,7 +1239,12 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
           }
         }
         if (is_grace) {
-          if (!note.rest) pending_graces[key].push_back({note, notatedTypeTicks(xml, event.block)});
+          if (!note.rest) {
+            pending_graces[key].push_back({note, notatedTypeTicks(xml, event.block)});
+            // A buffered grace still occupies this voice: its own chord tones
+            // arrive next and must not be read as the voice's first note.
+            have_notes[key] = true;
+          }
           continue;
         }
         measure.notes.push_back(note);

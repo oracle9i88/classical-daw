@@ -7,9 +7,9 @@ author cannot start work if the file will not open, and every notation program
 emits constructs this engine has no model for.
 
 Measured on the local corpora, the end-to-end import entry went from **9 of
-1,105 MusicXML files to 589**, and imports **2,021 of 2,598 local MIDI files**.
+1,105 MusicXML files to 623**, and imports **2,188 of 2,598 local MIDI files**.
 Excluding scores with more than one part, which is a product decision rather
-than a reader limit, 589 of 678 single-part MusicXML files import. Nothing
+than a reader limit, 623 of 671 single-part MusicXML files import. Nothing
 below relaxes an engine invariant: the strict path is unchanged and is still
 what every round-trip test exercises.
 
@@ -77,6 +77,7 @@ one, and reasoning from that stale grouping trims the wrong note.
 | Same channel and pitch sounding twice before the first release | One channel is one score voice, which cannot hold that. The sounding note is shortened; a second attack at the same instant is dropped. |
 | A note released at or before its own attack | Dropped. It cannot sound, so there is no music to lose; exporters emit these routinely. |
 | A release with nothing to close | Dropped. Nothing identifies what it referred to. |
+| A grace chord | Its tones sound together and borrow time once, not once each. A buffered grace also occupies its voice, so its own chord tones are not read as that voice's first note. |
 | One instrument written as several tracks | Tracks whose channel sets intersect are merged into one part. Two tracks writing to one channel address one instrument; a second instrument there could not be controlled separately, so overlap is the grouping rule and it is transitive. Source ordinals are a per-track namespace and are cleared, which asks the writer for authored ordering rather than comparing two streams' ordinals. |
 
 `readMidiFile` takes the repair report as a separate argument from its existing
@@ -87,15 +88,36 @@ Counts are reported separately on purpose: on a Grieg lyric piece the first row
 accounts for 156 of 164 changes, and reporting one total would badly overstate
 what happened to the music.
 
+## Two limits that were the same number and should not have been
+
+`kMaxAuditionAttacks` bounds how many attacks one audition holds. It sizes a
+per-track voice ledger and nothing the callback does per block. `kMaxEvents
+PerRealtimeSlice` bounds how many events may fall inside one 256-frame block,
+which is the realtime scratch capacity. Both were 4,096, which read as one
+rule and behaved as two.
+
+The block rule is correct at 4,096 and is unchanged. The attack limit is now
+16,384, which costs sixty kilobytes of ledger per track and opens the
+repertoire this is for: Beethoven's Op. 106 finale is 6,638 sounding notes,
+Op. 57's first movement 6,059, Liszt's Vallee d'Obermann 7,373. Every one of
+those was refused at four thousand.
+
+## Checking what a save would check
+
+`--check` used to stop after compiling the performance, so it could report a
+score that failed only when someone tried to keep it: a silenced chord tone
+kept its chord marker, which the project format rejects but the compile never
+looked at. `validateScore` is now exposed and the check calls it, so a passing
+check is a promise the file can be saved. The corpus numbers here are measured
+with that check.
+
 ## Still refused, and why
 
 - **More than one part** (427 of the corpus). This is the two-live-instrument
   product decision, not a reader limit. It is the single largest remaining
   category and needs a product answer, not a parser fix.
-- **Chord as the first note in a voice** (35), **durations not exactly
-  representable at 960 PPQ** (25), **unsynchronized part measure starts** (14),
-  **more than 4,096 attacks** (11), and a handful of metronome and polymeter
-  cases. On the MIDI side the remaining failures are dominated by files whose
+- **Durations not exactly representable at 960 PPQ** (27), **unsynchronized
+  part measure starts** (16), and four metronome or time-signature cases. On the MIDI side the remaining failures are dominated by files whose
   tracks genuinely use separate channels, which are separate instruments.
 
 Compressed `.mxl` remains unsupported.

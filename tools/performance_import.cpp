@@ -29,6 +29,10 @@ int main(int argc, char** argv) {
     d.performances.push_back(daw::makePerformance(d.score,"Imported timing"));
     stage="performance_compile";
     const auto sequence=daw::compilePerformance(d.score,d.performances.front());
+    // Ask exactly what a save asks, so --check cannot report a score that
+    // only fails when someone tries to keep it.
+    stage="validate";
+    if(!daw::validateScore(d.score,&error))throw std::runtime_error(error);
     if(!check) {
       stage="state_read";
       const auto size=std::filesystem::file_size(argv[2]);

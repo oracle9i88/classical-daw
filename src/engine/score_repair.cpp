@@ -44,8 +44,11 @@ struct Chain {
 void silence(const Chain& chain) {
   for (ScoreNote* segment : chain.segments) {
     segment->rest = true;
+    // A rest carries neither a tie nor a chord marker: the project format
+    // rejects both, and a silenced chord tone is simply a rest at that spot.
     segment->tie_start = false;
     segment->tie_stop = false;
+    segment->chord = false;
     segment->lyric.clear();
   }
 }

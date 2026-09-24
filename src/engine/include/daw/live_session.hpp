@@ -1,5 +1,6 @@
 #pragma once
 #include "daw/midi_sequence.hpp"
+#include "daw/performance.hpp"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -22,7 +23,7 @@ struct LiveTrackPlan {
 // and destroyed on the control thread. Stop BOTH threads before destruction.
 class LiveSessionStream {
  public:
-  static constexpr std::size_t max_tracks = 64, max_notes = 4096, max_messages = 16384;
+  static constexpr std::size_t max_tracks = 64, max_notes = kMaxAuditionAttacks, max_messages = 16384;
   struct TrackBlock {
     const TimedMidiEvent* events = nullptr;
     std::size_t count = 0, frame = 0;

@@ -62,10 +62,11 @@ Performance makePerformance(const Score& score, const std::string& name) {
 MidiSampleSequence compilePerformance(const Score& score, const Performance& performance) {
   validateNoteIds(score);
   require(score.next_note_id && score.parts.size() == 1, "performance audition requires one identified piano part");
-  require(performance.notes.size() <= 4096, "too many performance overrides");
+  require(performance.notes.size() <= kMaxAuditionAttacks, "too many performance overrides");
   MidiFile midi; std::string error;
   if (!scoreToMidiFile(score, &midi, &error)) throw std::invalid_argument(error);
-  require(midi.tracks[0].notes.size() <= 4096, "audition supports at most 4096 attacks");
+  require(midi.tracks[0].notes.size() <= kMaxAuditionAttacks,
+      "audition attack count exceeds the supported maximum");
   Tick end = 0;
   for (const auto& m : score.parts[0].measures) end = std::max(end, m.start+m.duration);
   auto sequence = makeMidiSampleSequence(midi, 48000, 5, max_frames, end);
@@ -164,8 +165,9 @@ MidiSampleSequence compilePerformance(const Score& score, const Performance& per
   curve_events.insert(curve_events.end(),sequence.events.begin(),sequence.events.end());
   sequence.events.swap(curve_events);
   std::stable_sort(sequence.events.begin(), sequence.events.end(), [](const auto& a, const auto& b) { return a.frame<b.frame; });
-  for(std::size_t i=4096;i<sequence.events.size();++i)
-    require(sequence.events[i].frame-sequence.events[i-4096].frame>=256,"too many MIDI events in one realtime slice");
+  for(std::size_t i=kMaxEventsPerRealtimeSlice;i<sequence.events.size();++i)
+    require(sequence.events[i].frame-sequence.events[i-kMaxEventsPerRealtimeSlice].frame>=256,
+      "too many MIDI events in one realtime slice");
   return sequence;
 }
 void validatePerformanceDocument(const PerformanceDocument& d) {
@@ -224,7 +226,7 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
   for (std::size_t i = 0; i < count; ++i) {
     Performance take; std::size_t notes = 0;
     std::size_t mappings=0,curves=0;
-    require(bool(in>>std::quoted(take.name)>>take.next_note_id>>mappings) && mappings<=4096,"invalid performance entry");
+    require(bool(in>>std::quoted(take.name)>>take.next_note_id>>mappings) && mappings<=kMaxAuditionAttacks,"invalid performance entry");
     for(std::size_t m=0;m<mappings;++m){PerformedNoteMapping map;std::size_t segments=0;
       require(bool(in>>map.id>>segments) && segments>0 && segments<=4096,"invalid note mapping");
       for(std::size_t j=0;j<segments;++j){std::uint64_t id=0;require(bool(in>>id),"truncated mapping");map.notation_ids.push_back(id);}take.mapping.push_back(std::move(map));
@@ -235,7 +237,7 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
       curve.channel=static_cast<std::uint8_t>(channel);curve.controller=static_cast<std::uint8_t>(cc);
       for(std::size_t j=0;j<points;++j){CurvePoint point;require(bool(in>>point.id>>point.seconds>>point.value),"truncated curve");curve.points.push_back(point);}take.curves.push_back(std::move(curve));
     }
-    require(bool(in>>notes) && notes<=4096,"invalid override count");
+    require(bool(in>>notes) && notes<=kMaxAuditionAttacks,"invalid override count");
     for (std::size_t j = 0; j < notes; ++j) {
       NotePerformance n;
       require(bool(in >> n.note_id >> n.onset_seconds >> n.duration_scale >> n.velocity),"invalid performance override");

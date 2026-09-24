@@ -42,7 +42,17 @@ struct PerformanceDocument {
   std::vector<std::uint8_t> piano_state;
   double gain_db = -12;
 };
-// First vertical slice: one piano part, up to 4096 attacks, fixed 48 kHz.
+// How many attacks one audition can hold. This bounds a per-track voice ledger
+// in the audio thread and nothing the callback does per block: block work is
+// bounded separately, by the event-density rule below. A Beethoven sonata
+// movement runs to eight thousand notes, so the old four thousand shut out the
+// repertoire this is for while saving sixty kilobytes.
+inline constexpr std::size_t kMaxAuditionAttacks = 16384;
+// At most this many events may fall inside one 256-frame block. That is the
+// realtime scratch capacity and is deliberately NOT the total-note limit.
+inline constexpr std::size_t kMaxEventsPerRealtimeSlice = 4096;
+
+// First vertical slice: one piano part, fixed 48 kHz.
 // Performance edits leave Score unchanged. Offsets never quantize written notes. All native
 // channel messages are retained; AU fixed-preset filtering is a host concern.
 MidiSampleSequence compilePerformance(const Score& score, const Performance& performance);
