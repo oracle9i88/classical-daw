@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <set>
+#include <iterator>
+#include <functional>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -277,10 +280,72 @@ bool midiToScore(const MidiFile& midi, Score* score, std::string* error,
     converted.bpm = tempos.front().bpm;
     converted.tempo_changes.assign(tempos.begin() + 1, tempos.end());
     (void)scoreTempoMap(converted);
-    converted.parts.reserve(midi.tracks.size());
+    // Exporters routinely split one instrument across tracks: a piano becomes
+    // one track per staff. Those tracks share a MIDI channel, which is exactly
+    // what makes them one instrument, because two instruments on one channel
+    // could not be controlled independently. Merging them keeps the score to
+    // one part, which is what the player can actually sound.
+    std::vector<MidiTrack> merged_tracks;
+    if (report != nullptr) {
+      std::vector<std::set<int>> used(midi.tracks.size());
+      for (std::size_t t = 0; t < midi.tracks.size(); ++t) {
+        for (const MidiNote& note : midi.tracks[t].notes) used[t].insert(note.channel);
+        for (const MidiChannelEvent& event : midi.tracks[t].channel_events) used[t].insert(event.channel);
+      }
+      // Two tracks writing to one channel address one instrument: a second
+      // instrument there could not be controlled separately. Overlap is
+      // therefore the grouping rule, and it is transitive.
+      std::vector<std::size_t> group(midi.tracks.size());
+      for (std::size_t t = 0; t < group.size(); ++t) group[t] = t;
+      const std::function<std::size_t(std::size_t)> root = [&](std::size_t t) {
+        while (group[t] != t) { group[t] = group[group[t]]; t = group[t]; }
+        return t;
+      };
+      for (std::size_t a = 0; a < used.size(); ++a) {
+        for (std::size_t b = a + 1U; b < used.size(); ++b) {
+          if (used[a].empty() || used[b].empty()) continue;
+          std::vector<int> shared;
+          std::set_intersection(used[a].begin(), used[a].end(), used[b].begin(), used[b].end(),
+                                std::back_inserter(shared));
+          if (!shared.empty()) group[root(a)] = root(b);
+        }
+      }
+      std::map<std::size_t, std::size_t> destination;
+      for (std::size_t t = 0; t < midi.tracks.size(); ++t) {
+        const auto found = destination.find(root(t));
+        if (found == destination.end()) {
+          destination.emplace(root(t), merged_tracks.size());
+          merged_tracks.push_back(midi.tracks[t]);
+          continue;
+        }
+        MidiTrack& target = merged_tracks[found->second];
+        target.notes.insert(target.notes.end(), midi.tracks[t].notes.begin(), midi.tracks[t].notes.end());
+        target.channel_events.insert(target.channel_events.end(),
+                                     midi.tracks[t].channel_events.begin(),
+                                     midi.tracks[t].channel_events.end());
+        ++report->merged_instrument_tracks;
+      }
+      if (report->merged_instrument_tracks != 0) {
+        for (MidiTrack& track : merged_tracks) {
+          // Source ordinals are a per-track namespace and cannot survive a
+          // merge; clearing them asks the writer for authored ordering rather
+          // than comparing two tracks' ordinals as if they shared a stream.
+          for (MidiNote& note : track.notes) { note.on_order = 0; note.off_order = 0; }
+          for (MidiChannelEvent& event : track.channel_events) event.order = 0;
+          std::stable_sort(track.notes.begin(), track.notes.end(),
+                           [](const MidiNote& left, const MidiNote& right) { return left.start < right.start; });
+          std::stable_sort(track.channel_events.begin(), track.channel_events.end(),
+                           [](const MidiChannelEvent& left, const MidiChannelEvent& right) { return left.tick < right.tick; });
+        }
+      } else {
+        merged_tracks.clear();
+      }
+    }
+    const std::vector<MidiTrack>& tracks = merged_tracks.empty() ? midi.tracks : merged_tracks;
+    converted.parts.reserve(tracks.size());
 
-    for (std::size_t track_index = 0; track_index < midi.tracks.size(); ++track_index) {
-      const MidiTrack& track = midi.tracks[track_index];
+    for (std::size_t track_index = 0; track_index < tracks.size(); ++track_index) {
+      const MidiTrack& track = tracks[track_index];
       // Track 0 often carries only tempo/meter, but an event-only track can
       // still own program changes, pedal, or other essential playback data.
       if (track.notes.empty() && track.channel_events.empty()) continue;

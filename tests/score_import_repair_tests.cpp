@@ -254,6 +254,36 @@ int main() {
       require(file.tracks.at(0).notes.empty(), "a dropped note was stored anyway");
     }
 
+    // An exporter writing one instrument as a track per staff. The tracks
+    // share a channel, which is what makes them one instrument, so the score
+    // keeps one part. Two tracks on separate channels stay separate.
+    {
+      auto twoTrack = [](std::uint8_t first, std::uint8_t second) {
+        daw::MidiFile midi;
+        midi.format = 1;
+        midi.ticks_per_quarter = daw::kTicksPerQuarter;
+        daw::MidiTrack upper, lower;
+        upper.notes.push_back({0, 480, 72, 90, first, 0, 0, 0, 0, {}});
+        lower.notes.push_back({0, 480, 48, 90, second, 0, 0, 0, 0, {}});
+        midi.tracks.push_back(upper);
+        midi.tracks.push_back(lower);
+        return midi;
+      };
+      daw::Score strict; std::string error;
+      require(daw::midiToScore(twoTrack(0, 0), &strict, &error, nullptr), error);
+      require(strict.parts.size() == 2, "strict conversion stopped making one part per track");
+
+      daw::Score merged; daw::ScoreRepairReport report;
+      require(daw::midiToScore(twoTrack(0, 0), &merged, &error, &report), error);
+      require(report.merged_instrument_tracks == 1, "shared-channel tracks not merged");
+      require(merged.parts.size() == 1, "one instrument did not become one part");
+
+      daw::Score separate; daw::ScoreRepairReport untouched;
+      require(daw::midiToScore(twoTrack(0, 1), &separate, &error, &untouched), error);
+      require(untouched.merged_instrument_tracks == 0 && separate.parts.size() == 2,
+              "tracks on different channels were merged anyway");
+    }
+
     fs::remove_all(root);
     std::cout << "score import repair tests passed\n";
     return 0;

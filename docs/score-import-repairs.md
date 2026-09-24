@@ -7,7 +7,7 @@ author cannot start work if the file will not open, and every notation program
 emits constructs this engine has no model for.
 
 Measured on the local corpora, the end-to-end import entry went from **9 of
-1,105 MusicXML files to 589**, and imports **1,707 of 2,598 local MIDI files**.
+1,105 MusicXML files to 589**, and imports **2,021 of 2,598 local MIDI files**.
 Excluding scores with more than one part, which is a product decision rather
 than a reader limit, 589 of 678 single-part MusicXML files import. Nothing
 below relaxes an engine invariant: the strict path is unchanged and is still
@@ -63,6 +63,7 @@ one, and reasoning from that stale grouping trims the wrong note.
 | Same channel and pitch sounding twice before the first release | One channel is one score voice, which cannot hold that. The sounding note is shortened; a second attack at the same instant is dropped. |
 | A note released at or before its own attack | Dropped. It cannot sound, so there is no music to lose; exporters emit these routinely. |
 | A release with nothing to close | Dropped. Nothing identifies what it referred to. |
+| One instrument written as several tracks | Tracks whose channel sets intersect are merged into one part. Two tracks writing to one channel address one instrument; a second instrument there could not be controlled separately, so overlap is the grouping rule and it is transitive. Source ordinals are a per-track namespace and are cleared, which asks the writer for authored ordering rather than comparing two streams' ordinals. |
 
 `readMidiFile` takes the repair report as a separate argument from its existing
 `MidiImportReport`, because several callers already pass that report only to
@@ -80,7 +81,7 @@ what happened to the music.
 - **Chord as the first note in a voice** (35), **durations not exactly
   representable at 960 PPQ** (25), **unsynchronized part measure starts** (14),
   **more than 4,096 attacks** (11), and a handful of metronome and polymeter
-  cases. On the MIDI side, 740 files have more than one track and 74 exceed the
-  attack limit.
+  cases. On the MIDI side the remaining failures are dominated by files whose
+  tracks genuinely use separate channels, which are separate instruments.
 
 Compressed `.mxl` remains unsupported.

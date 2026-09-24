@@ -167,6 +167,9 @@ struct ScoreRepairReport {
   std::uint64_t dropped_silent_notes = 0;
   // A release with no attack to close. Nothing identifies what it referred to.
   std::uint64_t dropped_orphan_releases = 0;
+  // A MIDI track folded into another sharing its channel: one instrument that
+  // an exporter wrote as several tracks, commonly one per staff.
+  std::uint64_t merged_instrument_tracks = 0;
 };
 void repairScoreForAudition(Score& score, ScoreRepairReport* report);
 
