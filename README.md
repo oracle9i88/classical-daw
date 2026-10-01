@@ -185,8 +185,11 @@ an initial native frozen-track playback path; it is not a finished DAW.
   realtime primitives, and render smoke tests.
 
 The renderer is a diagnostic instrument, not an orchestral sampler. The
-MusicXML reader is a fail-closed first slice; it does not yet cover `.mxl`,
-key changes, dynamic directions/hairpins, multiple lyric verses/syllabic metadata, or full XML
+MusicXML reader is a fail-closed first slice. Compressed `.mxl` arrives through
+a self-contained Zip/inflate container reader that names the member it chose
+and refuses anything it does not fully understand (see
+[real-score entry and evidence](docs/performance-import.md)); the parse itself
+does not yet cover key changes, dynamic directions/hairpins, multiple lyric verses/syllabic metadata, or full XML
 validation.
 The MIDI bridge requires explicit note channels for scores with more than 16
 parts; it does not allocate multiple ports or carry MIDI lyrics. MIDI import

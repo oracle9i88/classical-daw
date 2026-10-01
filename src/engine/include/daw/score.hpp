@@ -163,6 +163,11 @@ struct MusicXmlImportReport {
 };
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr,
                       MusicXmlImportReport* report = nullptr);
+// The same parse for bytes already in memory. A compressed .mxl member is a
+// string by the time it reaches the parse, so the file reader above and the
+// container reader share one gate instead of two near-copies of it.
+bool readMusicXmlString(const std::string& source, Score* score, std::string* error = nullptr,
+                        MusicXmlImportReport* report = nullptr);
 
 // Make an imported score playable by the audition path. MIDI 1.0 cannot address
 // two same-pitch notes on one channel at once, and the score-to-MIDI bridge only

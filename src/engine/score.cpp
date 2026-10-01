@@ -916,16 +916,17 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
   }
 }
 
-bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
-                      MusicXmlImportReport* report) {
+bool readMusicXmlString(const std::string& source, Score* score, std::string* error,
+                        MusicXmlImportReport* report) {
   if (score == nullptr) {
     if (error) *error = "score output pointer is null";
     return false;
   }
   try {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) throw std::runtime_error("cannot open MusicXML file");
-    std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    // Any source of bytes reaches the same parse: a plain file today, a
+    // decompressed .mxl member through the container reader. The size and
+    // NUL gates below apply to whichever source produced the bytes.
+    std::string xml = source;
     if (xml.size() > 16 * 1024 * 1024) throw std::runtime_error("MusicXML file exceeds Alpha size limit");
     if (xml.find('\0') != std::string::npos) throw std::runtime_error("MusicXML contains a NUL byte");
     xml = xmlWithoutDeclarations(xml);
@@ -1419,6 +1420,21 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
     if (error) *error = exception.what();
     return false;
   }
+}
+
+bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
+                      MusicXmlImportReport* report) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    if (error) *error = "cannot open MusicXML file";
+    return false;
+  }
+  const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  if (input.bad()) {
+    if (error) *error = "MusicXML file read failed";
+    return false;
+  }
+  return readMusicXmlString(bytes, score, error, report);
 }
 
 }  // namespace daw

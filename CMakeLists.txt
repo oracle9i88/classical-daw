@@ -7,6 +7,7 @@ enable_testing()
 
 add_library(daw_engine STATIC
   src/engine/midi.cpp
+  src/engine/musicxml_container.cpp
   src/engine/note_identity.cpp
   src/engine/performance.cpp
   src/engine/live_performance.cpp
@@ -95,6 +96,10 @@ add_test(NAME daw_score_tie_tests COMMAND daw_score_tie_tests)
 add_executable(daw_score_import_repair_tests tests/score_import_repair_tests.cpp)
 target_link_libraries(daw_score_import_repair_tests PRIVATE daw_engine)
 add_test(NAME daw_score_import_repair_tests COMMAND daw_score_import_repair_tests)
+
+add_executable(daw_musicxml_archive_tests tests/musicxml_archive_tests.cpp)
+target_link_libraries(daw_musicxml_archive_tests PRIVATE daw_engine)
+add_test(NAME daw_musicxml_archive_tests COMMAND daw_musicxml_archive_tests)
 
 add_executable(daw_musicxml_entry_tests tests/musicxml_entry_tests.cpp)
 target_link_libraries(daw_musicxml_entry_tests PRIVATE daw_engine)

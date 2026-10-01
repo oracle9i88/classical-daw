@@ -17,8 +17,10 @@ build/daw_performance_import /path/to/original.musicxml /path/to/piano.aupreset 
 build/daw_performance_play /path/to/new-document
 ```
 
-Input extensions: `.musicxml` / `.xml`, `.mid` / `.midi`, `.dawproj`.
-Compressed `.mxl` is explicitly unsupported. Import assigns missing notation
+Input extensions: `.musicxml` / `.xml`, `.mxl`, `.mid` / `.midi`, `.dawproj`.
+A compressed `.mxl` is unpacked by the fail-closed container reader described
+below, and every statement about the parse applies unchanged to the member it
+selects. Import assigns missing notation
 IDs, builds stored performed-ID/tie mappings, compiles/validates, and saves to a
 **new** directory. Source files remain untouched; an existing destination is
 rejected. A saved local Pianoteq state is required to create the document, but
@@ -145,6 +147,42 @@ probe selects performed ID192 / notation anchor198 without fixture assumptions.
 Its original-file hash, exact commands and Debug/ASan/UBSan results are in the
 [evidence log](research/2026-09-24-import-entry-evidence.txt). No hearing or new
 hardware timing claim follows from these data-only runs.
+
+## Compressed `.mxl` container boundary
+
+`.mxl` is a Zip transport, not a second format: the member it names reaches
+`readMusicXmlString` under the same parse gates as a plain file. The container
+layer (engine `musicxml_container.cpp`) fails closed:
+
+- The end-of-central-directory record must reconcile with the file tail byte
+  for byte; a stray copy inside a comment cannot move the answer.
+- Refused outright: Zip64, multi-disk, encryption and every reserved flag bit
+  (UTF-8 names and data descriptors are the only tolerated extras), any method
+  other than stored/deflate, names that escape the archive root (`..`, drive
+  letters, absolute or backslash paths), repeated member names, member counts
+  and sizes outside 4096 entries / 16 MiB per member / 64 MiB per archive, a
+  compression ratio worse than 1024:1, and any member whose expanded bytes
+  disagree with its declared size or recorded CRC32.
+- The score is the first `rootfile` of `META-INF/container.xml` (OMA order of
+  preference; both quote styles accepted, entity escapes refused, a
+  `media-type` that is not MusicXML is a refusal). Without a container file a
+  lone `.xml`/`.musicxml` member is accepted; two or more are refused rather
+  than guessed at.
+- Inflate is self-contained (fixed/dynamic Huffman via a full 15-bit forward
+  table, unary distance codes, declared-size budget) and shares no code with
+  the writer used to generate the fixtures
+  (`scripts/make_musicxml_archive_fixture.py`, Python `zipfile`).
+
+`daw_performance_import` prints the chosen member, its method, whether a
+container named it, and the decompressed size, so a wrong pick is visible at
+import. Measured on 2026-10-02 with ASan/UBSan
+(`daw_musicxml_archive_tests`): deflate-with-container, deflate-lone-member and
+stored-with-container all parse to the same two-note score the plain member
+yields; truncation, a mutated payload byte, a Zip64 end record, a non-relative
+name, method 99, an encrypted flag, duplicate names, a lying stored size and a
+mislabelled rootfile each refuse with their own reason. `--check` runs the same
+path with no plugin and no device. No claim here covers real-world vendor
+`.mxl` corpora; that census has not been run.
 
 ## Open gates, in priority order
 

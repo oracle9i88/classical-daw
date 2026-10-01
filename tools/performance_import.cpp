@@ -1,4 +1,5 @@
 // Data-only bridge. Never instantiate a plugin or open an output device.
+#include "daw/musicxml_container.hpp"
 #include "daw/performance.hpp"
 #include "daw/project.hpp"
 #include "daw/score_midi.hpp"
@@ -23,7 +24,7 @@ int main(int argc, char** argv) {
     }
     const bool check=!plain.empty() && plain.front()=="--check";
     if(check?plain.size()!=2:plain.size()!=3)
-      throw std::runtime_error("usage: daw_performance_import SCORE.{musicxml,xml,mid,midi,dawproj} PIANO.aupreset NEW_DIRECTORY [--part N] | --check SCORE [--part N]");
+      throw std::runtime_error("usage: daw_performance_import SCORE.{mxl,musicxml,xml,mid,midi,dawproj} PIANO.aupreset NEW_DIRECTORY [--part N] | --check SCORE [--part N]");
     const std::filesystem::path source(plain.at(check?1:0));
     auto extension=source.extension().string();
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
@@ -31,9 +32,15 @@ int main(int argc, char** argv) {
     stage="score_read";bool ok=false;
     daw::MusicXmlImportReport repairs;daw::ScoreRepairReport fixes;
     if(extension==".xml"||extension==".musicxml")ok=daw::readMusicXmlFile(source.string(),&d.score,&error,&repairs);
+    else if(extension==".mxl"){daw::MusicXmlArchiveReport container;ok=daw::readMusicXmlArchiveFile(source.string(),&d.score,&error,&repairs,&container);
+      // Which member became the score is evidence, not trivia: a wrong
+      // container.xml pick should be visible at import, not heard later.
+      if(ok&&check)std::cout<<"Container: member=\""<<container.chosen_member<<"\" method="
+        <<(container.document_deflate?"deflate":"stored")<<" container_xml="
+        <<(container.used_container_xml?"yes":"no")<<" decompressed="<<container.decompressed_bytes<<'\n';}
     else if(extension==".mid"||extension==".midi")ok=daw::readMidiScoreFile(source.string(),&d.score,&error,&fixes);
     else if(extension==".dawproj")ok=daw::readProjectFile(source.string(),&d.score,&error);
-    else throw std::runtime_error("unsupported source extension (compressed .mxl is not supported)");
+    else throw std::runtime_error("unsupported source extension");
     if(!ok)throw std::runtime_error(error);
     stage="select_part";
     if(wanted!=0) {
