@@ -24,6 +24,16 @@ document/history and real AU graph integration are still pending.
 
 ## Completed in this iteration
 
+- Import compressed `.mxl` through a self-contained, fail-closed Zip/inflate
+  container reader: end-record reconciliation, OMA `container.xml` rootfile
+  lookup with lone-member fallback, declared-size/CRC32 verification, and
+  refusal of Zip64, multi-disk, encryption, unknown methods, escaping names,
+  duplicate members, implausible ratios and mislabelled rootfiles. The chosen
+  member is reported at import; the member parses through the same
+  `readMusicXmlString` gate as a plain file. Fixture archives come from
+  Python `zipfile`, an independent writer. A real vendor `.mxl` census has not
+  been run. See [the container boundary](performance-import.md).
+
 - Add uninterrupted single-take live plan exchange, held-key ownership and
   controller chase to the real AU path, with transactional command admission
   and no callback plan destruction. Balance variable device slices to avoid
