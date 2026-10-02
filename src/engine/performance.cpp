@@ -134,11 +134,12 @@ MidiSampleSequence compilePerformance(const Score& score, const Performance& per
     require(curve.id && !curve_ids[curve.id] && curve.channel < 16 && (curve.controller==11 || curve.controller==64),"invalid control curve");
     curve_ids[curve.id]=true;
     const auto lane=std::make_pair(curve.channel,curve.controller);
-    require(!lanes[lane] && curve.points.size() >= 2 && curve.points.size() <= 4096,"duplicate lane or invalid curve size");lanes[lane]=true;
+    require(!lanes[lane] && curve.points.size() >= (curve.stepped ? 1U : 2U) && curve.points.size() <= 4096,"duplicate lane or invalid curve size");lanes[lane]=true;
     std::map<std::uint64_t,bool> point_ids;double previous=-1;
     for(const auto& point:curve.points) {
-      require(point.id && !point_ids[point.id] && std::isfinite(point.seconds) && point.seconds>=0 && point.seconds>previous &&
-          point.seconds*48000 <= static_cast<double>(sequence.end_frame) && std::isfinite(point.value) && point.value>=0 && point.value<=127,"invalid curve point");
+      require(point.id && !point_ids[point.id] && std::isfinite(point.seconds) && point.seconds>=0 &&
+          (curve.stepped ? point.seconds>=previous : point.seconds>previous) &&
+          point.seconds*48000 < static_cast<double>(sequence.end_frame)+0.5 && std::isfinite(point.value) && point.value>=0 && point.value<=127,"invalid curve point");
       point_ids[point.id]=true;previous=point.seconds;
     }
     require(curve.points.front().seconds==0,"control curve must initialize at time zero");
@@ -146,6 +147,13 @@ MidiSampleSequence compilePerformance(const Score& score, const Performance& per
     sequence.events.erase(std::remove_if(sequence.events.begin(),sequence.events.end(),[&](const auto& e){
       return e.status==(0xb0|curve.channel) && e.data1==curve.controller && !e.terminal_reset;
     }),sequence.events.end());
+    if (curve.stepped) {
+      for (const auto& point : curve.points)
+        curve_events.push_back({static_cast<std::size_t>(std::llround(point.seconds*48000)),
+          static_cast<std::uint8_t>(0xb0|curve.channel),curve.controller,
+          static_cast<std::uint8_t>(std::lround(point.value)),0});
+      continue;
+    }
     std::size_t segment=0;int last=-1;
     const auto last_frame=static_cast<std::size_t>(std::llround(curve.points.back().seconds*48000));
     for(std::size_t frame=0;frame<=last_frame;frame=std::min(frame+480,last_frame)) {
@@ -175,80 +183,29 @@ ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, st
   require(curve_id != 0, "curve ID must be nonzero");
   require(controller == 11 || controller == 64, "only CC11 and CC64 lanes are editable");
   require(channel < 16, "channel must be 0..15");
-  const auto tempo = scoreTempoMap(score);
-  std::map<double, int> changes;  // seconds -> value, later message at one tick wins
+  MidiFile midi; std::string error;
+  if (!scoreToMidiFile(score, &midi, &error)) throw std::invalid_argument(error);
+  const auto source = makeMidiSampleSequence(midi, 48000, 5, max_frames);
+  ControlCurve curve; curve.id = curve_id; curve.channel = channel;
+  curve.controller = controller; curve.stepped = true;
   std::uint64_t seen = 0;
-  for (const auto& part : score.parts) {
-    for (const auto& event : part.midi_events) {
-      if (event.type != MidiChannelEventType::ControlChange) continue;
-      if (event.channel != channel || event.data1 != controller) continue;
-      ++seen;
-      changes[tempo.tickToSeconds(event.tick)] = event.data2;
-    }
+  for (const auto& event : source.events) {
+    if (event.terminal_reset || event.status != (0xb0 | channel) || event.data1 != controller) continue;
+    if (curve.points.empty() && event.frame > 0)
+      curve.points.push_back({1, 0, controller == 64 ? 0.0 : 127.0});
+    curve.points.push_back({curve.points.size()+1, static_cast<double>(event.frame)/48000, static_cast<double>(event.data2)});
+    ++seen;
   }
-  require(!changes.empty(), "this lane carries no messages to adopt");
-  ControlCurve curve;
-  curve.id = curve_id;
-  curve.channel = channel;
-  curve.controller = controller;
-  // Before its first message a pedal is up and expression is full: the same
-  // starting values the offline renderer assumes.
-  int held = controller == 64 ? 0 : 127;
-  const auto initial = changes.find(0);
-  if (initial != changes.end()) held = initial->second;
-  std::uint64_t next_point = 1;
-  double worst = 0;
-  curve.points.push_back({next_point++, 0, static_cast<double>(held)});
-  for (const auto& [seconds, value] : changes) {
-    if (value == held) continue;
-    // The lane is read every ten milliseconds and interpolated between points.
-    // Holding the old value until an arbitrary instant before the change lets
-    // a read land inside that ramp and sample a value the file never had, so
-    // the hold is placed on the read grid itself: no read can fall between it
-    // and the change, and the step arrives whole at the next read.
-    constexpr double grid = 0.01;
-    double shoulder = std::floor(seconds / grid) * grid;
-    if (shoulder >= seconds) shoulder -= grid;
-    if (shoulder > curve.points.back().seconds) {
-      curve.points.push_back({next_point++, shoulder, static_cast<double>(held)});
-    }
-    if (seconds > curve.points.back().seconds) {
-      curve.points.push_back({next_point++, seconds, static_cast<double>(value)});
-      // A change is heard at the first read at or after it, never before it,
-      // so one landing on a read is not moved at all.
-      worst = std::max(worst, std::ceil(seconds / grid) * grid - seconds);
-      held = value;
-    }
-  }
-  if (curve.points.size() == 1) {
-    // A constant lane is still editable. Give it a second equal point at
-    // the written end rather than discarding its time-zero initialization.
-    std::string error;
-    if (!validateScore(score, &error)) throw std::invalid_argument(error);
-    Tick end = 0;
-    for (const auto& part : score.parts) {
-      for (const auto& measure : part.measures) {
-        end = std::max(end, measure.start + measure.duration);
-        for (const auto& note : measure.notes) end = std::max(end, note.start + note.duration);
-      }
-      for (const auto& event : part.midi_events) end = std::max(end, event.tick);
-    }
-    require(end > 0, "constant lane requires a positive score extent");
-    curve.points.push_back({next_point++, tempo.tickToSeconds(end), static_cast<double>(held)});
-  }
+  require(seen != 0, "this lane carries no messages to adopt");
   require(curve.points.size() <= 4096, "this lane has more changes than a curve can hold");
-  if (report != nullptr) {
-    report->source_messages = seen;
-    report->points = curve.points.size();
-    report->worst_shift_seconds = worst;
-  }
+  if (report) *report = {seen, curve.points.size(), 0};
   return curve;
 }
 
 void validatePerformanceDocument(const PerformanceDocument& d) {
   require(!d.performances.empty() && d.performances.size() <= 16 && d.active < d.performances.size(), "invalid performance selection");
   require(!d.piano_state.empty() && d.piano_state.size() <= 16U*1024*1024, "saved piano state required");
-  require(std::isfinite(d.gain_db) && d.gain_db >= -60 && d.gain_db <= 0,"invalid audition gain");
+  require(std::isfinite(d.gain_db) && d.gain_db >= -60 && d.gain_db <= 0,"invalid document output gain");
   for (const auto& take : d.performances) {
     require(!take.name.empty() && take.name.size() <= 256, "invalid performance name");
     (void)compilePerformance(d.score, take);
@@ -265,14 +222,19 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
     if (!writeProjectFile(d.score, (root/"score.dawproj").string(), &error)) throw std::runtime_error(error);
     write(root/"piano.aupreset", {d.piano_state.begin(), d.piano_state.end()});
     const auto score_bytes = read(root/"score.dawproj", 64U*1024*1024);
-    std::ostringstream out; out << std::setprecision(17) << "CLASSICAL_DAW_PERFORMANCE 1\n" << std::quoted(binding(score_bytes,d.piano_state)) << '\n';
+    bool stepped = false;
+    for (const auto& take : d.performances) for (const auto& curve : take.curves) stepped |= curve.stepped;
+    const int version = stepped ? 2 : 1;
+    std::ostringstream out; out << std::setprecision(17) << "CLASSICAL_DAW_PERFORMANCE " << version << '\n'  << std::quoted(binding(score_bytes,d.piano_state)) << '\n';
     out << d.active << ' ' << d.performances.size() << ' ' << d.gain_db << '\n';
     for (const auto& take : d.performances) {
       out << std::quoted(take.name) << ' ' << take.next_note_id << ' ' << take.mapping.size() << '\n';
       for(const auto& map:take.mapping) {out<<map.id<<' '<<map.notation_ids.size();for(auto id:map.notation_ids)out<<' '<<id;out<<'\n';}
       out<<take.curves.size()<<'\n';
       for(const auto& curve:take.curves) {
-        out<<curve.id<<' '<<static_cast<int>(curve.channel)<<' '<<static_cast<int>(curve.controller)<<' '<<curve.points.size()<<'\n';
+        out<<curve.id<<' '<<static_cast<int>(curve.channel)<<' '<<static_cast<int>(curve.controller)<<' '<<curve.points.size();
+        if (version >= 2) out << ' ' << curve.stepped;
+        out << '\n';
         for(const auto& point:curve.points)out<<point.id<<' '<<point.seconds<<' '<<point.value<<'\n';
       }
       out<<take.notes.size()<<'\n';
@@ -295,7 +257,7 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
   const auto state = read(root/"piano.aupreset",16U*1024*1024); d.piano_state.assign(state.begin(),state.end());
   std::istringstream in(read(root/"performances.dawperformance",170U*1024*1024));
   std::string magic, identity; int version = 0; std::size_t count = 0;
-  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && version == 1,"invalid performance document");
+  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && (version == 1 || version == 2),"invalid performance document");
   require(bool(in >> std::quoted(identity)) && identity == binding(score_bytes,d.piano_state),"performance score/state binding mismatch");
   require(bool(in >> d.active >> count >> d.gain_db) && count >= 1 && count <= 16 && d.active < count,"invalid performance count");
   for (std::size_t i = 0; i < count; ++i) {
@@ -309,6 +271,7 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
     require(bool(in>>curves) && curves<=32,"invalid curve count");
     for(std::size_t c=0;c<curves;++c){ControlCurve curve;int channel=0,cc=0;std::size_t points=0;
       require(bool(in>>curve.id>>channel>>cc>>points) && channel>=0 && channel<16 && cc>=0 && cc<128 && points<=4096,"invalid curve");
+      if (version >= 2) { int mode = -1; require(bool(in >> mode) && (mode == 0 || mode == 1), "invalid curve mode"); curve.stepped = mode == 1; }
       curve.channel=static_cast<std::uint8_t>(channel);curve.controller=static_cast<std::uint8_t>(cc);
       for(std::size_t j=0;j<points;++j){CurvePoint point;require(bool(in>>point.id>>point.seconds>>point.value),"truncated curve");curve.points.push_back(point);}take.curves.push_back(std::move(curve));
     }

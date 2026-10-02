@@ -6,6 +6,12 @@ architecture properties, **not** repertoire coverage. The outside review's
 1,105-file figures and Pianoteq run were useful leads, not locally measured
 results. The independent census below now supplies local evidence.
 
+Current implementation note (2026-10-02): the census and original open gates
+below are historical. Subsequent grace/tempo/overlap/lyrics and pedal handling
+are described in [score import repairs](score-import-repairs.md). See the
+[public Alpha guide](trying-the-alpha.zh-CN.md) for the current user workflow.
+This change did not rerun the full corpus census.
+
 ## Commands
 
 Build with CMake normally. The import/check tools link the portable engine and
@@ -26,7 +32,8 @@ its plugin is not loaded/verified by this data operation. `--check` needs no
 state. Failures identify `score_read`, `identity_mapping`, `performance_compile`,
 `state_read` or `save`. The import does not create default pedal/expression
 curves or pretend to interpret all MusicXML directions, repeats and ornaments.
-In particular, notation pedal directions are not converted to CC64 here.
+Current import converts supported start/stop/change pedal directions to CC64;
+this was added after the original entry experiment.
 
 Editor commands (only `play` opens a device):
 
@@ -146,7 +153,7 @@ Its original-file hash, exact commands and Debug/ASan/UBSan results are in the
 [evidence log](research/2026-09-24-import-entry-evidence.txt). No hearing or new
 hardware timing claim follows from these data-only runs.
 
-## Open gates, in priority order
+## Original open gates (2026-09-24; superseded by linked repair policy)
 
 1. **Grace notes:** not implemented. They lack ordinary duration by design;
    [MusicXML grace attributes](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/grace/)

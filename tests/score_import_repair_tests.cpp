@@ -458,7 +458,7 @@ int main() {
       daw::CurveAdoptionReport adopted;
       const auto curve = daw::curveFromScoreMessages(score, 0, 64, 1, &adopted);
       require(adopted.source_messages == 8, "not every message was seen");
-      require(adopted.worst_shift_seconds <= 0.01, "a message moved more than one read");
+      require(adopted.worst_shift_seconds == 0, "a message moved from its scheduled sample");
       require(curve.points.front().seconds == 0, "a curve must start at zero");
 
       auto pedalEvents = [&](const daw::Performance& take) {
@@ -487,7 +487,7 @@ int main() {
           nearest = std::min(nearest, std::abs(static_cast<double>(original.first) -
                                                static_cast<double>(moved.first)) / 48000);
         }
-        require(nearest <= 0.011, "a message is missing or moved further than the read grid explains");
+        require(nearest == 0, "a message is missing or moved from its scheduled sample");
       }
       // A lane with nothing in it is refused rather than adopted as silence.
       auto refuses = [](auto call) {

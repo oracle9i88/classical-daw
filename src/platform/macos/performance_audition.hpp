@@ -3,6 +3,7 @@
 #include "daw/audio_output_source.hpp"
 #include "daw/live_performance.hpp"
 #include "daw/performance.hpp"
+#include "daw/performance_preroll.hpp"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -21,6 +22,20 @@ class PerformanceAudition final : public AudioOutputSource {
         gain_(std::pow(10.,d.gain_db/20)), silent_(silent) {
     au_.restoreState(state_); au_.prepareRealtime();
     if(capture) { captured_.resize(stream_.endFrame()*2); audit_.resize(262144); }
+  }
+  // Stopped/control thread only, before start(). No output device is involved.
+  void prepareRange(std::size_t from, std::size_t until=0) {
+    if(armed_.load() || !captured_.empty() || stream_.frame()!=0)
+      throw std::invalid_argument("range must be prepared on a fresh uncaptured audition");
+    if(from>=stream_.endFrame() || (until && (until<=from || until>stream_.endFrame())))
+      throw std::invalid_argument("range must lie inside the compiled performance");
+    float discarded[512]{};
+    prerollPerformance(stream_,from,[&](const auto& block){
+      if(!au_.renderRealtime(block.events,block.count,discarded,block.frames))
+        throw std::runtime_error("instrument preroll failed");
+    });
+    range_start_=from;range_end_=until;
+    published_.store(from,std::memory_order_release);
   }
   bool acceptsFormat(double rate,std::uint32_t channels) const noexcept override {return rate==48000 && channels==2;}
   void start() noexcept {armed_.store(true,std::memory_order_release);}
@@ -49,7 +64,12 @@ class PerformanceAudition final : public AudioOutputSource {
     std::fill(out,out+frames*2,0.F);
     if(!armed_.load(std::memory_order_acquire)||failed_.load())return;
     const auto started=std::chrono::steady_clock::now();
-    const auto block=stream_.nextBlock(frames);
+    auto requested=frames;
+    if(range_end_) {
+      if(stream_.frame()>=range_end_)return;
+      requested=static_cast<std::uint32_t>(std::min<std::size_t>(frames,range_end_-stream_.frame()));
+    }
+    const auto block=stream_.nextBlock(requested);
     if(stream_.failed()){failed_.store(true);return;}
     if(!block.frames)return;
     if(!captured_.empty() && (block.frame>captured_.size()/2 || block.frames>captured_.size()/2-block.frame)){
@@ -64,7 +84,11 @@ class PerformanceAudition final : public AudioOutputSource {
       const auto gain=gain_+(block.gain-gain_)*static_cast<double>(frame+1)/block.frames;
       for(std::size_t channel=0;channel<2;++channel) {
         const auto i=frame*2+channel;
-        out[i]=static_cast<float>(out[i]*gain);peak_=std::max(peak_,std::abs(static_cast<double>(out[i])));
+        // Short fades avoid a hard gate when preview starts/ends in a waveform.
+        double preview=1;
+        if(range_start_)preview=std::min(1.,static_cast<double>(block.frame+frame-range_start_+1)/128);
+        if(range_end_)preview=std::min(preview,std::min(1.,static_cast<double>(range_end_-block.frame-frame-1)/128));
+        out[i]=static_cast<float>(out[i]*gain*preview);peak_=std::max(peak_,std::abs(static_cast<double>(out[i])));
         if(std::abs(out[i])>1){++clipped_;out[i]=std::clamp(out[i],-1.F,1.F);}
         if(!captured_.empty())captured_[block.frame*2+i]=out[i];
         if(silent_)out[i]=0;
@@ -76,7 +100,7 @@ class PerformanceAudition final : public AudioOutputSource {
     const auto ratio=seconds/(static_cast<double>(frames)/48000);
     worst_budget_ratio_=std::max(worst_budget_ratio_,ratio);if(ratio>=1)++deadline_misses_;
   }
-  bool done() const noexcept {return !stream_.hasPendingUpdate() && published_.load(std::memory_order_acquire)>=stream_.endFrame();}
+  bool done() const noexcept {return !stream_.hasPendingUpdate() && published_.load(std::memory_order_acquire)>= (range_end_?std::min(range_end_,stream_.endFrame()):stream_.endFrame());}
   bool failed() const noexcept {return failed_.load()||stream_.failed();}
   std::size_t frame() const noexcept {return published_.load(std::memory_order_acquire);}
   double latency() const noexcept {return au_.realtimeLatencySeconds();}
@@ -93,6 +117,7 @@ class PerformanceAudition final : public AudioOutputSource {
   std::vector<TimedMidiEvent> eventsAfterStop() const {return {audit_.begin(),audit_.begin()+static_cast<std::ptrdiff_t>(audit_size_)};}
  private:
   AudioUnitInstrument au_;LivePerformanceStream stream_;
+  std::size_t range_start_=0,range_end_=0;
   std::vector<std::uint8_t> state_;std::size_t take_;
   std::vector<NotePerformance> accepted_notes_; // control thread only
   double gain_,peak_=0,worst_budget_ratio_=0;bool silent_;

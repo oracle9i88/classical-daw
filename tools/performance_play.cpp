@@ -1,5 +1,6 @@
 #include "performance_audition.hpp"
 #include "coreaudio_output.hpp"
+#include "daw/performance_recovery.hpp"
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -73,25 +74,40 @@ void listNotes(const daw::PerformanceDocument& d, const std::string& label, std:
 int main(int argc,char** argv) {
   try {
     if(argc!=2)throw std::runtime_error("usage: daw_performance_play DOCUMENT_DIRECTORY");
+    std::unique_ptr<daw::PerformanceRecovery> recovery;
+    try {recovery=std::make_unique<daw::PerformanceRecovery>(argv[1]);}
+    catch(const std::exception& e){std::cout<<"AUTOSAVE UNAVAILABLE: "<<e.what()<<"; use save explicitly.\n";}
     daw::WorkEditor editor(daw::loadPerformanceDocument(argv[1]));
+    try {for(const auto& path:daw::listPerformanceRecoveries(argv[1]))
+      std::cout<<"Recovery candidate (not yet validated): "<<path<<'\n';}
+    catch(const std::exception& e){std::cout<<"Recovery discovery unavailable: "<<e.what()<<'\n';}
     std::unique_ptr<daw::PerformanceAudition> audition;
     daw::CoreAudioOutput output;std::string error;
+    std::size_t cursor=0,range_end=0;bool repeat=false;
     auto stop=[&]{output.stop();output.setAudioSource(nullptr);
       if(audition && audition->suppressedConflictsAfterStop())
         std::cout<<"Held keys preserved; conflicting attacks skipped this pass="<<audition->suppressedConflictsAfterStop()<<'\n';
       audition.reset();};
     auto play=[&]{stop();audition=std::make_unique<daw::PerformanceAudition>(editor.document(),false,false,editor.revision());
+      const auto prepared=std::chrono::steady_clock::now();
+      audition->prepareRange(cursor,range_end);
+      std::cout<<"Prepared start="<<static_cast<double>(cursor)/48000<<"s in "
+        <<std::chrono::duration<double>(std::chrono::steady_clock::now()-prepared).count()<<"s; "
+        <<"range repeats rebuild the instrument and have a gap.\n";
       if(!output.setAudioSource(audition.get(),&error)||!output.start(&error)){stop();throw std::runtime_error(error);}
       audition->start();std::cout<<"Playing actual realtime Pianoteq; latency="<<audition->latency()<<"s\n";
     };
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: play | stop | take INDEX | take-copy \"NAME\" | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: play | stop | seek SECONDS | range FROM_SECONDS TO_SECONDS | range-clear | repeat on|off | take INDEX | take-copy \"NAME\" | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-step ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
       if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
-      if(audition&&audition->done()){stop();std::cout<<"Playback ended\n";}
+      if(audition&&audition->done()){
+        stop();std::cout<<"Playback ended\n";
+        if(repeat && range_end)try{play();}catch(const std::exception& e){stop();repeat=false;std::cout<<"Repeat stopped: "<<e.what()<<'\n';}
+      }
       std::cout.flush();pollfd input{STDIN_FILENO,POLLIN,0};const int ready=poll(&input,1,100);
       if(ready<0)throw std::runtime_error("stdin poll failed");if(!ready)continue;
       char data[1024];const auto n=read(STDIN_FILENO,data,sizeof(data));
@@ -107,6 +123,24 @@ int main(int argc,char** argv) {
           if(command=="quit"){end();done=true;break;}
           if(command=="play"){end();play();continue;}
           if(command=="stop"){end();stop();continue;}
+          if(command=="seek"||command=="range") {
+            double from=0,to=0;in>>from;if(command=="range")in>>to;parsed();
+            const auto total=daw::compilePerformance(editor.document().score,editor.document().performances[editor.document().active]).frames;
+            if(!std::isfinite(from)||from<0||from*48000>=total||!std::isfinite(to)||to<0||to*48000>total||
+                (command=="range"&&(to<=from||std::llround(to*48000)<=std::llround(from*48000))))
+              throw std::runtime_error("invalid playback range");
+            const auto next=static_cast<std::size_t>(std::llround(from*48000));
+            if(next>=total)throw std::runtime_error("seek rounds past playback end");
+            stop();cursor=next;range_end=command=="range"?static_cast<std::size_t>(std::llround(to*48000)):0;
+            if(!range_end)repeat=false;
+            std::cout<<"Position set; stopped. Use play to audition.\n";continue;
+          }
+          if(command=="range-clear"){end();stop();cursor=0;range_end=0;repeat=false;continue;}
+          if(command=="repeat"){std::string mode;in>>mode;parsed();
+            if(mode!="on"&&mode!="off")throw std::runtime_error("repeat expects on or off");
+            if(mode=="on"&&!range_end)throw std::runtime_error("set a range before repeating");
+            repeat=mode=="on";continue;
+          }
           if(command=="save"){std::string path;in>>std::quoted(path);parsed();daw::savePerformanceDocument(editor.document(),path);std::cout<<"Saved "<<path<<'\n';continue;}
           if(command=="notes"||command=="notes-at"||command=="notes-near"||command=="edits") {
             std::string label;std::size_t offset=0,count=50;double seconds=0;
@@ -116,19 +150,21 @@ int main(int argc,char** argv) {
             listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr,command=="edits");continue;
           }
           if(command=="curves") {end();for(const auto& curve:editor.document().performances[editor.document().active].curves){
-            std::cout<<"curve="<<curve.id<<" channel="<<static_cast<int>(curve.channel)<<" cc="<<static_cast<int>(curve.controller)<<'\n';
+            std::cout<<"curve="<<curve.id<<" channel="<<static_cast<int>(curve.channel)<<" cc="<<static_cast<int>(curve.controller)
+                     <<" mode="<<(curve.stepped?"step":"linear")<<'\n';
             for(const auto& p:curve.points)std::cout<<" point="<<p.id<<" seconds="<<p.seconds<<" value="<<p.value<<'\n';}continue;}
           if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active
-            <<" seconds="<<(audition?static_cast<double>(audition->frame())/48000:0.0)
-            <<" frame="<<(audition?audition->frame():0)
+            <<" seconds="<<(audition?static_cast<double>(audition->frame())/48000:static_cast<double>(cursor)/48000)
+            <<" frame="<<(audition?audition->frame():cursor)
+            <<" range_end_frame="<<range_end<<" repeat="<<repeat
             <<" applied_revision="<<(audition?audition->appliedRevision():editor.revision())<<" applied_frame="<<(audition?audition->appliedFrame():0)<<'\n';continue;}
           // Admission waits for the callback decision before history acceptance.
           // Rejected/cancelled updates leave BOTH document and playback intact.
           if(command=="edit"){daw::NotePerformance note;in>>note.note_id>>note.onset_seconds>>note.duration_scale>>note.velocity;parsed();note.onset_seconds/=1000;editor.set(note);}
           else if(command=="pitch"){std::uint64_t id;daw::ScorePitch pitch;in>>id>>pitch.step>>pitch.alter>>pitch.octave;parsed();editor.setPitch(id,pitch);}
           else if(command=="curve"){std::uint64_t curve,point;double value;in>>curve>>point>>value;parsed();editor.setCurvePoint(curve,point,value);}
-          else if(command=="curve-put") {
-            daw::ControlCurve curve;int channel,cc;in>>curve.id>>channel>>cc;
+          else if(command=="curve-put"||command=="curve-step") {
+            daw::ControlCurve curve;curve.stepped=command=="curve-step";int channel,cc;in>>curve.id>>channel>>cc;
             if(!in||channel<0||channel>15||(cc!=11&&cc!=64))throw std::runtime_error("channel must be 0..15 and CC 11 or 64");
             curve.channel=static_cast<std::uint8_t>(channel);curve.controller=static_cast<std::uint8_t>(cc);
             while(true){in>>std::ws;if(in.eof())break;daw::CurvePoint point;in>>point.id>>point.seconds>>point.value;
@@ -155,8 +191,7 @@ int main(int argc,char** argv) {
                                                    static_cast<std::uint8_t>(cc),id,&adopted);
             editor.putCurve(std::move(curve));
             std::cout<<"Adopted "<<adopted.source_messages<<" messages as "<<adopted.points
-                     <<" points; the lane is now read on a 10 ms grid, worst shift "
-                     <<adopted.worst_shift_seconds*1000<<" ms. Undo restores the original messages.\n";
+                     <<" ordered step points; same-time messages and sample timing preserved within the lane. Undo restores the original messages.\n";
           }
           else if(command=="curve-remove"){std::uint64_t id;in>>id;parsed();editor.removeCurve(id);}
           else if(command=="gain"){double value;in>>value;parsed();editor.setGain(value);}
@@ -171,6 +206,13 @@ int main(int argc,char** argv) {
           else if(command=="redo"){end();editor.redo();}
           else throw std::runtime_error("unknown command");
           std::cout<<"Accepted revision="<<editor.revision()<<'\n';
+          try {
+            if(editor.revision()>0) {
+              if(!recovery)throw std::runtime_error("recovery storage was unavailable at startup");
+              if(editor.revision()>recovery->savedRevision())recovery->checkpoint(editor.document(),editor.revision());
+              std::cout<<"Autosaved revision="<<recovery->savedRevision()<<" recovery="<<recovery->directory()<<'\n';
+            }
+          }catch(const std::exception& e){std::cout<<"AUTOSAVE FAILED (edit remains accepted): "<<e.what()<<"; save a new document now.\n";}
         }catch(const std::exception& e){std::cout<<"Command failed: "<<e.what()<<'\n';}
       }
     }

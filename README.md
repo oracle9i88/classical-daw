@@ -5,14 +5,25 @@ music workstation. The engine is self-contained C++17 with no third-party
 source copied into the tree. It includes an offline score/rendering core and
 an initial native frozen-track playback path; it is not a finished DAW.
 
+[中文试用入口：编译、示例、钢琴试听与恢复](docs/trying-the-alpha.zh-CN.md)
+
+Current audience: technical early testers. There is no signed desktop installer
+or complete native GUI yet. See [editing/recovery behavior and open release gates](docs/alpha-readiness.md).
+
 ## What works in Alpha
 
 - A data-only file entry point now imports supported MusicXML, MIDI or native
   scores into the performance document. The editor can locate notes by measure,
   show pitch/staff/voice/time, and create/remove CC lanes with unified undo.
-  This is **not broad MusicXML coverage**: the first unmodified 1,105-file census
-  passes only 9 files through read + mapping + compilation. Grace notes, same-key
-  overlap and other limitations remain. See [real-score entry and evidence](docs/performance-import.md).
+  The import path has explicit repairs for grace timing, overlap, lyrics and
+  tempo conflicts; these are interpretations, not lossless engraving support.
+  See [current repair policies](docs/score-import-repairs.md) and the
+  [dated original-file census](docs/performance-import.md). Historical corpus
+  figures are not a new measurement of the current branch.
+- Controller adoption now preserves same-frame repedalling as ordered steps.
+  The editor supports stopped seek/range preview, explicit gapped repetition,
+  and per-revision recovery checkpoints. Offline performance bounce uses the
+  saved document output gain. [Behavior and limitations](docs/alpha-readiness.md).
 - An internal eight-bar performance-editing slice separates notation IDs from
   performed-note IDs, stores explicit tie mappings and editable pedal/expression
   curves, and uses one delta-command history for notation/performance/curve/gain
@@ -38,7 +49,7 @@ an initial native frozen-track playback path; it is not a finished DAW.
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
   Cocoa startup handling, concert-pitch factory initialization, saved-state
   pitch-range validation and per-note fixture audio checks. Other installed SWAM instruments and
-  realtime instrument-plugin playback remain pending. See [SWAM Cello setup](docs/swam.md).
+  realtime SWAM playback remain pending. See [SWAM Cello setup](docs/swam.md).
 - Offline multi-instrument sessions route each score part to an independent
   piano/cello instance, with saved gain, stereo balance and instrument state.
   They export aligned stems and a master mix on the shared tempo map, retaining
@@ -56,7 +67,7 @@ an initial native frozen-track playback path; it is not a finished DAW.
 - Native frozen-track playback through CoreAudio, with play/pause/seek/stop,
   live gain/balance/mute/solo/master controls, bounded callback processing and
   startup readiness checks. Hardware callbacks and controls were verified with
-  speaker-silenced probes. GUI and realtime instrument hosting remain pending.
+  speaker-silenced probes. GUI and production multi-instrument realtime hosting remain pending.
   See [playback commands and measured limits](docs/session-playback.md).
 - Optional native `--stream` playback prefetches frozen audio on a disk worker.
   Fixed audio pages use 8 MiB at 64 tracks, independent of duration, while the

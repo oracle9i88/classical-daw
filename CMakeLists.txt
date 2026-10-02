@@ -9,6 +9,7 @@ add_library(daw_engine STATIC
   src/engine/midi.cpp
   src/engine/note_identity.cpp
   src/engine/performance.cpp
+  src/engine/performance_recovery.cpp
   src/engine/live_performance.cpp
   src/engine/live_session.cpp
   src/engine/parallel_render_graph.cpp
@@ -35,6 +36,8 @@ add_library(daw_engine STATIC
 target_link_libraries(daw_engine PUBLIC Threads::Threads)
 target_include_directories(daw_engine PUBLIC src/engine/include)
 target_compile_features(daw_engine PUBLIC cxx_std_17)
+add_executable(daw_performance_recover tools/performance_recover.cpp)
+target_link_libraries(daw_performance_recover PRIVATE daw_engine)
 if(MSVC)
   target_compile_options(daw_engine PRIVATE /W4 /permissive-)
 else()
@@ -99,6 +102,9 @@ add_test(NAME daw_score_import_repair_tests COMMAND daw_score_import_repair_test
 add_executable(daw_import_fidelity_tests tests/import_fidelity_tests.cpp)
 target_link_libraries(daw_import_fidelity_tests PRIVATE daw_engine)
 add_test(NAME daw_import_fidelity_tests COMMAND daw_import_fidelity_tests)
+add_executable(daw_performance_readiness_tests tests/performance_readiness_tests.cpp)
+target_link_libraries(daw_performance_readiness_tests PRIVATE daw_engine)
+add_test(NAME daw_performance_readiness_tests COMMAND daw_performance_readiness_tests)
 
 add_executable(daw_musicxml_entry_tests tests/musicxml_entry_tests.cpp)
 target_link_libraries(daw_musicxml_entry_tests PRIVATE daw_engine)
@@ -281,6 +287,8 @@ if(APPLE)
   target_link_libraries(daw_output_probe PRIVATE daw_coreaudio)
   add_executable(daw_au_realtime_probe tools/au_realtime_probe.cpp)
   target_link_libraries(daw_au_realtime_probe PRIVATE daw_coreaudio daw_au_host)
+  add_executable(daw_performance_range_probe tools/performance_range_probe.cpp)
+  target_link_libraries(daw_performance_range_probe PRIVATE daw_coreaudio daw_au_host)
   add_executable(daw_performance_play tools/performance_play.cpp)
   target_link_libraries(daw_performance_play PRIVATE daw_coreaudio daw_au_host)
   add_executable(daw_performance_render tools/performance_render.cpp)

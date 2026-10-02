@@ -25,3 +25,6 @@ __pycache__/
 *.mix-recovery-*/
 *.collecting/
 *.dawperformance
+
+# Local full performance recovery journals (contain private project/state)
+*.performance-recovery-*/

@@ -76,14 +76,12 @@ forty milliseconds sounds exactly where a note written there would, so nothing
 about when it sounds tells you that you moved it. This is the question you ask
 on reopening a document, and the one you ask after a long session.
 
-`curve-adopt ID CHANNEL CC` turns the controller messages a score already
-carries into an editable lane, which is the difference between hearing the
-pedal a file specifies and being able to change it. A curve owns its lane, so
-adopting replaces those messages at playback and the lane is then read every
-ten milliseconds and interpolated. That is the whole cost, and it is reported:
-on a three-minute piece carrying 137 pedal messages, all 137 survive with
-their own values, none is moved further than one read, and none is ever
-sampled partway through a change. Undo restores the original messages.
+`curve-adopt ID CHANNEL CC` turns imported controller messages into an editable
+ordered step lane. As of 2026-10-02 it preserves their scheduled sample positions
+and same-time release/repress order within the lane; the earlier 10 ms resampling
+policy is replaced. `curve-step` authors this mode; `curve-put` retains linear
+interpolation. Undo restores the original messages. See [format/recovery and
+range-preview details](alpha-readiness.md).
 
 `edit` takes a **performed-note ID**, onset offset in milliseconds, duration
 scale and velocity (`-1` inherits score velocity). `pitch` takes a **notation
@@ -196,8 +194,8 @@ SWAM realtime support, multi-instrument delay compensation, CoreMIDI recording,
 arbitrary plugin voice-parameter editing and graphical editing remain outside.
 The measured Pianoteq latency was zero, so no alignment correction was required.
 
-Limits: one piano part, 4096 attacks, 16 performances, 32 curves, 4096 points per
-curve, 30 minutes including tail, -60..0 dB audition gain. Ambiguous overlapping
+Current limits: one piano part, 16384 attacks, 16 performances, 32 curves, 4096 points per
+curve, 30 minutes including tail, -60..0 dB document output gain. Ambiguous overlapping
 or coincident retriggers on the same MIDI channel/pitch are rejected. Cross-part
 routing remains future work. Curve-time editing and insertion/deletion are now
 available through `curve-put` / `curve-remove` (see the import guide); the original

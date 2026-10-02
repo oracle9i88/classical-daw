@@ -23,6 +23,9 @@ struct ControlCurve {
   std::uint64_t id = 0;
   std::uint8_t channel = 0, controller = 11;
   std::vector<CurvePoint> points;
+  // Ordered, sample-timed steps retain same-time release/reattack pairs.
+  // False is the legacy interpolated 10 ms lane.
+  bool stepped = false;
 };
 struct Performance {
   std::string name;
@@ -38,16 +41,9 @@ Performance makePerformance(const Score& score, const std::string& name);
 
 // Turn the controller messages a score already carries into an editable lane.
 // A curve OWNS its lane: adopting one replaces those messages at playback, and
-// the lane is then sampled every ten milliseconds and interpolated, so the
-// timing a MIDI file specified to the sample is quantised. That is a real cost
-// and the reason this is a command rather than something import does quietly.
-// The step shape survives: each change is written as the old value held until
-// the preceding sampling-grid point, then the new value. CC64 reads as released
-// and CC11 as full before the first message, matching the offline renderer.
-// A time-zero source message replaces that default. Constant lanes receive
-// an equal endpoint at the written end so they remain editable.
-// Reports how many messages became how many points, and the worst shift any
-// message suffers from the ten-millisecond grid.
+// the lane becomes ordered steps, retaining every source message at its sample
+// time, including two messages at the same instant. CC64 is released and CC11
+// full before the first source message. No interpolation is applied on adoption.
 struct CurveAdoptionReport {
   std::uint64_t source_messages = 0;
   std::uint64_t points = 0;
@@ -60,7 +56,7 @@ struct PerformanceDocument {
   std::vector<Performance> performances;
   std::size_t active = 0;
   std::vector<std::uint8_t> piano_state;
-  double gain_db = -12;
+  double gain_db = -12; // document output gain, shared by audition and bounce
 };
 // How many attacks one audition can hold. This bounds a per-track voice ledger
 // in the audio thread and nothing the callback does per block: block work is

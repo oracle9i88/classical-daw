@@ -114,7 +114,7 @@ int main() {
       auto d = daw::performanceFixture({1});
       d.score.parts[0].midi_events = {{0,daw::MidiChannelEventType::ControlChange,0,64,0,0}};
       const auto lane = daw::curveFromScoreMessages(d.score,0,64,1);
-      require(lane.points.size() == 2 && lane.points.front().value == 0 && lane.points.back().value == 0,
+      require(lane.stepped && lane.points.size() == 1 && lane.points.front().value == 0 && lane.points.back().value == 0,
               "constant default lane refused or changed");
     }
 
