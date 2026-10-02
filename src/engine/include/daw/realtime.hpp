@@ -95,8 +95,10 @@ struct InstrumentRenderConfig {
 // The real-time instrument contract.  The owner creates and prepares an
 // implementation outside the callback, queues events from the producer side,
 // then calls render() from exactly one audio thread.  Implementations must not
-// allocate, block, perform I/O, or throw from any of these methods.  reset() is
-// called only after the callback has stopped and makes the instance reusable.
+// allocate, block, perform I/O, or throw from any of these methods.  reset()
+// is called after the callback has stopped and, additionally, on a transport
+// seek from inside the callback, so implementations must tolerate being
+// re-driven immediately afterwards.
 class InstrumentRenderer {
  public:
   virtual ~InstrumentRenderer() = default;
@@ -153,7 +155,18 @@ class SineVoiceBank : public InstrumentRenderer {
 
   void render(float* interleaved_output, std::uint32_t frame_count, std::uint32_t channels,
               double sample_rate) noexcept override {
-    if (interleaved_output == nullptr || channels == 0 || sample_rate <= 0.0) return;
+    if (interleaved_output == nullptr || channels == 0) return;
+    if (sample_rate <= 0.0 || !std::isfinite(sample_rate)) {
+      // Silence-safe contract: a refused call leaves the caller's buffer
+      // silent, never whatever the device buffer happened to hold. The
+      // <=0 test alone passed NaN, which poisoned every later phase step.
+      for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+        for (std::uint32_t channel = 0; channel < channels; ++channel) {
+          interleaved_output[static_cast<std::size_t>(frame) * channels + channel] = 0.0F;
+        }
+      }
+      return;
+    }
     sample_rate_ = sample_rate;
     TimedMidiEvent event;
     while (events_.pop(&event)) apply(event);
@@ -368,6 +381,12 @@ class BlockScheduler {
         break;
       case TransportCommandType::SeekSamples:
         state_.sample_position = command.sample_position < 0 ? 0 : command.sample_position;
+        // A jump invalidates everything scheduled against the old location.
+        // Undispatched events are dropped rather than re-aging as late, and
+        // the instrument is reset so a voice held before the jump cannot
+        // sound across the transport discontinuity.
+        pending_voice_event_count_ = 0;
+        if (renderer_ != nullptr) renderer_->reset();
         break;
       case TransportCommandType::SetTempo:
         if (command.bpm > 0.0 && command.bpm <= 1000000.0) state_.bpm = command.bpm;

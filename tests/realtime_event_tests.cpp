@@ -1,6 +1,7 @@
 #include "daw/realtime.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 
@@ -9,7 +10,7 @@ namespace {
 class RecordingRenderer final : public daw::InstrumentRenderer {
  public:
   bool prepare(const daw::InstrumentRenderConfig&) noexcept override { return true; }
-  void reset() noexcept override { count = 0; }
+  void reset() noexcept override { ++resets; count = 0; }
   bool enqueue(const daw::TimedMidiEvent& event) noexcept override {
     if (count >= events.size()) return false;
     events[count++] = event;
@@ -19,6 +20,7 @@ class RecordingRenderer final : public daw::InstrumentRenderer {
 
   std::array<daw::TimedMidiEvent, 16> events{};
   std::size_t count = 0;
+  std::size_t resets = 0;
 };
 
 int fail(const char* message) {
@@ -101,5 +103,47 @@ int main() {
       midi_renderer.events[3].status != 0xd3) return fail("controller/bend/pressure bytes lost");
   if (midi_scheduler.enqueueMidiEvent({0,0xf0,0,0}) ||
       midi_scheduler.enqueueMidiEvent({0,0xb0,128,0})) return fail("invalid MIDI accepted");
+
+  // A seek drops undispatched future events and resets the instrument, so
+  // nothing scheduled against the old location survives the jump and a
+  // voice held before it cannot sound across the discontinuity.
+  {
+    RecordingRenderer seek_renderer;
+    BlockScheduler seek_scheduler;
+    seek_scheduler.setInstrumentRenderer(&seek_renderer);
+    seek_scheduler.enqueue({TransportCommandType::Start, 0, 120.0});
+    seek_scheduler.enqueueVoiceEvent({VoiceEventType::NoteOn, 72, 100, 5000});
+    seek_scheduler.processBlock(128);
+    if (seek_scheduler.pendingVoiceEventCount() != 1) return fail("seek setup kept no pending event");
+    seek_scheduler.enqueue({TransportCommandType::SeekSamples, 40000, 120.0});
+    seek_scheduler.processBlock(128);
+    if (seek_renderer.resets < 1) return fail("seek did not reset the instrument");
+    if (seek_renderer.count != 0) return fail("seek dispatched a stale event");
+    if (seek_scheduler.pendingVoiceEventCount() != 0) return fail("seek left a stale pending event");
+    if (seek_scheduler.snapshot().voice_event_late_count != 0) return fail("seek aged a dropped event as late");
+  }
+
+  // A non-finite render rate must not poison the buffer or the phase state,
+  // and a refused call must still leave the caller's buffer silent.
+  {
+    SineVoiceBank bank;
+    InstrumentRenderConfig config;
+    config.max_frames_per_block = 64;
+    config.channels = 2;
+    if (!bank.prepare(config)) return fail("sine bank prepare");
+    std::array<float, 128> buffer;
+    buffer.fill(0.5F);
+    bank.render(buffer.data(), 64, 2, std::nan(""));
+    for (float sample : buffer)
+      if (sample != 0.0F) return fail("non-finite render rate left the buffer dirty");
+    if (!bank.enqueue(TimedMidiEvent{0, 0x90, 69, 100})) return fail("sine bank event enqueue");
+    bank.render(buffer.data(), 64, 2, 48000.0);
+    bool any_nonzero = false;
+    for (float sample : buffer) {
+      if (!std::isfinite(sample)) return fail("NaN render rate poisoned later audio");
+      if (sample != 0.0F) any_nonzero = true;
+    }
+    if (!any_nonzero) return fail("note-on after refused render produced silence");
+  }
   return 0;
 }
