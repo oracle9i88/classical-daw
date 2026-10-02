@@ -404,11 +404,19 @@ bool looksLikeZipArchive(const std::string& bytes) {
 namespace {
 
 std::vector<std::uint8_t> readFileBytes(const std::string& path, std::string* error) {
-  std::ifstream input(path, std::ios::binary);
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
   if (!input) {
     if (error) *error = "cannot open archive file";
     return {};
   }
+  // Apply the ceiling to the file before materialising it; a 400 MB
+  // candidate used to be paid for in full just to be refused afterwards.
+  const std::streamoff file_bytes = input.tellg();
+  if (file_bytes >= 0 && static_cast<std::size_t>(file_bytes) > kMaxArchiveBytes) {
+    if (error) *error = "archive exceeds the Alpha size limit";
+    return {};
+  }
+  input.seekg(0);
   std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
                                   std::istreambuf_iterator<char>());
   if (input.bad()) {

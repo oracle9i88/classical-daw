@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -19,6 +20,12 @@ namespace daw {
 namespace {
 
 using Bytes = std::vector<std::uint8_t>;
+
+// Refuse oversized inputs by size before reading them. Without this gate a
+// one-gigabyte .mid cost roughly twenty times its own size in peak memory,
+// because the byte vector, per-track vectors and note lists all scale with
+// the file. Matches the .mxl container's archive ceiling.
+constexpr std::size_t kMaxMidiBytes = 64U * 1024 * 1024;
 
 void putU16(Bytes& out, std::uint16_t value) {
   out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xff));
@@ -262,6 +269,11 @@ bool readMidiFile(const std::string& path, MidiFile* file, std::string* error,
     return false;
   }
   try {
+    std::error_code size_error;
+    const std::uintmax_t file_bytes = std::filesystem::file_size(path, size_error);
+    if (!size_error && file_bytes > kMaxMidiBytes) {
+      throw std::runtime_error("MIDI file exceeds the Alpha size limit");
+    }
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("cannot open MIDI file");
     const Bytes data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());

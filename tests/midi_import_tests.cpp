@@ -74,6 +74,20 @@ int main() {
     save(path, file(384, {triplets}));
     require(daw::readMidiFile(path.string(), &midi, &error, &report), error);
     require(midi.ticks_per_quarter == 960 && report.source_ticks_per_quarter == 384, "PPQ metadata");
+    {
+      // A file above the ceiling is refused by size, before its bytes are
+      // read. The sparse resize keeps this fixture cheap on any filesystem.
+      const auto big = std::filesystem::temp_directory_path() / "classical_daw_oversize.mid";
+      save(big, file(384, {triplets}));
+      std::filesystem::resize_file(big, 64U * 1024 * 1024 + 1);
+      daw::MidiFile oversized;
+      std::string oversize_error;
+      require(!daw::readMidiFile(big.string(), &oversized, &oversize_error),
+              "oversized MIDI was accepted");
+      require(oversize_error.find("size limit") != std::string::npos,
+              "oversized MIDI refusal wording: " + oversize_error);
+      std::filesystem::remove(big);
+    }
     require(midi.tracks[0].notes.size() == 3 && report.rounded_note_boundaries == 0, "exact triplet count");
     for (int i = 0; i < 3; ++i) {
       const auto& note = midi.tracks[0].notes[static_cast<std::size_t>(i)];

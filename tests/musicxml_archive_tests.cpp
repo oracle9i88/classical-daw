@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -278,6 +280,25 @@ int main() {
       require(central != std::string::npos, "fixture lost its central entry");
       patch16(archive, central - 26, 4U);  // compressed size, in the 46-byte header
       require(refuses(archive, "stored"), "stored size refusal wording");
+    }
+    {
+      // The ceiling applies to the file before its bytes are read: a
+      // 400 MB candidate used to be paid for in full just to be refused.
+      const auto path = std::filesystem::temp_directory_path() / "classical_daw_oversize.mxl";
+      {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.put('P');
+        require(static_cast<bool>(out), "oversize fixture write failed");
+        out.flush();
+        std::filesystem::resize_file(path, 64U * 1024 * 1024 + 1);  // sparse
+      }
+      daw::Score score;
+      std::string error;
+      require(!daw::readMusicXmlArchiveFile(path.string(), &score, &error),
+              "oversized archive was accepted");
+      require(error.find("size limit") != std::string::npos,
+              "oversized archive refusal wording: " + error);
+      std::filesystem::remove(path);
     }
     std::cout << "PASS deflate+stored .mxl through container and lone-member paths, "
                  "refused truncation, zip64, encryption, unknown methods, escaping and "

@@ -172,6 +172,10 @@ layer (engine `musicxml_container.cpp`) fails closed:
   table, unary distance codes, declared-size budget) and shares no code with
   the writer used to generate the fixtures
   (`scripts/make_musicxml_archive_fixture.py`, Python `zipfile`).
+- The 64 MiB archive ceiling is applied to the file's size before a single
+  byte is materialised, and `.mid` input meets the same ceiling before its
+  own read (`midi.cpp`); an oversized candidate never pays its size in
+  memory just to be refused. Both refusals carry their own reason text.
 
 `daw_performance_import` prints the chosen member, its method, whether a
 container named it, and the decompressed size, so a wrong pick is visible at
