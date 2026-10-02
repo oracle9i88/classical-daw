@@ -6,7 +6,10 @@ on:
 
 jobs:
   cmake:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: an image bump silently changed libstdc++
+    # behaviour under the sanitizers once already (nothrow new in
+    # std::stable_sort). Drift should be a deliberate commit, not weather.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Configure
@@ -16,8 +19,22 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  macos:
+    # The platform layer (CoreAudio, AU hosting, CoreMIDI) builds only under
+    # if(APPLE), so no Linux job ever compiles it. This job closes that gap;
+    # hardware acceptance with real devices and plugins stays manual.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   sanitizers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Configure with AddressSanitizer and UndefinedBehaviorSanitizer

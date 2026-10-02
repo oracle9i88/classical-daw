@@ -24,6 +24,20 @@ document/history and real AU graph integration are still pending.
 
 ## Completed in this iteration
 
+- Close the first audit batch. Project files are locale-split no longer: the
+  loader parses doubles with `from_chars` and the writer pins the classic
+  locale, so a host that called `setlocale` with comma decimals can open and
+  re-save fractional tempos (round-trip check in `daw_project_tests`, skipped
+  where the locale is not installed). A transport seek now drops undispatched
+  voice events and resets the instrument from inside the callback, and a
+  non-finite render rate leaves the caller's buffer silent instead of
+  poisoning it (`daw_realtime_event_tests`). MIDI and `.mxl` inputs are
+  refused by a 64 MiB size ceiling before their bytes are read.
+- CI compiles the `if(APPLE)` platform layer on a macOS runner instead of
+  leaving ~1,150 lines of CoreAudio/AU/CoreMIDI code uncompiled everywhere
+  else; Linux jobs pin `ubuntu-24.04` because a runner image bump already
+  once flipped sanitizer behaviour on its own.
+
 - Import compressed `.mxl` through a self-contained, fail-closed Zip/inflate
   container reader: end-record reconciliation, OMA `container.xml` rootfile
   lookup with lone-member fallback, declared-size/CRC32 verification, and
