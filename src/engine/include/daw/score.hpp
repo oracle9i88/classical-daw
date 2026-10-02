@@ -157,12 +157,15 @@ struct MusicXmlImportReport {
   // warning when it does not: the bar lines you see may be another part's.
   std::uint64_t unsynchronized_parts = 0;
   // Parts whose time signatures disagree. Same story as the bar lines: the
-  // global map comes from the longest part, and a caller keeping one part is
-  // not harmed by what another part is in.
+  // global map comes from the longest part. To preserve a selected part's
+  // own map, select it during readMusicXmlFile, before local maps are discarded.
   std::uint64_t conflicting_part_meters = 0;
 };
+// Zero reads all parts. A one-based selection retains that part's initial
+// meter and changes, and routes its implicit-channel controllers to channel 0.
+// Tempo declarations remain score-global. Other parts are still parsed.
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error = nullptr,
-                      MusicXmlImportReport* report = nullptr);
+                      MusicXmlImportReport* report = nullptr, std::size_t one_based_part = 0);
 
 // Make an imported score playable by the audition path. MIDI 1.0 cannot address
 // two same-pitch notes on one channel at once, and the score-to-MIDI bridge only
@@ -196,6 +199,8 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report);
 // messages were numbered for the part it used to be, so those follow it.
 // Messages carrying an explicit route came from a MIDI file and already agree
 // with the notes beside them, so they are left exactly as they are.
+// This cannot recover local meters discarded by an earlier multi-part import;
+// for MusicXML use readMusicXmlFile's selection argument instead.
 void selectScorePart(Score& score, std::size_t one_based_part);
 
 }  // namespace daw

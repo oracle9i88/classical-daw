@@ -917,7 +917,7 @@ bool writeMusicXmlFile(const Score& score, const std::string& path, std::string*
 }
 
 bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
-                      MusicXmlImportReport* report) {
+                      MusicXmlImportReport* report, std::size_t one_based_part) {
   if (score == nullptr) {
     if (error) *error = "score output pointer is null";
     return false;
@@ -1038,12 +1038,14 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
       Tick furthest_tempo = 0;
       using VoiceKey = std::pair<std::uint16_t, std::uint16_t>;  // staff, voice
       std::map<VoiceKey, Tick> last_note_starts;
+      std::map<VoiceKey, Tick> last_grace_delays;
       std::map<VoiceKey, bool> have_notes;
       bool have_timed_event = false;
       bool have_measure_meter = false;
       bool have_tempo_event = false;
       bool have_measure_divisions = false;
-      for (const TimedBlock& event : events) {
+      for (std::size_t event_index = 0; event_index < events.size(); ++event_index) {
+        const TimedBlock& event = events[event_index];
         if (event.tag == "attributes") {
           const auto& block = event.block;
           const auto divisions = findBlocks(xml, "divisions", block.content_start, block.content_end);
@@ -1253,6 +1255,7 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
         note.staff = static_cast<std::uint16_t>(staff_number);
         const VoiceKey key{note.staff, note.voice};
         if (note.chord && !have_notes[key]) throw std::runtime_error("MusicXML chord cannot be the first note in a voice");
+        if (!is_grace && !note.chord) last_grace_delays[key] = 0;
         // Settle graces waiting on this voice before the principal claims the
         // cursor. They sound at the cursor and push the principal later; the
         // principal keeps at least half of its written value.
@@ -1263,7 +1266,21 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
             if (index > 0 && waiting[index].note.chord) continue;  // sounds with its neighbour
             wanted += waiting[index].nominal;
           }
-          const Tick granted = std::min(wanted, duration / 2);
+          // The whole principal chord lends time. Bound the loan by its
+          // shortest tone so every tone can retain its original release.
+          Tick shortest = duration;
+          for (std::size_t following = event_index + 1; following < events.size(); ++following) {
+            const auto& tone = events[following];
+            if (tone.tag != "note" ||
+                !hasElement(xml, "chord", tone.block.content_start, tone.block.content_end) ||
+                hasSelfClosingTag(xml, "grace", tone.block.content_start, tone.block.content_end)) break;
+            const auto raw = timingText(textIn(xml, "duration", tone.block.content_start,
+                                               tone.block.content_end, true), "duration");
+            const Tick length = roundedXmlTicks(addTiming(source_position, raw, false), source_divisions, nullptr) -
+                                roundedXmlTicks(source_position, source_divisions, nullptr);
+            shortest = std::min(shortest, std::max<Tick>(1, length));
+          }
+          const Tick granted = std::min(wanted, shortest / 2);
           if (granted <= 0) {
             report->grace_notes_dropped += waiting.size();
           } else {
@@ -1294,12 +1311,18 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
               ++report->grace_notes_timed;
             }
             cursor += spent;
+            last_grace_delays[key] = spent;
             duration -= spent;
             // note.duration was taken from the unshortened value above.
             note.duration = duration;
             have_notes[key] = true;
           }
           waiting.clear();
+        }
+        if (!is_grace && note.chord && last_grace_delays[key] > 0) {
+          duration -= last_grace_delays[key];
+          if (duration <= 0) throw std::runtime_error("grace borrowing exhausts principal chord tone");
+          note.duration = duration;
         }
         const Tick local_start = note.chord ? last_note_starts[key] : cursor;
         if (local_start < 0 || measure_start > std::numeric_limits<Tick>::max() - local_start) {
@@ -1403,6 +1426,16 @@ bool readMusicXmlFile(const std::string& path, Score* score, std::string* error,
       parsed.parts.push_back(parse_part(part_block, name->second));
     }
     if (seen_parts.size() != part_names.size()) throw std::runtime_error("MusicXML part-list contains an unreferenced score-part");
+    if (one_based_part != 0) {
+      // Select while the per-part maps still exist; selecting an already
+      // flattened Score cannot recover the chosen part's meter.
+      selectScorePart(parsed, one_based_part);
+      auto meters = std::move(part_meters.at(one_based_part - 1));
+      const auto end = part_ends.at(one_based_part - 1);
+      part_meters.clear();
+      part_meters.push_back(std::move(meters));
+      part_ends.assign(1, end);
+    }
     const auto reference = synchronousReference(parsed.parts, part_ends, report);
     requireSharedMeters(part_meters, part_ends, reference, report);
     parsed.time_signature = part_meters[reference].front().signature;

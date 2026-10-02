@@ -194,6 +194,8 @@ ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, st
   // Before its first message a pedal is up and expression is full: the same
   // starting values the offline renderer assumes.
   int held = controller == 64 ? 0 : 127;
+  const auto initial = changes.find(0);
+  if (initial != changes.end()) held = initial->second;
   std::uint64_t next_point = 1;
   double worst = 0;
   curve.points.push_back({next_point++, 0, static_cast<double>(held)});
@@ -218,7 +220,22 @@ ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, st
       held = value;
     }
   }
-  require(curve.points.size() >= 2, "adopting this lane would leave a curve with one point");
+  if (curve.points.size() == 1) {
+    // A constant lane is still editable. Give it a second equal point at
+    // the written end rather than discarding its time-zero initialization.
+    std::string error;
+    if (!validateScore(score, &error)) throw std::invalid_argument(error);
+    Tick end = 0;
+    for (const auto& part : score.parts) {
+      for (const auto& measure : part.measures) {
+        end = std::max(end, measure.start + measure.duration);
+        for (const auto& note : measure.notes) end = std::max(end, note.start + note.duration);
+      }
+      for (const auto& event : part.midi_events) end = std::max(end, event.tick);
+    }
+    require(end > 0, "constant lane requires a positive score extent");
+    curve.points.push_back({next_point++, tempo.tickToSeconds(end), static_cast<double>(held)});
+  }
   require(curve.points.size() <= 4096, "this lane has more changes than a curve can hold");
   if (report != nullptr) {
     report->source_messages = seen;

@@ -42,8 +42,10 @@ Performance makePerformance(const Score& score, const std::string& name);
 // timing a MIDI file specified to the sample is quantised. That is a real cost
 // and the reason this is a command rather than something import does quietly.
 // The step shape survives: each change is written as the old value held until
-// one millisecond before it, then the new value. CC64 reads as released and
-// CC11 as full before the first message, matching the offline renderer.
+// the preceding sampling-grid point, then the new value. CC64 reads as released
+// and CC11 as full before the first message, matching the offline renderer.
+// A time-zero source message replaces that default. Constant lanes receive
+// an equal endpoint at the written end so they remain editable.
 // Reports how many messages became how many points, and the worst shift any
 // message suffers from the ten-millisecond grid.
 struct CurveAdoptionReport {

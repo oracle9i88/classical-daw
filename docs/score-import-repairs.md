@@ -37,6 +37,11 @@ the end of a bar to decorate the downbeat of the next one. Dots and
 `steal-time-*` attributes are not interpreted; the corpus uses neither, and the
 borrowed value is capped against the principal regardless.
 
+For a principal chord, the loan is capped at half of its shortest tone. Every
+tone starts after the grace and retains its own original release; borrowing
+must not extend a bar or move another voice. This also applies when the grace
+was written at the end of the preceding bar.
+
 ## Pedal is read, not invented
 
 A MIDI file carries its own CC64 and always has: import preserves it, and the
@@ -64,10 +69,17 @@ Parts that disagree about where a bar starts, or about what meter they are
 in, used to refuse the whole file. That denies every part at once, including
 the one the caller wanted, and a part's own notes keep their places regardless
 of what another part does. Both are now counted instead. A Score keeps one
-global meter map and it is taken from the longest part, so the bar numbers a
-multi-part read reports may be another part's; the importer says so when it
-sees the disagreement and no part was chosen. The strict path still refuses,
-and now says which bar and by how many ticks.
+global meter map and it is taken from the longest part for an all-parts read.
+`--part N` selects inside the MusicXML reader, before local meter maps are
+discarded, and retains the selected part's initial meter and later changes.
+The library's `readMusicXmlFile` has the same optional one-based selection;
+`selectScorePart` on an already flattened Score cannot recover a discarded
+local meter map. Tempo declarations remain score-global. Strict all-parts
+reads still refuse disagreements and say which bar and by how many ticks.
+
+These fixes apply to new imports. Existing projects that already lost local
+meter information or contain grace-induced bar drift need re-import from the
+original MusicXML; the application cannot reconstruct discarded source data.
 
 Alone, a part's unrouted notes address channel zero while its own controller
 messages still carry the number of the part it used to be. A pedal sent to a

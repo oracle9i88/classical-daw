@@ -30,13 +30,14 @@ int main(int argc, char** argv) {
     daw::PerformanceDocument d;std::string error;
     stage="score_read";bool ok=false;
     daw::MusicXmlImportReport repairs;daw::ScoreRepairReport fixes;
-    if(extension==".xml"||extension==".musicxml")ok=daw::readMusicXmlFile(source.string(),&d.score,&error,&repairs);
+    const bool is_xml=extension==".xml"||extension==".musicxml";
+    if(is_xml)ok=daw::readMusicXmlFile(source.string(),&d.score,&error,&repairs,wanted);
     else if(extension==".mid"||extension==".midi")ok=daw::readMidiScoreFile(source.string(),&d.score,&error,&fixes);
     else if(extension==".dawproj")ok=daw::readProjectFile(source.string(),&d.score,&error);
     else throw std::runtime_error("unsupported source extension (compressed .mxl is not supported)");
     if(!ok)throw std::runtime_error(error);
     stage="select_part";
-    if(wanted!=0) {
+    if(wanted!=0 && !is_xml) {
       daw::selectScorePart(d.score,wanted);
     } else if(d.score.parts.size()>1) {
       std::string names;
