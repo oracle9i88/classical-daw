@@ -32,6 +32,7 @@ build/daw_performance_play study-work
 编辑器中输入：
 
 ```text
+provenance
 notes 0 12
 play
 stop
@@ -61,6 +62,15 @@ quit
 build/daw_performance_render study-edited study-bounce
 ```
 
+
+单独导出导入记录，不加载音源：
+
+```sh
+build/daw_performance_provenance study-work > import-report.json
+```
+
+记录指向导入时的记谱音符、小节和修改前后值；之后编辑不会改写这份历史。旧工程没有记录时会明确提示，不能自动补造。含记录的新工程使用 v3 格式，旧版程序不能打开；新版仍能读 v1/v2。
+
 ## 意外退出后恢复
 
 每条成功的编辑命令后，编辑器在源工程旁边保存恢复点，保留最近两份完整修订。看到 `Autosaved revision=...` 才表示本次恢复点写入成功；`AUTOSAVE FAILED` 表示编辑仍在内存，需要手动 `save`。
@@ -74,7 +84,7 @@ build/daw_performance_recover restore study-work "上条命令列出的完整恢
 
 ## 目前的边界
 
-- MusicXML 导入会进行有报告的修复；反复、装饰音、力度解释、复杂记谱的完整保真仍未完成。修复计数目前打印到终端；逐条修复来源尚未随工程保存。保留原谱和导入输出。
+- MusicXML 导入会进行有报告的修复；反复、装饰音、力度解释、复杂记谱的完整保真仍未完成。新工程会保存读取阶段的分类计数，以及进入试听前的逐条缩音、静音和断延音记录。倚音等读取阶段的逐条原始位置仍未覆盖。保留原谱，详见[修复记录](import-repair-provenance.md)。
 - 实时演奏文档仍为单钢琴声部；双 AU 图的基础设施已有测试，尚未接成完整用户流程。钢琴/大提琴多轨离线渲染、冻结轨播放是另一条已有路径，见[多乐器工程](sessions.md)。
 - 没有完整的原生图形编辑器、通用插件扫描器、低延迟 MIDI 键盘监听，也没有签名安装包。
 - 仓库内的历史测试数字只覆盖记录的版本与工况。打开某一首曲子不代表整个古典曲库都能正确导入；请对照谱面和听感。

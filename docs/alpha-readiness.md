@@ -97,8 +97,8 @@ approval. Short documents are rejected before rendering.
 
 ## Remaining public-use gates
 
-Production multi-instrument live documents/PDC integration; granular import
-provenance; large-score autosave/seek turnaround measurements; complete GUI,
+Production multi-instrument live documents/PDC integration; granular XML/MIDI
+reader provenance (the audition repair pass now has [persisted records](import-repair-provenance.md)); large-score autosave/seek turnaround measurements; complete GUI,
 installation packaging and testing on a clean independent machine. These remain
 open. No workflow is dispatched or retried by this work.
 

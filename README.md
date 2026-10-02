@@ -12,6 +12,11 @@ or complete native GUI yet. See [editing/recovery behavior and open release gate
 
 ## What works in Alpha
 
+- New imports retain [repair receipts](docs/import-repair-provenance.md): source
+  fingerprint, reader repair counts, and addressed before/after notes for the
+  audition repair pass. Receipts survive editing, save/reopen and recovery;
+  individual XML/MIDI reader losses still have aggregate-only coverage.
+
 - A data-only file entry point now imports supported MusicXML, MIDI or native
   scores into the performance document. The editor can locate notes by measure,
   show pitch/staff/voice/time, and create/remove CC lanes with unified undo.

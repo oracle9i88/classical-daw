@@ -17,3 +17,6 @@ build/daw_performance_import --check examples/classical-study/study.musicxml
 
 See [中文试用说明](../../docs/trying-the-alpha.zh-CN.md) for building, listening,
 editing, bouncing and recovery.
+
+[The import receipt](import-receipt.json) records the three actual one-tick changes.
+It contains no instrument state or audio, and is reproducible from this XML.

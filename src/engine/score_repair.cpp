@@ -43,22 +43,29 @@ struct Chain {
   long long pitch = 0;
 };
 
-void silence(const Chain& chain) {
+template<class Change>
+void silence(const Chain& chain, Change change) {
   for (ScoreNote* segment : chain.segments) {
-    segment->rest = true;
-    // A rest carries neither a tie nor a chord marker: the project format
-    // rejects both, and a silenced chord tone is simply a rest at that spot.
-    segment->tie_start = false;
-    segment->tie_stop = false;
-    segment->chord = false;
-    segment->lyric.clear();
+    change(*segment,"overlap_silenced",[&]{
+      segment->rest = true;
+      // A rest carries neither a tie nor a chord marker: the project format
+      // rejects both, and a silenced chord tone is simply a rest at that spot.
+      segment->tie_start = false;
+      segment->tie_stop = false;
+      segment->chord = false;
+      segment->lyric.clear();
+    });
   }
 }
 
-void release(const Chain& chain, ScoreRepairReport* report) {
+template<class Change>
+void release(const Chain& chain, ScoreRepairReport* report, Change change) {
   for (ScoreNote* segment : chain.segments) {
-    segment->tie_start = false;
-    segment->tie_stop = false;
+    if(!segment->tie_start && !segment->tie_stop)continue;
+    change(*segment,"broken_tie_released",[&]{
+      segment->tie_start = false;
+      segment->tie_stop = false;
+    });
   }
   ++report->broken_tie_chains_released;
 }
@@ -83,11 +90,22 @@ void selectScorePart(Score& score, std::size_t one_based_part) {
   score.parts.assign(1, std::move(chosen));
 }
 
-void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
+void repairScoreForAudition(Score& score, ScoreRepairReport* report, std::vector<ScoreRepairChange>* changes) {
   if (report == nullptr) return;
   for (std::size_t part_index = 0; part_index < score.parts.size(); ++part_index) {
     ScorePart& part = score.parts[part_index];
 
+    std::map<ScoreNote*,std::pair<std::size_t,std::size_t>> locations;
+    if(changes)for(std::size_t m=0;m<part.measures.size();++m)
+      for(std::size_t n=0;n<part.measures[m].notes.size();++n)
+        locations.emplace(&part.measures[m].notes[n],std::make_pair(m,n));
+    const auto change=[&](ScoreNote& note,const char* reason,auto mutate){
+      if(!changes){mutate();return;}
+      if(changes->size()>=65536)throw std::length_error("detailed repair limit exceeded");
+      const auto at=locations.at(&note);
+      ScoreRepairChange record{reason,part_index,at.first,at.second,note,{}};
+      mutate();record.after=note;changes->push_back(std::move(record));
+    };
     std::vector<ScoreNote*> ordered;
     for (ScoreMeasure& measure : part.measures) {
       for (ScoreNote& note : measure.notes) {
@@ -125,13 +143,13 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
       // One repair per chain, not per flag: a stop that cannot join its chain
       // and the chain it abandons are the same problem counted once below.
       if (note->tie_stop) {
-        note->tie_stop = false;
+        change(*note,"broken_tie_released",[&]{note->tie_stop = false;});
         if (held == open.end()) ++report->broken_tie_chains_released;
       }
       // This note is a fresh attack, so any chain still open on this key can
       // never receive its continuation.
       if (held != open.end()) {
-        release(chains[held->second], report);
+        release(chains[held->second], report, change);
         open.erase(held);
       }
       chains.push_back({{note}, note->start, note->start + note->duration, channelOf(*note),
@@ -140,7 +158,7 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
     }
     // A chain still open at the end never got its final stop. Its last segment
     // may itself carry a stop, so clearing only the starts would strand it.
-    for (const auto& leftover : open) release(chains[leftover.second], report);
+    for (const auto& leftover : open) release(chains[leftover.second], report, change);
 
     // Releasing a tie above left the chains that carried it describing notes
     // that no longer sound as one. Rebuild from the flags that survived, so
@@ -193,7 +211,7 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
           const Tick wanted = current.start - 1 - tail->start;
           if (wanted > 0) {
             const bool merely_adjacent = previous.end == current.start;
-            tail->duration = wanted;
+            change(*tail,merely_adjacent?"repeat_separated":"overlap_trimmed",[&]{tail->duration = wanted;});
             previous.end = tail->start + wanted;
             if (merely_adjacent) ++report->repeats_separated;
             else ++report->overlaps_trimmed;
@@ -205,7 +223,7 @@ void repairScoreForAudition(Score& score, ScoreRepairReport* report) {
         // reaches further, so the repair loses as little sounding music as it
         // can; nothing here can recover which voice the author meant.
         const bool current_reaches_further = current.end > previous.end;
-        silence(current_reaches_further ? previous : current);
+        silence(current_reaches_further ? previous : current, change);
         (current_reaches_further ? previous : current).end =
             (current_reaches_further ? previous : current).start;
         ++report->overlaps_silenced;

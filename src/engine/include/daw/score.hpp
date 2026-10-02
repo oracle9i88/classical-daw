@@ -190,7 +190,15 @@ struct ScoreRepairReport {
   // an exporter wrote as several tracks, commonly one per staff.
   std::uint64_t merged_instrument_tracks = 0;
 };
-void repairScoreForAudition(Score& score, ScoreRepairReport* report);
+// Optional detailed audit of this pass, in mutation order. Indices are zero-
+// based in the selected score BEFORE ID assignment, not XML source offsets.
+struct ScoreRepairChange {
+  std::string reason;
+  std::size_t part_index=0, measure_index=0, note_index=0;
+  ScoreNote before, after;
+};
+void repairScoreForAudition(Score& score, ScoreRepairReport* report,
+                           std::vector<ScoreRepairChange>* changes=nullptr);
 
 // Keep one part and discard the rest, one-based. An audition plays one
 // instrument, so a quartet or a two-staff export is otherwise simply

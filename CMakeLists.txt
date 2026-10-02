@@ -8,6 +8,7 @@ enable_testing()
 add_library(daw_engine STATIC
   src/engine/midi.cpp
   src/engine/note_identity.cpp
+  src/engine/import_receipt.cpp
   src/engine/performance.cpp
   src/engine/performance_recovery.cpp
   src/engine/live_performance.cpp
@@ -36,6 +37,8 @@ add_library(daw_engine STATIC
 target_link_libraries(daw_engine PUBLIC Threads::Threads)
 target_include_directories(daw_engine PUBLIC src/engine/include)
 target_compile_features(daw_engine PUBLIC cxx_std_17)
+add_executable(daw_performance_provenance tools/performance_provenance.cpp)
+target_link_libraries(daw_performance_provenance PRIVATE daw_engine)
 add_executable(daw_performance_recover tools/performance_recover.cpp)
 target_link_libraries(daw_performance_recover PRIVATE daw_engine)
 if(MSVC)
@@ -102,6 +105,9 @@ add_test(NAME daw_score_import_repair_tests COMMAND daw_score_import_repair_test
 add_executable(daw_import_fidelity_tests tests/import_fidelity_tests.cpp)
 target_link_libraries(daw_import_fidelity_tests PRIVATE daw_engine)
 add_test(NAME daw_import_fidelity_tests COMMAND daw_import_fidelity_tests)
+add_executable(daw_import_receipt_tests tests/import_receipt_tests.cpp)
+target_link_libraries(daw_import_receipt_tests PRIVATE daw_engine)
+add_test(NAME daw_import_receipt_tests COMMAND daw_import_receipt_tests)
 add_executable(daw_performance_readiness_tests tests/performance_readiness_tests.cpp)
 target_link_libraries(daw_performance_readiness_tests PRIVATE daw_engine)
 add_test(NAME daw_performance_readiness_tests COMMAND daw_performance_readiness_tests)

@@ -1,5 +1,6 @@
 // Data-only bridge. Never instantiate a plugin or open an output device.
 #include "daw/performance.hpp"
+#include "daw/import_receipt.hpp"
 #include "daw/project.hpp"
 #include "daw/score_midi.hpp"
 #include <filesystem>
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
     auto extension=source.extension().string();
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
     daw::PerformanceDocument d;std::string error;
+    stage="source_fingerprint";const auto source_fingerprint=daw::fingerprintImportSource(source.string());
     stage="score_read";bool ok=false;
     daw::MusicXmlImportReport repairs;daw::ScoreRepairReport fixes;
     const bool is_xml=extension==".xml"||extension==".musicxml";
@@ -46,7 +48,8 @@ int main(int argc, char** argv) {
       throw std::runtime_error("this score has "+std::to_string(d.score.parts.size())+
         " parts and the audition plays one. Choose one:"+names);
     }
-    stage="repair";daw::repairScoreForAudition(d.score,&fixes);
+    daw::ScoreRepairReport audition_repairs;std::vector<daw::ScoreRepairChange> changes;
+    stage="repair";daw::repairScoreForAudition(d.score,&audition_repairs,&changes);
     stage="identity_mapping";daw::assignNoteIds(d.score);
     d.performances.push_back(daw::makePerformance(d.score,"Imported timing"));
     stage="performance_compile";
@@ -55,6 +58,11 @@ int main(int argc, char** argv) {
     // only fails when someone tries to keep it.
     stage="validate";
     if(!daw::validateScore(d.score,&error))throw std::runtime_error(error);
+    stage="import_receipt";
+    const auto after_read=daw::fingerprintImportSource(source.string());
+    if(after_read.bytes!=source_fingerprint.bytes||after_read.fnv1a64!=source_fingerprint.fnv1a64)
+      throw std::runtime_error("source changed during import; retry with an unchanged file");
+    d.import_receipt=daw::makeImportReceipt(source_fingerprint,wanted,repairs,fixes,audition_repairs,changes,d.score);
     if(!check) {
       stage="state_read";
       const auto size=std::filesystem::file_size(plain.at(1));
@@ -69,10 +77,10 @@ int main(int argc, char** argv) {
     std::cout<<"PASS parts="<<d.score.parts.size()<<" measures="<<measures<<" notation_elements="<<notes
              <<" performed_notes="<<d.performances.front().mapping.size()<<" curves=0 frames="<<sequence.frames
              <<" plugins_opened=0 output_devices_opened=0\n";
-    std::cout<<"Repairs: repeats_separated="<<fixes.repeats_separated
-             <<" overlaps_trimmed="<<fixes.overlaps_trimmed
-             <<" overlaps_silenced="<<fixes.overlaps_silenced
-             <<" broken_ties_released="<<fixes.broken_tie_chains_released
+    std::cout<<"Repairs: repeats_separated="<<(fixes.repeats_separated+audition_repairs.repeats_separated)
+             <<" overlaps_trimmed="<<(fixes.overlaps_trimmed+audition_repairs.overlaps_trimmed)
+             <<" overlaps_silenced="<<(fixes.overlaps_silenced+audition_repairs.overlaps_silenced)
+             <<" broken_ties_released="<<(fixes.broken_tie_chains_released+audition_repairs.broken_tie_chains_released)
              <<" grace_notes_timed="<<repairs.grace_notes_timed
              <<" grace_notes_dropped="<<repairs.grace_notes_dropped
              <<" conflicting_tempos_resolved="<<repairs.conflicting_tempos_resolved
@@ -85,6 +93,7 @@ int main(int argc, char** argv) {
       std::cout<<"Note: parts disagree about bar lines or meter, and a score keeps one global map, "
                  "so the bar numbers above are the longest part's. Use --part N to work from one part.\n";
     }
+    std::cout<<"Import receipt: detailed_note_changes="<<changes.size()<<" reader_coverage=aggregate_only; use provenance in the editor to inspect saved records.\n";
     std::cout<<"Scope: supported written-note timeline, not engraving or repeat/ornament interpretation. No control curves invented; use curve-put to author a lane.\n";
   }catch(const std::exception& e){std::cerr<<"FAIL stage="<<stage<<" reason="<<e.what()<<'\n';return 1;}
 }

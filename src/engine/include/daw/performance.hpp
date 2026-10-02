@@ -57,6 +57,9 @@ struct PerformanceDocument {
   std::size_t active = 0;
   std::vector<std::uint8_t> piano_state;
   double gain_db = -12; // document output gain, shared by audition and bounce
+  // Immutable historical import receipt, not a description of later edits.
+  // Empty for legacy documents. Inert text retained through saves and recovery.
+  std::string import_receipt;
 };
 // How many attacks one audition can hold. This bounds a per-track voice ledger
 // in the audio thread and nothing the callback does per block: block work is

@@ -1,4 +1,5 @@
 #include "daw/performance.hpp"
+#include "daw/import_receipt.hpp"
 #include "daw/score_midi.hpp"
 #include "daw/project.hpp"
 #include "daw/frozen_track.hpp"
@@ -23,6 +24,17 @@ std::string read(const std::filesystem::path& path, std::size_t limit) {
   require(bool(in) && n >= 0 && static_cast<std::uint64_t>(n) <= limit, "document dependency exceeds bound or cannot be read");
   std::string bytes(static_cast<std::size_t>(n), '\0'); in.seekg(0); in.read(bytes.data(), n);
   require(bool(in) && in.peek() == std::char_traits<char>::eof() && !in.bad(), "document read failed or file changed"); return bytes;
+}
+std::string readReceipt(std::istream& in) {
+  in>>std::ws;require(in.get()=='"',"import receipt must be quoted");
+  std::string text;char c=0;
+  while(in.get(c)) {
+    if(c=='"'){validateImportReceipt(text);return text;}
+    if(c=='\\')require(bool(in.get(c)),"truncated import receipt escape");
+    require(text.size()<kMaxImportReceiptBytes,"import receipt exceeds 16 MiB");
+    text.push_back(c);
+  }
+  throw std::invalid_argument("truncated import receipt");
 }
 void write(const std::filesystem::path& path, const std::string& bytes) {
   std::ofstream out(path, std::ios::binary); out.write(bytes.data(), static_cast<std::streamsize>(bytes.size())); out.close();
@@ -203,6 +215,7 @@ ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, st
 }
 
 void validatePerformanceDocument(const PerformanceDocument& d) {
+  validateImportReceipt(d.import_receipt);
   require(!d.performances.empty() && d.performances.size() <= 16 && d.active < d.performances.size(), "invalid performance selection");
   require(!d.piano_state.empty() && d.piano_state.size() <= 16U*1024*1024, "saved piano state required");
   require(std::isfinite(d.gain_db) && d.gain_db >= -60 && d.gain_db <= 0,"invalid document output gain");
@@ -224,9 +237,10 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
     const auto score_bytes = read(root/"score.dawproj", 64U*1024*1024);
     bool stepped = false;
     for (const auto& take : d.performances) for (const auto& curve : take.curves) stepped |= curve.stepped;
-    const int version = stepped ? 2 : 1;
+    const int version = !d.import_receipt.empty() ? 3 : (stepped ? 2 : 1);
     std::ostringstream out; out << std::setprecision(17) << "CLASSICAL_DAW_PERFORMANCE " << version << '\n'  << std::quoted(binding(score_bytes,d.piano_state)) << '\n';
     out << d.active << ' ' << d.performances.size() << ' ' << d.gain_db << '\n';
+    if(version>=3)out<<std::quoted(d.import_receipt)<<'\n';
     for (const auto& take : d.performances) {
       out << std::quoted(take.name) << ' ' << take.next_note_id << ' ' << take.mapping.size() << '\n';
       for(const auto& map:take.mapping) {out<<map.id<<' '<<map.notation_ids.size();for(auto id:map.notation_ids)out<<' '<<id;out<<'\n';}
@@ -242,7 +256,9 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
     }
     out << "end\n";
     // Entry is last. Incomplete/crashed saves cannot be opened as a document.
-    write(root/"performances.dawperformance", out.str());
+    const auto bytes=out.str();
+    require(bytes.size()<=170U*1024*1024,"performance document exceeds file size limit");
+    write(root/"performances.dawperformance", bytes);
   } catch (...) {
     std::error_code ec;
     for (const auto* name : {"score.dawproj.tmp", "score.dawproj", "piano.aupreset", "performances.dawperformance"}) fs::remove(root/name,ec);
@@ -257,9 +273,12 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
   const auto state = read(root/"piano.aupreset",16U*1024*1024); d.piano_state.assign(state.begin(),state.end());
   std::istringstream in(read(root/"performances.dawperformance",170U*1024*1024));
   std::string magic, identity; int version = 0; std::size_t count = 0;
-  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && (version == 1 || version == 2),"invalid performance document");
+  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && (version >= 1 && version <= 3),"invalid performance document");
   require(bool(in >> std::quoted(identity)) && identity == binding(score_bytes,d.piano_state),"performance score/state binding mismatch");
   require(bool(in >> d.active >> count >> d.gain_db) && count >= 1 && count <= 16 && d.active < count,"invalid performance count");
+  if(version>=3) {
+    d.import_receipt=readReceipt(in);
+  }
   for (std::size_t i = 0; i < count; ++i) {
     Performance take; std::size_t notes = 0;
     std::size_t mappings=0,curves=0;

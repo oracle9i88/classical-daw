@@ -1,0 +1,15 @@
+{
+  "format":"classical-daw-import-receipt-1",
+  "policy":"audition-repair-2026-10-02",
+  "source":{"filename":"study.musicxml","bytes":7382,"fnv1a64":"5cdcb6d9c6473f4a"},
+  "selected_part_one_based":0,
+  "coverage":{"reader":"aggregate_only","audition_repair":"ordered_note_mutations","source_offsets":false},
+  "musicxml_reader":{"grace_notes_timed":0,"grace_notes_dropped":0,"conflicting_tempos_resolved":0,"extra_lyrics_dropped":0,"rounded_positions":0,"notes_widened_to_one_tick":0,"unsynchronized_parts":0,"conflicting_part_meters":0},
+  "midi_reader":{"repeats_separated":0,"overlaps_trimmed":0,"overlaps_silenced":0,"broken_tie_chains_released":0,"dropped_silent_notes":0,"dropped_orphan_releases":0,"merged_instrument_tracks":0},
+  "audition_repair":{"repeats_separated":3,"overlaps_trimmed":0,"overlaps_silenced":0,"broken_tie_chains_released":0,"dropped_silent_notes":0,"dropped_orphan_releases":0,"merged_instrument_tracks":0},
+  "changes":[
+    {"reason":"repeat_separated","part_id":"P1","measure_ordinal":2,"measure_label":"2","note_ordinal":1,"notation_id_at_import":6,"before":{"start_ticks":3840,"duration_ticks":960,"pitch":"C","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":1,"lyric":""},"after":{"start_ticks":3840,"duration_ticks":959,"pitch":"C","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":1,"lyric":""}},
+    {"reason":"repeat_separated","part_id":"P1","measure_ordinal":8,"measure_label":"8","note_ordinal":1,"notation_id_at_import":36,"before":{"start_ticks":26880,"duration_ticks":960,"pitch":"C","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":0,"lyric":""},"after":{"start_ticks":26880,"duration_ticks":959,"pitch":"C","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":0,"lyric":""}},
+    {"reason":"repeat_separated","part_id":"P1","measure_ordinal":6,"measure_label":"6","note_ordinal":4,"notation_id_at_import":29,"before":{"start_ticks":22080,"duration_ticks":960,"pitch":"G","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":0,"lyric":""},"after":{"start_ticks":22080,"duration_ticks":959,"pitch":"G","alter":0,"octave":5,"voice":1,"staff":1,"channel":-1,"rest":0,"chord":0,"tie_start":0,"tie_stop":0,"lyric":""}}
+  ]
+}

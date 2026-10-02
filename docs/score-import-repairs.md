@@ -15,6 +15,13 @@ signature notations nobody in this corpus writes twice. Nothing
 below relaxes an engine invariant: the strict path is unchanged and is still
 what every round-trip test exercises.
 
+## Persistent records (2026-10-02)
+
+The performance importer now saves reader counts and per-note audition repair
+records with the document. See [coverage, inspection and format compatibility](import-repair-provenance.md).
+This does not extend the old corpus results below or supply missing source
+locations for individual reader repairs.
+
 ## Asking for repairs
 
 `readMusicXmlFile` takes an optional `MusicXmlImportReport*`, and
