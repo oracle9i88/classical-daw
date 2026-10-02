@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -88,13 +89,14 @@ bool parseU64(const std::string& token, std::uint64_t* value) {
 
 bool parseDouble(const std::string& token, double* value) {
   if (token.empty()) return false;
-  errno = 0;
-  char* end = nullptr;
-  const double parsed = std::strtod(token.c_str(), &end);
-  if (errno == ERANGE || end == token.c_str() || end != token.c_str() + token.size() || !std::isfinite(parsed)) {
+  // from_chars is locale-independent by design. strtod answered to the
+  // process locale, so a host that called setlocale with comma decimals
+  // (common in GUI frameworks) could not open files this writer produces.
+  const auto result = std::from_chars(token.data(), token.data() + token.size(), *value);
+  if (result.ec != std::errc{} || result.ptr != token.data() + token.size() ||
+      !std::isfinite(*value)) {
     return false;
   }
-  *value = parsed;
   return true;
 }
 
@@ -255,6 +257,7 @@ bool writeProjectFile(const Score& score, const std::string& path, std::string* 
     if (!validateScoreImpl(score, error)) return false;
 
     std::ostringstream output;
+    output.imbue(std::locale::classic());  // The decimal point must never follow the host locale.
     output.precision(17);
     // Version 6 retains explicit measure extents, including terminal silence.
     // Earlier versions leave those durations unspecified (zero).

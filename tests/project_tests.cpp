@@ -1,6 +1,7 @@
 #include "daw/project.hpp"
 
 #include <chrono>
+#include <clocale>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -113,6 +114,24 @@ int main() {
   Score loaded;
   if (!readProjectFile(path.string(), &loaded, &error)) return fail("project read: " + error);
   if (!equalScore(source, loaded)) return fail("project score round-trip");
+
+  // The loader and writer must not answer to the host's C locale: GUI hosts
+  // routinely call setlocale, and a comma-decimal locale once made every
+  // fractional tempo unreadable (strtod era). Skipped where the locale is
+  // not installed.
+  if (std::setlocale(LC_NUMERIC, "de_DE.UTF-8") != nullptr) {
+    Score comma_loaded;
+    if (!readProjectFile(path.string(), &comma_loaded, &error))
+      return fail("project read under comma-decimal locale: " + error);
+    if (!equalScore(source, comma_loaded)) return fail("comma-decimal locale round-trip");
+    if (!writeProjectFile(source, path.string(), &error))
+      return fail("project write under comma-decimal locale: " + error);
+    Score rewritten;
+    if (!readProjectFile(path.string(), &rewritten, &error))
+      return fail("project read after comma-locale write: " + error);
+    if (!equalScore(source, rewritten)) return fail("comma-decimal write round-trip");
+    std::setlocale(LC_NUMERIC, "C");
+  }
 
   std::string serialized;
   if (!readText(path, &serialized)) return fail("project fixture read");
