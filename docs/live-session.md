@@ -77,3 +77,11 @@ policy: the MIDI stream's stopped EOF and the PDC audio tail are different
 positions. This test does not permit silently restarting MIDI behind an already
 advanced PDC clock. Two-AU hardware admission and 12-part editing turnaround are
 still pending; no concurrency or sample test substitutes for those gates.
+
+## 2026-10-02 runtime integration
+
+[Session render runtime](session-render-runtime.md) now joins this mailbox to
+the PDC graph, handles EOF drain and cancellation races, and has an opt-in
+two-AU CoreAudio probe. The remaining-gates list above describes the earlier
+standalone mailbox milestone; document/history, seek/frozen origins and
+three-clock product integration are still open.

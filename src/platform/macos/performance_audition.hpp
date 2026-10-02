@@ -76,7 +76,11 @@ class PerformanceAudition final : public AudioOutputSource {
       failed_.store(true);return;
     }
     if(!audit_.empty() && block.count>audit_.size()-audit_size_){failed_.store(true);return;}
-    if(!au_.renderRealtime(block.events,block.count,out,block.frames)){failed_.store(true);return;}
+    if(au_.realtimeLatencyGeneration()!=au_.preparedLatencyGeneration() ||
+       !au_.renderRealtime(block.events,block.count,out,block.frames) ||
+       au_.realtimeLatencyGeneration()!=au_.preparedLatencyGeneration()){
+      std::fill_n(out,frames*2,0.F);failed_.store(true);return;
+    }
     if(!audit_.empty())for(std::size_t i=0;i<block.count;++i){
       auto event=block.events[i];event.frame+=block.frame;audit_[audit_size_++]=event;
     }

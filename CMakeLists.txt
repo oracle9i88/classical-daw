@@ -13,6 +13,7 @@ add_library(daw_engine STATIC
   src/engine/performance_recovery.cpp
   src/engine/live_performance.cpp
   src/engine/live_session.cpp
+  src/engine/session_render_source.cpp
   src/engine/parallel_render_graph.cpp
   src/engine/midi_sequence.cpp
   src/engine/meter_map.cpp
@@ -57,6 +58,9 @@ add_test(NAME daw_live_performance_tests COMMAND daw_live_performance_tests)
 add_executable(daw_live_session_tests tests/live_session_tests.cpp)
 target_link_libraries(daw_live_session_tests PRIVATE daw_engine)
 add_test(NAME daw_live_session_tests COMMAND daw_live_session_tests)
+add_executable(daw_session_render_source_tests tests/session_render_source_tests.cpp)
+target_link_libraries(daw_session_render_source_tests PRIVATE daw_engine)
+add_test(NAME daw_session_render_source_tests COMMAND daw_session_render_source_tests)
 add_executable(daw_parallel_render_graph_tests tests/parallel_render_graph_tests.cpp)
 target_link_libraries(daw_parallel_render_graph_tests PRIVATE daw_engine)
 add_test(NAME daw_parallel_render_graph_tests COMMAND daw_parallel_render_graph_tests)
@@ -293,6 +297,8 @@ if(APPLE)
   target_link_libraries(daw_output_probe PRIVATE daw_coreaudio)
   add_executable(daw_au_realtime_probe tools/au_realtime_probe.cpp)
   target_link_libraries(daw_au_realtime_probe PRIVATE daw_coreaudio daw_au_host)
+  add_executable(daw_session_au_probe tools/session_au_probe.cpp)
+  target_link_libraries(daw_session_au_probe PRIVATE daw_coreaudio daw_au_host)
   add_executable(daw_performance_range_probe tools/performance_range_probe.cpp)
   target_link_libraries(daw_performance_range_probe PRIVATE daw_coreaudio daw_au_host)
   add_executable(daw_performance_play tools/performance_play.cpp)

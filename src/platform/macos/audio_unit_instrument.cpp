@@ -7,6 +7,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <stdexcept>
 
@@ -80,7 +81,19 @@ struct AudioUnitInstrument::Impl {
   bool realtime = false, realtime_failed = false;
   std::uint64_t realtime_frame = 0;
   double latency_seconds = 0;
+  std::atomic<std::uint64_t> latency_generation{0};
+  std::uint64_t prepared_generation = 0;
+  bool listening = false;
+  int transpose = 0;
+  std::array<bool,16> expression_seen{};
+  static void latencyChanged(void* context, AudioUnit, AudioUnitPropertyID, AudioUnitScope, AudioUnitElement) {
+    // No property query, allocation, lock or graph mutation on notification.
+    static_cast<Impl*>(context)->latency_generation.fetch_add(1,std::memory_order_release);
+  }
   ~Impl() {
+    // Output must already be stopped/joined. Keep listener context alive through
+    // uninitialization/disposal, even if a plugin fails to remove its listener.
+    if (listening) AudioUnitRemovePropertyListenerWithUserData(unit,kAudioUnitProperty_Latency,latencyChanged,this);
     if (initialized) AudioUnitUninitialize(unit);
     if (unit) AudioComponentInstanceDispose(unit);
   }
@@ -229,8 +242,27 @@ void AudioUnitInstrument::renderChunks(const MidiFile& midi, const ChunkSink& si
 }
 void AudioUnitInstrument::prepareRealtime() {
   impl_->requireEditable();
-  if (impl_->kind != InstrumentKind::Pianoteq9) throw std::invalid_argument("realtime spike currently validates Pianoteq only");
+  if (impl_->kind != InstrumentKind::Pianoteq9) throw std::invalid_argument("SWAM realtime requires a validated session sequence");
+  prepareRealtimeImpl();
+}
+void AudioUnitInstrument::prepareRealtime(const MidiSampleSequence& sequence) {
+  impl_->requireEditable();
+  if (sequence.sample_rate != 48000) throw std::invalid_argument("realtime requires 48000 Hz");
+  if (impl_->kind == InstrumentKind::SwamCello3) {
+    requireInitialExpression(sequence);
+    impl_->transpose=swamCelloStateTranspose(state());
+    for (const auto& e:sequence.events) if ((e.status & 0xf0)==0x90 && e.data2) {
+      const auto pitch=static_cast<int>(e.data1)+impl_->transpose;
+      if (pitch<36 || pitch>89) throw std::invalid_argument("SWAM realtime note outside saved-state range");
+    }
+  }
+  prepareRealtimeImpl();
+}
+void AudioUnitInstrument::prepareRealtimeImpl() {
+  static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
   impl_->consumed = true;
+  check(AudioUnitAddPropertyListener(impl_->unit,kAudioUnitProperty_Latency,Impl::latencyChanged,impl_.get()),"listen for AU latency changes");
+  impl_->listening=true;
   AudioStreamBasicDescription format{};
   format.mSampleRate = 48000; format.mFormatID = kAudioFormatLinearPCM;
   format.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
@@ -241,11 +273,19 @@ void AudioUnitInstrument::prepareRealtime() {
   const UInt32 offline = 0;
   check(AudioUnitSetProperty(impl_->unit,kAudioUnitProperty_OfflineRender,kAudioUnitScope_Global,0,&offline,sizeof(offline)),"disable AU offline rendering");
   check(AudioUnitInitialize(impl_->unit),"initialize realtime AU"); impl_->initialized = true;
+  serviceAudioUnitRuntime(descriptor().startup_seconds);
+  const auto before=impl_->latency_generation.load(std::memory_order_acquire);
   UInt32 size = sizeof(impl_->latency_seconds);
   check(AudioUnitGetProperty(impl_->unit,kAudioUnitProperty_Latency,kAudioUnitScope_Global,0,&impl_->latency_seconds,&size),"read realtime AU latency");
-  if (!std::isfinite(impl_->latency_seconds) || impl_->latency_seconds < 0) throw std::runtime_error("invalid AU latency");
+  if (size != sizeof(impl_->latency_seconds) || !std::isfinite(impl_->latency_seconds) || impl_->latency_seconds < 0)
+    throw std::runtime_error("invalid AU latency");
+  if (before != impl_->latency_generation.load(std::memory_order_acquire))
+    throw std::runtime_error("AU latency changed during preparation; rebuild while stopped");
+  impl_->prepared_generation=before;
   impl_->realtime = true;
 }
+std::uint64_t AudioUnitInstrument::realtimeLatencyGeneration() const noexcept { return impl_->latency_generation.load(std::memory_order_acquire); }
+std::uint64_t AudioUnitInstrument::preparedLatencyGeneration() const noexcept { return impl_->prepared_generation; }
 double AudioUnitInstrument::realtimeLatencySeconds() const noexcept { return impl_->latency_seconds; }
 bool AudioUnitInstrument::renderRealtime(const TimedMidiEvent* events, std::size_t count,
                                          float* output, std::uint32_t frames) noexcept {
@@ -258,6 +298,14 @@ bool AudioUnitInstrument::renderRealtime(const TimedMidiEvent* events, std::size
     const auto& e=events[i]; const auto type=e.status & 0xf0;
     if (e.frame >= frames || (i && e.frame < events[i-1].frame) || type < 0x80 || type > 0xe0 ||
         e.data1 > 127 || e.data2 > 127 || ((type==0xc0 || type==0xd0) && e.data2)) return fail();
+    // Defense against a later plan bypassing initial SWAM admission. This
+    // bounded check never changes pitch or invents a controller value.
+    if (impl_->kind == InstrumentKind::SwamCello3) {
+      const auto channel=static_cast<std::size_t>(e.status & 15);
+      if (type==0xb0 && e.data1==11) impl_->expression_seen[channel]=true;
+      if (type==0x90 && e.data2 && (!impl_->expression_seen[channel] ||
+          static_cast<int>(e.data1)+impl_->transpose<36 || static_cast<int>(e.data1)+impl_->transpose>89)) return fail();
+    }
     if (!isInstrumentSelection(e) && MusicDeviceMIDIEvent(impl_->unit,e.status,e.data1,e.data2,static_cast<UInt32>(e.frame)) != noErr) return fail();
   }
   std::array<float,kBlock> left{},right{};

@@ -5,6 +5,8 @@ Date: 2026-09-23. Baseline inspected: `03676e2`.
 experiment and portable PDC kernel are implemented; see
 [implementation evidence and remaining gates](multi-instrument-progress.md).
 The [whole-session MIDI mailbox](live-session.md) is also implemented and tested.
+As of 2026-10-02, the [combined session runtime and silent two-AU probe](session-render-runtime.md)
+also run; this does not complete document/editor integration.
 Full document/graph/AU integration and the four end-to-end gates below are
 **not passed**. Tested components are not a delivered multi-AU player.
 The preceding [single-instrument gate](live-performance.md) remains the evidence
@@ -18,7 +20,8 @@ the graph/PDC contract before a general instrument manifest. Extract only the
 small renderer interface needed to test that contract first.
 
 The current code is narrower: `PerformanceAudition` owns one AU, one stream,
-gain, capture and audit; `prepareRealtime()` only permits Pianoteq; the session
+gain, capture and audit; the no-argument `prepareRealtime()` only permits Pianoteq (the sequence-taking
+session entry now also admits validated SWAM); the session
 route format is now v3 with a reserved user track delay (nonzero execution is
 rejected). An `InstrumentDescriptor` already
 exists. `InstrumentKind` is not yet confined to a factory: AU state/range/preset

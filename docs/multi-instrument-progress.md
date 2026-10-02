@@ -2,7 +2,11 @@
 
 2026-09-24; preceding design commit `8bd118d`.
 
-**Priority update:** real-score [import and editing entry](performance-import.md)
+**2026-10-02 update:** the [session render runtime](session-render-runtime.md) now
+connects the single session mailbox, PDC and two real AU renderers. One silent
+CoreAudio probe passed; multi-part document/editor integration remains open.
+
+**Earlier priority update:** real-score [import and editing entry](performance-import.md)
 now precedes further two-AU integration. Existing mailbox/PDC tests are retained;
 their acceptance did not establish repertoire importability. The one-part
 `PerformanceDocument` limitation is separate from the planned two-live-AU cap;
@@ -19,7 +23,8 @@ integration gates below are still open.
 Installed AU: **SWAM Cello 3.12.2**, `aumu/Sce3/AuMo`, encoded version 199682.
 The isolated diagnostic initializes Cocoa/AU, services the main loop for five
 seconds, subscribes to latency notifications and drives stereo 48 kHz / 256-frame
-renders. It opens **no output device**. Production realtime remains Pianoteq-only.
+renders. It opens **no output device**. At that historical gate, production realtime remained Pianoteq-only; see the
+2026-10-02 sequence-validated session adapter above.
 
 After one discovery run, two explicit sweeps used `OfflineRender=0` and `1`.
 Each recorded 12 factory-preset selections with matching read-back names and

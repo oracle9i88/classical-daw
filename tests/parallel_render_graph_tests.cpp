@@ -121,6 +121,11 @@ void faults() {
   const auto calls=x.calls;
   require(!changing.render(inputs,2,out,185) && x.calls==calls,"dirty graph continued rendering");
 
+  Delayed simultaneous(960); simultaneous.change_at=0; simultaneous.fail_at=0;
+  daw::ParallelRenderGraph both({{"both",&simultaneous,0}});
+  require(!both.render(inputs,1,out,185) && both.fault()==daw::RenderGraphFault::LatencyChanged,
+      "DSP error quarantine concealed simultaneous latency notification");
+
   Delayed p(0), q(0); daw::ParallelRenderGraph before({{"p",&p,0},{"q",&q,0}});
   q.generation.fetch_add(1);
   require(!before.render(inputs,2,out,185) && p.calls==0 && q.calls==0,"pre-render latency invalidation was late");

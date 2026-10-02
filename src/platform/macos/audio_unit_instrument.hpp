@@ -36,11 +36,11 @@ struct InstrumentRenderReport {
   double last_second_rms = 0.0;
 };
 
-// Local, offline AUv2 host for explicitly supported, separately installed instruments.
+// Local AUv2 host for explicitly supported, separately installed instruments.
 // No plugin UI, audio device, network, license activation or preference writing
 // is requested by this host. Cocoa startup runs on the main thread. Plugin code
-// runs in-process, outside the realtime
-// engine. Each instance renders once; reload uses a new instance and saved state.
+// runs in-process (offline or prepared realtime). Each instance has one render
+// run; reload uses a new instance and saved state.
 class AudioUnitInstrument {
  public:
   explicit AudioUnitInstrument(InstrumentKind kind);
@@ -92,12 +92,17 @@ class AudioUnitInstrument {
   // Event.frame is the offset WITHIN this block; full channel-voice MIDI bytes.
   // No throwing, host allocation, property queries or file I/O in renderRealtime.
   // Plugin internals remain third-party code. Failure latches and silences output.
-  void prepareRealtime();
+  void prepareRealtime(); // Legacy piano-only entry.
+  // Session entry validates SWAM expression/range before admitting realtime DSP.
+  void prepareRealtime(const MidiSampleSequence& sequence);
+  std::uint64_t realtimeLatencyGeneration() const noexcept;
+  std::uint64_t preparedLatencyGeneration() const noexcept;
   bool renderRealtime(const TimedMidiEvent* events, std::size_t count,
                       float* stereo, std::uint32_t frames) noexcept;
   double realtimeLatencySeconds() const noexcept;
 
  private:
+  void prepareRealtimeImpl();
   void renderSequence(const MidiSampleSequence& sequence, const ChunkSink& sink,
                       InstrumentRenderReport* report, bool clip_output);
   struct Impl;

@@ -92,6 +92,12 @@ bool ParallelRenderGraph::render(const TrackQuantum* tracks, std::size_t count, 
     if (lane.error.load(std::memory_order_relaxed) != TrackRenderError::None) continue;
     std::fill_n(lane.scratch.data(), frames * 2, 0.0F);
     auto error = lane.renderer->render(track.events, track.count, position_, lane.scratch.data(), frames);
+    // A simultaneous DSP error must not hide a latency notification by first
+    // quarantining this lane (generationsMatch intentionally skips old faults).
+    if (lane.renderer->latencyGeneration() != info_[i].latency_generation) {
+      fault_.store(RenderGraphFault::LatencyChanged, std::memory_order_release);
+      std::fill_n(output, frames * 2, 0.F); return false;
+    }
     if (error == TrackRenderError::None)
       for (std::size_t j = 0; j < frames * 2; ++j)
         if (!std::isfinite(lane.scratch[j])) { error = TrackRenderError::NonfiniteOutput; break; }
