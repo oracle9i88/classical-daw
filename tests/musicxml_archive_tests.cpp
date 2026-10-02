@@ -163,8 +163,11 @@ int main() {
       daw::Score score;
       std::string error;
       daw::MusicXmlArchiveReport report;
-      require(daw::readMusicXmlArchiveBytes(archive, &score, &error, nullptr, &report),
-              std::string(positive.name) + ": " + error);
+      // Materialize before building the message: argument evaluation order is
+      // unspecified, and a message built early captures an empty error.
+      const bool parsed =
+          daw::readMusicXmlArchiveBytes(archive, &score, &error, nullptr, &report);
+      require(parsed, std::string(positive.name) + ": " + error);
       expectScore(score, positive.name);
       require(report.chosen_member == "score.musicxml",
               std::string(positive.name) + ": wrong member chosen");
@@ -183,8 +186,8 @@ int main() {
           reinterpret_cast<const char*>(kMxlStoredBlocks), sizeof(kMxlStoredBlocks));
       daw::Score score;
       std::string error;
-      require(daw::readMusicXmlArchiveBytes(archive, &score, &error),
-              "stored-blocks member: " + error);
+      const bool parsed = daw::readMusicXmlArchiveBytes(archive, &score, &error);
+      require(parsed, "stored-blocks member: " + error);
       expectScore(score, "stored-blocks");
     }
     {
@@ -192,8 +195,8 @@ int main() {
           reinterpret_cast<const char*>(kMxlMultiBlock), sizeof(kMxlMultiBlock));
       daw::Score score;
       std::string error;
-      require(daw::readMusicXmlArchiveBytes(archive, &score, &error),
-              "multi-block member: " + error);
+      const bool parsed = daw::readMusicXmlArchiveBytes(archive, &score, &error);
+      require(parsed, "multi-block member: " + error);
       require(score.parts.size() == 1 && score.parts[0].measures.size() == 900,
               "multi-block member lost measures: " + error);
       std::size_t notes = 0;
@@ -212,8 +215,8 @@ int main() {
     {
       daw::Score score;
       std::string error;
-      require(daw::readMusicXmlArchiveBytes(homegrown, &score, &error),
-              "home-grown stored archive: " + error);
+      const bool parsed = daw::readMusicXmlArchiveBytes(homegrown, &score, &error);
+      require(parsed, "home-grown stored archive: " + error);
       expectScore(score, "home-grown");
     }
 

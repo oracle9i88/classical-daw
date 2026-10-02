@@ -263,10 +263,15 @@ std::vector<std::uint8_t> inflateRaw(const std::uint8_t* data, std::size_t size,
     const unsigned kind = bits.need(2);
     if (kind == 0) {
       bits.consume(bits.held_bits & 7);  // Discard the partial byte only.
-      const std::uint32_t length =
-          static_cast<std::uint32_t>(bits.readByte() | (bits.readByte() << 8));
-      const std::uint32_t inverted =
-          static_cast<std::uint32_t>(bits.readByte() | (bits.readByte() << 8));
+      // One byte per full-expression: two readByte() calls in one expression
+      // have unsequenced side effects, and a compiler may take the high byte
+      // first. clang reads left to right, GCC does not promise to.
+      const std::uint32_t length_low = bits.readByte();
+      const std::uint32_t length_high = bits.readByte();
+      const std::uint32_t inverted_low = bits.readByte();
+      const std::uint32_t inverted_high = bits.readByte();
+      const std::uint32_t length = length_low | (length_high << 8);
+      const std::uint32_t inverted = inverted_low | (inverted_high << 8);
       if ((length ^ inverted) != 0xFFFFU) throw BitError("stored block length check failed");
       if (output.size() + length > max_output) throw BitError("deflate output exceeds size limit");
       for (std::uint32_t i = 0; i < length; ++i) output.push_back(bits.readByte());

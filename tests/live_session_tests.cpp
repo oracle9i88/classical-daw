@@ -190,10 +190,23 @@ void* operator new(std::size_t n) {
   if(auto* p=std::malloc(n?n:1)) return p; throw std::bad_alloc();
 }
 void* operator new[](std::size_t n) {return ::operator new(n);}
+// Same nothrow gap as live_performance_tests: an incomplete replacement set
+// pairs an ASan-tagged `new` with this file's free-based delete.
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+  if(realtime) ++allocations;
+  if(fail_after==0) return nullptr;
+  if(fail_after>0) --fail_after;
+  return std::malloc(n?n:1);
+}
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept {
+  return ::operator new(n, std::nothrow);
+}
 void operator delete(void* p) noexcept {if(realtime && p) ++frees; std::free(p);}
 void operator delete[](void* p) noexcept {::operator delete(p);}
 void operator delete(void* p,std::size_t) noexcept {::operator delete(p);}
 void operator delete[](void* p,std::size_t) noexcept {::operator delete(p);}
+void operator delete(void* p, const std::nothrow_t&) noexcept {::operator delete(p);}
+void operator delete[](void* p, const std::nothrow_t&) noexcept {::operator delete(p);}
 int main() {
   try {
     atomicAdmission(); failureAllocation(); crossTrackSchedule(); pdcIntegration(); concurrentExchange();

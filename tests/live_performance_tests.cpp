@@ -675,6 +675,17 @@ void* operator new(std::size_t n) {
   throw std::bad_alloc();
 }
 void* operator new[](std::size_t n) { return ::operator new(n); }
+// The replacement set must cover the nothrow overloads too. Without them a
+// library nothrow new binds to the allocator ASan tags as `new`, while the
+// replacement delete below calls free, and alloc-dealloc-mismatch fires in
+// std::stable_sort's temporary buffer rather than in engine code.
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+  if (in_callback) ++callback_allocations;
+  return std::malloc(n ? n : 1);
+}
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept {
+  return ::operator new(n, std::nothrow);
+}
 void operator delete(void* p) noexcept {
   if (p) { ++total_releases; if (in_callback) ++callback_releases; }
   std::free(p);
@@ -682,6 +693,8 @@ void operator delete(void* p) noexcept {
 void operator delete[](void* p) noexcept { ::operator delete(p); }
 void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
 void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { ::operator delete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { ::operator delete(p); }
 
 int main() {
   try {
