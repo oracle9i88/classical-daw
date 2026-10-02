@@ -1,4 +1,4 @@
-#include "performance_audition.hpp"
+#include "document_audition.hpp"
 #include "coreaudio_output.hpp"
 #include "daw/performance_recovery.hpp"
 #include <chrono>
@@ -22,30 +22,36 @@ namespace {
 // and guessing, so the listing says so, and `edited_only` answers the question
 // you ask on reopening a document.
 void listNotes(const daw::PerformanceDocument& d, const std::string& label, std::size_t offset,
-               std::size_t count, const double* around_seconds = nullptr, bool edited_only = false) {
+               std::size_t count, const double* around_seconds = nullptr, bool edited_only = false,
+               const std::string& part_id = "") {
   if(count==0||count>200)throw std::runtime_error("notes count must be 1..200");
   struct Location {const daw::ScorePart* part;const daw::ScoreMeasure* measure;const daw::ScoreNote* note;std::size_t ordinal;};
   std::map<std::uint64_t,Location> locations;
   for(const auto& p:d.score.parts)for(std::size_t i=0;i<p.measures.size();++i)
     for(const auto& n:p.measures[i].notes)locations.emplace(n.id,Location{&p,&p.measures[i],&n,i+1});
-  const auto& take=d.performances[d.active];const auto sequence=daw::compilePerformance(d.score,take);
+  if(!part_id.empty() && std::none_of(d.score.parts.begin(),d.score.parts.end(),[&](const auto& p){return p.id==part_id;}))throw std::runtime_error("unknown part");
+  const auto& take=d.performances[d.active];const auto tracks=daw::compilePerformanceTracks(d.score,take);
   std::map<std::uint64_t,const daw::NotePerformance*> overrides;
   for(const auto& n:take.notes)overrides.emplace(n.note_id,&n);
   std::map<std::uint64_t,std::size_t> attacks;
-  for(const auto& e:sequence.events)if((e.status&0xf0)==0x90&&e.data2)attacks[e.note_id]=e.frame;
+  for(const auto& track:tracks)for(const auto& e:track.sequence.events)if((e.status&0xf0)==0x90&&e.data2)attacks[e.note_id]=e.frame;
+  std::vector<const daw::PerformedNoteMapping*> ordered;
+  for(const auto& m:take.mapping)if(part_id.empty() || locations.at(m.notation_ids.front()).part->id==part_id)ordered.push_back(&m);
+  std::stable_sort(ordered.begin(),ordered.end(),[&](const auto* a,const auto* b){return std::make_pair(attacks.at(a->id),a->id)<std::make_pair(attacks.at(b->id),b->id);});
   // Centre the window on the requested moment: half the notes before it, so
   // what you heard has context on both sides instead of starting at the edge.
   if(around_seconds!=nullptr) {
     const auto target=static_cast<double>(*around_seconds)*48000;
     std::size_t before=0;
-    for(const auto& mapping:take.mapping) {
-      const auto found=attacks.find(mapping.id);
+    for(const auto* mapping:ordered) {
+      const auto found=attacks.find(mapping->id);
       if(found!=attacks.end() && static_cast<double>(found->second)<target)++before;
     }
     offset = before > count/2 ? before-count/2 : 0;
   }
   std::size_t matched=0,shown=0;
-  for(const auto& mapping:take.mapping) {
+  for(const auto* entry:ordered) {
+    const auto& mapping=*entry;
     const auto& at=locations.at(mapping.notation_ids.front());const auto& n=*at.note;const auto& m=*at.measure;
     const auto name=m.label.empty()?std::to_string(m.number):m.label;
     bool in_measure=label.empty();
@@ -73,7 +79,8 @@ void listNotes(const daw::PerformanceDocument& d, const std::string& label, std:
 
 int main(int argc,char** argv) {
   try {
-    if(argc!=2)throw std::runtime_error("usage: daw_performance_play DOCUMENT_DIRECTORY");
+    const bool silent=argc==3 && std::string(argv[2])=="--silent";
+    if(argc!=2 && !silent)throw std::runtime_error("usage: daw_performance_play DOCUMENT_DIRECTORY [--silent]");
     std::unique_ptr<daw::PerformanceRecovery> recovery;
     try {recovery=std::make_unique<daw::PerformanceRecovery>(argv[1]);}
     catch(const std::exception& e){std::cout<<"AUTOSAVE UNAVAILABLE: "<<e.what()<<"; use save explicitly.\n";}
@@ -81,29 +88,31 @@ int main(int argc,char** argv) {
     try {for(const auto& path:daw::listPerformanceRecoveries(argv[1]))
       std::cout<<"Recovery candidate (not yet validated): "<<path<<'\n';}
     catch(const std::exception& e){std::cout<<"Recovery discovery unavailable: "<<e.what()<<'\n';}
-    std::unique_ptr<daw::PerformanceAudition> audition;
+    std::unique_ptr<daw::DocumentAudition> audition;
+    std::string prior_runtime_status;
     daw::CoreAudioOutput output;std::string error;
     std::size_t cursor=0,range_end=0;bool repeat=false;
     auto stop=[&]{output.stop();output.setAudioSource(nullptr);
       if(audition && audition->suppressedConflictsAfterStop())
         std::cout<<"Held keys preserved; conflicting attacks skipped this pass="<<audition->suppressedConflictsAfterStop()<<'\n';
-      audition.reset();};
-    auto play=[&]{stop();audition=std::make_unique<daw::PerformanceAudition>(editor.document(),false,false,editor.revision());
+      audition.reset();prior_runtime_status.clear();};
+    auto play=[&]{stop();audition=std::make_unique<daw::DocumentAudition>(editor.document(),silent,false,editor.revision());
       const auto prepared=std::chrono::steady_clock::now();
       audition->prepareRange(cursor,range_end);
       std::cout<<"Prepared start="<<static_cast<double>(cursor)/48000<<"s in "
         <<std::chrono::duration<double>(std::chrono::steady_clock::now()-prepared).count()<<"s; "
         <<"range repeats rebuild the instrument and have a gap.\n";
       if(!output.setAudioSource(audition.get(),&error)||!output.start(&error)){stop();throw std::runtime_error(error);}
-      audition->start();std::cout<<"Playing actual realtime Pianoteq; latency="<<audition->latency()<<"s\n";
+      audition->start();std::cout<<(editor.document().routes.empty()?"Playing actual realtime Pianoteq; latency=":"Playing realtime ensemble; latency=")<<audition->latency()<<"s silent="<<silent<<"\n";
     };
     editor.setCommitAdmission([&](const auto& document,auto revision){
       if(output.running() && audition)audition->submit(document,revision);
     });
-    std::cout<<"Commands: provenance | play | stop | seek SECONDS | range FROM_SECONDS TO_SECONDS | range-clear | repeat on|off | take INDEX | take-copy \"NAME\" | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-step ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
+    std::cout<<"Commands: routes | route PART GAIN_DB BALANCE MUTE SOLO | notes-part PART [OFFSET COUNT] | shape-part PART FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | curve-step-part PART ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-put-part PART ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt-part PART ID CHANNEL CC | provenance | play | stop | seek SECONDS | range FROM_SECONDS TO_SECONDS | range-clear | repeat on|off | take INDEX | take-copy \"NAME\" | notes [OFFSET COUNT] | notes-at LABEL [OFFSET COUNT] | notes-near SECONDS [COUNT] | edits [OFFSET COUNT] | shape FROM_SEC TO_SEC offset_ms|scale|velocity FROM TO | edit PERFORMED_ID OFFSET_MS SCALE VELOCITY(-1=score) | pitch NOTATION_ID STEP ALTER OCTAVE | curves | curve CURVE_ID POINT_ID VALUE | curve-put ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-step ID CHANNEL CC POINT_ID SECONDS VALUE [...] | curve-adopt ID CHANNEL CC | curve-remove ID | gain DB | undo | redo | save NEW_DIRECTORY | status | quit\n";
     std::string pending;bool done=false;
     while(!done) {
-      if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){stop();std::cout<<"Output stopped: "<<error<<'\n';}
+      if(audition){const auto status=audition->statusText();if(status!=prior_runtime_status){std::cout<<status;prior_runtime_status=status;}}
+      if(output.running()&&(!output.checkHealth(&error)||(audition&&audition->failed()))){const auto status=audition?audition->statusText():"";stop();std::cout<<"Output stopped: "<<error<<'\n'<<status;}
       if(audition&&audition->done()){
         stop();std::cout<<"Playback ended\n";
         if(repeat && range_end)try{play();}catch(const std::exception& e){stop();repeat=false;std::cout<<"Repeat stopped: "<<e.what()<<'\n';}
@@ -129,6 +138,7 @@ int main(int argc,char** argv) {
           if(command=="play"){end();play();continue;}
           if(command=="stop"){end();stop();continue;}
           if(command=="seek"||command=="range") {
+            if(!editor.document().routes.empty())throw std::runtime_error("ensemble range/seek not integrated; play starts at zero");
             double from=0,to=0;in>>from;if(command=="range")in>>to;parsed();
             const auto total=daw::compilePerformance(editor.document().score,editor.document().performances[editor.document().active]).frames;
             if(!std::isfinite(from)||from<0||from*48000>=total||!std::isfinite(to)||to<0||to*48000>total||
@@ -147,17 +157,19 @@ int main(int argc,char** argv) {
             repeat=mode=="on";continue;
           }
           if(command=="save"){std::string path;in>>std::quoted(path);parsed();daw::savePerformanceDocument(editor.document(),path);std::cout<<"Saved "<<path<<'\n';continue;}
-          if(command=="notes"||command=="notes-at"||command=="notes-near"||command=="edits") {
-            std::string label;std::size_t offset=0,count=50;double seconds=0;
+          if(command=="notes"||command=="notes-at"||command=="notes-near"||command=="notes-part"||command=="edits") {
+            std::string label,part;std::size_t offset=0,count=50;double seconds=0;
+            if(command=="notes-part"){in>>std::quoted(part);if(!in||part.empty())throw std::runtime_error("part ID required");}
             if(command=="notes-at"){in>>std::quoted(label);if(!in||label.empty())throw std::runtime_error("measure label required");}
             if(command=="notes-near"){in>>seconds;if(!in||!std::isfinite(seconds)||seconds<0)throw std::runtime_error("seconds must be a non-negative number");count=20;}
             in>>std::ws;if(!in.eof()){if(command=="notes-near"){in>>count;parsed();}else{in>>offset>>count;parsed();}}
-            listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr,command=="edits");continue;
+            listNotes(editor.document(),label,offset,count,command=="notes-near"?&seconds:nullptr,command=="edits",part);continue;
           }
           if(command=="curves") {end();for(const auto& curve:editor.document().performances[editor.document().active].curves){
             std::cout<<"curve="<<curve.id<<" channel="<<static_cast<int>(curve.channel)<<" cc="<<static_cast<int>(curve.controller)
-                     <<" mode="<<(curve.stepped?"step":"linear")<<'\n';
+                     <<" mode="<<(curve.stepped?"step":"linear")<<" part="<<std::quoted(curve.part_id)<<'\n';
             for(const auto& p:curve.points)std::cout<<" point="<<p.id<<" seconds="<<p.seconds<<" value="<<p.value<<'\n';}continue;}
+          if(command=="routes"){end();for(const auto& r:editor.document().routes)std::cout<<"part="<<std::quoted(r.part_id)<<" instrument="<<r.instrument<<" gain_db="<<r.gain_db<<" balance="<<r.balance<<" mute="<<r.mute<<" solo="<<r.solo<<" track_delay_us="<<r.track_delay_us<<'\n';continue;}
           if(command=="status"){end();std::cout<<"revision="<<editor.revision()<<" active="<<editor.document().active
             <<" seconds="<<(audition?static_cast<double>(audition->frame())/48000:static_cast<double>(cursor)/48000)
             <<" frame="<<(audition?audition->frame():cursor)
@@ -168,15 +180,18 @@ int main(int argc,char** argv) {
           if(command=="edit"){daw::NotePerformance note;in>>note.note_id>>note.onset_seconds>>note.duration_scale>>note.velocity;parsed();note.onset_seconds/=1000;editor.set(note);}
           else if(command=="pitch"){std::uint64_t id;daw::ScorePitch pitch;in>>id>>pitch.step>>pitch.alter>>pitch.octave;parsed();editor.setPitch(id,pitch);}
           else if(command=="curve"){std::uint64_t curve,point;double value;in>>curve>>point>>value;parsed();editor.setCurvePoint(curve,point,value);}
-          else if(command=="curve-put"||command=="curve-step") {
-            daw::ControlCurve curve;curve.stepped=command=="curve-step";int channel,cc;in>>curve.id>>channel>>cc;
+          else if(command=="curve-put"||command=="curve-step"||command=="curve-put-part"||command=="curve-step-part") {
+            daw::ControlCurve curve;curve.stepped=command=="curve-step"||command=="curve-step-part";
+            if(command=="curve-put-part"||command=="curve-step-part")in>>std::quoted(curve.part_id);
+            int channel,cc;in>>curve.id>>channel>>cc;
             if(!in||channel<0||channel>15||(cc!=11&&cc!=64))throw std::runtime_error("channel must be 0..15 and CC 11 or 64");
             curve.channel=static_cast<std::uint8_t>(channel);curve.controller=static_cast<std::uint8_t>(cc);
             while(true){in>>std::ws;if(in.eof())break;daw::CurvePoint point;in>>point.id>>point.seconds>>point.value;
               if(!in)throw std::runtime_error("curve point requires ID SECONDS VALUE");curve.points.push_back(point);}
             editor.putCurve(std::move(curve));std::cout<<"Explicit curve overrides imported messages on this CC lane; undo restores them.\n";
           }
-          else if(command=="shape") {
+          else if(command=="shape"||command=="shape-part") {
+            std::string part;if(command=="shape-part")in>>std::quoted(part);
             double from,to,a,b;std::string field;
             in>>from>>to>>field>>a>>b;parsed();
             auto which=daw::WorkEditor::Shape::OnsetMilliseconds;
@@ -184,21 +199,30 @@ int main(int argc,char** argv) {
             else if(field=="scale")which=daw::WorkEditor::Shape::DurationScale;
             else if(field=="velocity")which=daw::WorkEditor::Shape::Velocity;
             else throw std::runtime_error("field must be offset_ms, scale or velocity");
-            const auto touched=editor.shapeRange(from,to,which,a,b);
+            const auto touched=editor.shapeRange(from,to,which,a,b,part);
             std::cout<<"Shaped "<<touched<<" notes; one undo puts the passage back.\n";
             if(touched==0)continue;
           }
-          else if(command=="curve-adopt") {
+          else if(command=="curve-adopt"||command=="curve-adopt-part") {
+            std::string part;if(command=="curve-adopt-part")in>>std::quoted(part);
             std::uint64_t id;int channel,cc;in>>id>>channel>>cc;parsed();
             if(channel<0||channel>15||(cc!=11&&cc!=64))throw std::runtime_error("channel must be 0..15 and CC 11 or 64");
             daw::CurveAdoptionReport adopted;
             auto curve=daw::curveFromScoreMessages(editor.document().score,static_cast<std::uint8_t>(channel),
-                                                   static_cast<std::uint8_t>(cc),id,&adopted);
+                                                   static_cast<std::uint8_t>(cc),id,&adopted,part);
             editor.putCurve(std::move(curve));
             std::cout<<"Adopted "<<adopted.source_messages<<" messages as "<<adopted.points
                      <<" ordered step points; same-time messages and sample timing preserved within the lane. Undo restores the original messages.\n";
           }
           else if(command=="curve-remove"){std::uint64_t id;in>>id;parsed();editor.removeCurve(id);}
+          else if(command=="route"){
+            std::string part;daw::PerformanceRouteMix mix;int mute=-1,solo=-1;
+            in>>std::quoted(part)>>mix.gain_db>>mix.balance>>mute>>solo;parsed();
+            if((mute!=0&&mute!=1)||(solo!=0&&solo!=1))throw std::runtime_error("mute and solo must be 0 or 1");
+            const auto& routes=editor.document().routes;const auto at=std::find_if(routes.begin(),routes.end(),[&](const auto& r){return r.part_id==part;});
+            if(at==routes.end())throw std::runtime_error("unknown route");
+            mix.mute=mute==1;mix.solo=solo==1;mix.track_delay_us=at->track_delay_us;editor.setRouteMix(part,mix);
+          }
           else if(command=="gain"){double value;in>>value;parsed();editor.setGain(value);}
           else if(command=="take"){std::size_t take;in>>take;parsed();editor.select(take);}
           else if(command=="take-copy") {

@@ -3,6 +3,11 @@
 2026-10-02. Feature branch; this is an integration layer and an opt-in diagnostic,
 **not yet the multi-instrument document editor or a public release**.
 
+Subsequent same-day integration: [saved multi-part editor](multipart-performance-editor.md)
+now connects this runtime to document migration, unified editing and bounce.
+The fixed-workload evidence below belongs to the earlier runtime gate; the new
+document gate has separate commands and measurements.
+
 ## Ownership and ending
 
 `SessionRenderSource` owns exactly one `LiveSessionStream` and one

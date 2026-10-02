@@ -22,6 +22,9 @@ class SessionRenderSource final : public AudioOutputSource {
   LiveSessionStream::Receipt waitForDecision(std::uint64_t ticket,
       std::chrono::milliseconds timeout = std::chrono::milliseconds(1000));
   LiveSessionStream::Receipt receipt(std::uint64_t ticket) const { return stream_.receipt(ticket); }
+  std::uint64_t appliedRevision() const noexcept { return stream_.appliedRevision(); }
+  std::size_t appliedFrame() const noexcept { return stream_.appliedFrame(); }
+  std::uint64_t suppressedConflictsAfterStop() const noexcept { return stream_.suppressedConflictsAfterStop(); }
   State state() const noexcept { return state_.load(std::memory_order_acquire); }
   bool done() const noexcept { return state() == State::Finished; }
   bool failed() const noexcept { return state() == State::Failed; }

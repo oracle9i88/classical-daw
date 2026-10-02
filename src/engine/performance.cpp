@@ -1,4 +1,5 @@
 #include "daw/performance.hpp"
+#include "daw/live_session.hpp"
 #include "daw/import_receipt.hpp"
 #include "daw/score_midi.hpp"
 #include "daw/project.hpp"
@@ -13,6 +14,8 @@
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
+#include <limits>
+#include <locale>
 
 namespace daw {
 namespace {
@@ -43,6 +46,25 @@ void write(const std::filesystem::path& path, const std::string& bytes) {
 std::string binding(const std::string& score, const std::vector<std::uint8_t>& state) {
   return frozenTrackIdentity(score, "performance-document-v1", "pianoteq", state);
 }
+std::string routeStateName(std::size_t slot){return "route-"+std::to_string(slot+1)+".aupreset";}
+void writeRoutes(std::ostream& out,const std::vector<PerformanceRoute>& routes){
+  out<<routes.size()<<'\n';
+  for(const auto& r:routes)out<<std::quoted(r.part_id)<<' '<<std::quoted(r.instrument)<<' '<<r.gain_db<<' '<<r.balance<<' '
+    <<r.mute<<' '<<r.solo<<' '<<r.track_delay_us<<'\n';
+}
+std::string routeBinding(const std::string& score,const std::vector<PerformanceRoute>& routes){
+  // Length-delimited FNV-1a: accidental corruption/stale state, not authenticity.
+  std::uint64_t hash=14695981039346656037ULL;
+  const auto byte=[&](unsigned char b){hash^=b;hash*=1099511628211ULL;};
+  const auto add=[&](const auto& bytes){
+    const auto n=static_cast<std::uint64_t>(bytes.size());
+    for(unsigned shift=0;shift<64;shift+=8)byte(static_cast<unsigned char>(n>>shift));
+    for(auto b:bytes)byte(static_cast<unsigned char>(b));
+  };
+  std::ostringstream metadata;metadata.imbue(std::locale::classic());metadata<<std::setprecision(17);writeRoutes(metadata,routes);
+  add(score);add(metadata.str());for(const auto& r:routes)add(r.state);
+  std::ostringstream out;out<<"fnv1a64:"<<std::hex<<std::setfill('0')<<std::setw(16)<<hash;return out.str();
+}
 std::optional<NotePerformance> lookup(const Performance& take, std::uint64_t id) {
   const auto found = std::find_if(take.notes.begin(), take.notes.end(), [&](const auto& n) { return n.note_id == id; });
   return found == take.notes.end() ? std::nullopt : std::optional<NotePerformance>(*found);
@@ -65,22 +87,17 @@ std::vector<std::uint64_t> changedPerformanceOnsets(const std::vector<NotePerfor
 Performance makePerformance(const Score& score, const std::string& name) {
   validateNoteIds(score); require(score.next_note_id != 0, "assign notation IDs first");
   MidiFile midi; std::string error;
-  if (!scoreToMidiFile(score,&midi,&error)) throw std::invalid_argument(error);
+  if (!scoreToMidiFile(score,&midi,&error,ScoreMidiChannelPolicy::IndependentParts)) throw std::invalid_argument(error);
   Performance result; result.name = name;
   for (const auto& track : midi.tracks) for (const auto& note : track.notes)
     result.mapping.push_back({result.next_note_id++,note.source_notation_ids});
   return result;
 }
-MidiSampleSequence compilePerformance(const Score& score, const Performance& performance) {
-  validateNoteIds(score);
-  require(score.next_note_id && score.parts.size() == 1, "performance audition requires one identified piano part");
-  require(performance.notes.size() <= kMaxAuditionAttacks, "too many performance overrides");
-  MidiFile midi; std::string error;
-  if (!scoreToMidiFile(score, &midi, &error)) throw std::invalid_argument(error);
+namespace {
+MidiSampleSequence compileTrackPerformance(const MidiFile& midi, const Performance& performance, Tick end) {
+  require(performance.notes.size() <= kMaxAuditionAttacks, "too many performance overrides per part");
   require(midi.tracks[0].notes.size() <= kMaxAuditionAttacks,
       "audition attack count exceeds the supported maximum");
-  Tick end = 0;
-  for (const auto& m : score.parts[0].measures) end = std::max(end, m.start+m.duration);
   auto sequence = makeMidiSampleSequence(midi, 48000, 5, max_frames, end);
   // Index notation anchors once. Validating each correspondence by scanning
   // every attack would make a single performance edit quadratic in score size.
@@ -190,16 +207,104 @@ MidiSampleSequence compilePerformance(const Score& score, const Performance& per
       "too many MIDI events in one realtime slice");
   return sequence;
 }
+} // namespace
+std::vector<CompiledPerformanceTrack> compilePerformanceTracks(const Score& score, const Performance& performance) {
+  validateNoteIds(score);
+  require(score.next_note_id && !score.parts.empty() && score.parts.size()<=64,"performance requires 1..64 identified parts");
+  MidiFile full;std::string error;
+  if(!scoreToMidiFile(score,&full,&error,ScoreMidiChannelPolicy::IndependentParts))throw std::invalid_argument(error);
+  std::map<std::string,std::size_t> parts;
+  std::map<std::uint64_t,std::size_t> notation;
+  Tick end=0;
+  for(std::size_t i=0;i<score.parts.size();++i){
+    require(!score.parts[i].id.empty() && parts.emplace(score.parts[i].id,i).second,"invalid part identity");
+    for(const auto& m:score.parts[i].measures){
+      require(m.start>=0 && m.duration>=0 && m.start<=std::numeric_limits<Tick>::max()-m.duration,"invalid measure extent");
+      end=std::max(end,m.start+m.duration);
+      for(const auto& n:m.notes)notation.emplace(n.id,i);
+    }
+    for(const auto& n:full.tracks[i].notes)end=std::max(end,n.end());
+    for(const auto& e:full.tracks[i].channel_events)end=std::max(end,e.tick);
+  }
+  std::vector<Performance> per_part(score.parts.size());
+  for(auto& p:per_part)p.next_note_id=performance.next_note_id;
+  std::map<std::uint64_t,std::size_t> performed;
+  for(const auto& m:performance.mapping){
+    require(!m.notation_ids.empty() && m.id && m.id<performance.next_note_id,"invalid performed mapping");
+    const auto at=notation.find(m.notation_ids.front());require(at!=notation.end(),"mapping targets unknown notation");
+    require(performed.emplace(m.id,at->second).second,"duplicate performed ID across parts");
+    for(auto id:m.notation_ids){const auto segment=notation.find(id);require(segment!=notation.end() && segment->second==at->second,"tie mapping crosses parts");}
+    per_part[at->second].mapping.push_back(m);
+  }
+  std::map<std::uint64_t,bool> curve_ids;
+  for(const auto& c:performance.curves){
+    const auto at=c.part_id.empty() && score.parts.size()==1?parts.begin():parts.find(c.part_id);
+    require(at!=parts.end(),"multi-part curves require a known part ID");
+    require(c.id && curve_ids.emplace(c.id,true).second,"duplicate global curve ID");
+    per_part[at->second].curves.push_back(c);
+  }
+  for(const auto& n:performance.notes){
+    const auto at=performed.find(n.note_id);require(at!=performed.end(),"unknown performed note");
+    per_part[at->second].notes.push_back(n);
+  }
+  std::vector<CompiledPerformanceTrack> result;
+  std::size_t common_end=0;
+  for(std::size_t i=0;i<per_part.size();++i){
+    MidiFile isolated;isolated.tempo=full.tempo;isolated.time_signature=full.time_signature;
+    isolated.meter_changes=full.meter_changes;isolated.tracks.push_back(std::move(full.tracks[i]));
+    auto sequence=compileTrackPerformance(isolated,per_part[i],end);
+    common_end=std::max(common_end,sequence.end_frame);
+    result.push_back({score.parts[i].id,std::move(sequence)});
+  }
+  // A late performance override extends ALL terminal resets/tails together.
+  for(auto& t:result){
+    for(auto& e:t.sequence.events)if(e.terminal_reset)e.frame=common_end;
+    t.sequence.end_frame=common_end;t.sequence.frames=common_end+240000;
+    std::stable_sort(t.sequence.events.begin(),t.sequence.events.end(),[](const auto& a,const auto& b){return a.frame<b.frame;});
+    for(std::size_t i=kMaxEventsPerRealtimeSlice;i<t.sequence.events.size();++i)
+      require(t.sequence.events[i].frame-t.sequence.events[i-kMaxEventsPerRealtimeSlice].frame>=256,"too many MIDI events after shared-end extension");
+  }
+  return result;
+}
+MidiSampleSequence compilePerformance(const Score& score,const Performance& performance){
+  require(score.parts.size()==1,"single-instrument entry requires one part; use compilePerformanceTracks for an ensemble");
+  return compilePerformanceTracks(score,performance).front().sequence;
+}
+std::vector<LiveTrackPlan> planPerformanceDocument(const PerformanceDocument& d){
+  auto tracks=compilePerformanceTracks(d.score,d.performances.at(d.active));
+  if(d.routes.empty()){
+    require(tracks.size()==1,"multi-part document requires explicit routes");
+    return {{tracks[0].part_id,std::move(tracks[0].sequence),std::pow(10.,d.gain_db/20),{}}};
+  }
+  require(d.routes.size()==tracks.size(),"every part must have one route");
+  const bool any_solo=std::any_of(d.routes.begin(),d.routes.end(),[](const auto& r){return r.solo;});
+  std::vector<LiveTrackPlan> result;
+  for(const auto& r:d.routes){
+    require(r.track_delay_us==0,"nonzero musical track delay playback is not implemented");
+    const auto at=std::find_if(tracks.begin(),tracks.end(),[&](const auto& t){return t.part_id==r.part_id;});
+    require(at!=tracks.end(),"unknown route part");
+    LiveTrackPlan plan{r.part_id,std::move(at->sequence),std::pow(10.,(d.gain_db+r.gain_db)/20),{},!r.mute && (!any_solo || r.solo),r.track_delay_us};
+    plan.balance=r.balance;
+    if(r.instrument=="swam-cello")requireInitialExpression(plan.sequence);
+    result.push_back(std::move(plan));
+  }
+  return result;
+}
 ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, std::uint8_t controller,
-                                    std::uint64_t curve_id, CurveAdoptionReport* report) {
+                                    std::uint64_t curve_id, CurveAdoptionReport* report, const std::string& part_id) {
   require(curve_id != 0, "curve ID must be nonzero");
   require(controller == 11 || controller == 64, "only CC11 and CC64 lanes are editable");
   require(channel < 16, "channel must be 0..15");
   MidiFile midi; std::string error;
-  if (!scoreToMidiFile(score, &midi, &error)) throw std::invalid_argument(error);
+  if (!scoreToMidiFile(score, &midi, &error,ScoreMidiChannelPolicy::IndependentParts)) throw std::invalid_argument(error);
+  if(!part_id.empty()){
+    const auto at=std::find_if(score.parts.begin(),score.parts.end(),[&](const auto& p){return p.id==part_id;});
+    require(at!=score.parts.end(),"unknown controller source part");
+    auto track=std::move(midi.tracks[static_cast<std::size_t>(at-score.parts.begin())]);midi.tracks.clear();midi.tracks.push_back(std::move(track));
+  }else require(score.parts.size()==1,"multi-part curve adoption requires a part ID");
   const auto source = makeMidiSampleSequence(midi, 48000, 5, max_frames);
   ControlCurve curve; curve.id = curve_id; curve.channel = channel;
-  curve.controller = controller; curve.stepped = true;
+  curve.controller = controller; curve.stepped = true; curve.part_id=part_id;
   std::uint64_t seen = 0;
   for (const auto& event : source.events) {
     if (event.terminal_reset || event.status != (0xb0 | channel) || event.data1 != controller) continue;
@@ -217,11 +322,24 @@ ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, st
 void validatePerformanceDocument(const PerformanceDocument& d) {
   validateImportReceipt(d.import_receipt);
   require(!d.performances.empty() && d.performances.size() <= 16 && d.active < d.performances.size(), "invalid performance selection");
-  require(!d.piano_state.empty() && d.piano_state.size() <= 16U*1024*1024, "saved piano state required");
+  if(d.routes.empty())require(d.score.parts.size()==1 && !d.piano_state.empty() && d.piano_state.size()<=16U*1024*1024,"saved piano state required for one legacy part");
+  else {
+    require(d.piano_state.empty() && d.routes.size()==d.score.parts.size() && d.routes.size()<=64,"explicit routes must cover the score and replace legacy piano state");
+    Session routing;routing.score_file="score.dawproj";routing.master_gain_db=d.gain_db;
+    std::size_t state_bytes=0;
+    for(const auto& r:d.routes){
+      require(!r.state.empty() && r.state.size()<=16U*1024*1024,"saved route state required");
+      state_bytes+=r.state.size();require(state_bytes<=256U*1024*1024,"route states exceed total 256 MiB limit");
+      require(std::any_of(d.score.parts.begin(),d.score.parts.end(),[&](const auto& p){return p.id==r.part_id;}),"unknown route part");
+      InstrumentRoute route;route.part_id=r.part_id;route.instrument=r.instrument;route.gain_db=r.gain_db;route.balance=r.balance;
+      route.mute=r.mute;route.solo=r.solo;route.track_delay_us=r.track_delay_us;routing.routes.push_back(std::move(route));
+    }
+    validateSession(routing);
+  }
   require(std::isfinite(d.gain_db) && d.gain_db >= -60 && d.gain_db <= 0,"invalid document output gain");
   for (const auto& take : d.performances) {
     require(!take.name.empty() && take.name.size() <= 256, "invalid performance name");
-    (void)compilePerformance(d.score, take);
+    (void)compilePerformanceTracks(d.score, take);
   }
 }
 void savePerformanceDocument(const PerformanceDocument& d, const std::string& directory) {
@@ -233,12 +351,15 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
   try {
     std::string error;
     if (!writeProjectFile(d.score, (root/"score.dawproj").string(), &error)) throw std::runtime_error(error);
-    write(root/"piano.aupreset", {d.piano_state.begin(), d.piano_state.end()});
+    if(d.routes.empty())write(root/"piano.aupreset", {d.piano_state.begin(), d.piano_state.end()});
+    else for(std::size_t i=0;i<d.routes.size();++i)write(root/routeStateName(i),{d.routes[i].state.begin(),d.routes[i].state.end()});
     const auto score_bytes = read(root/"score.dawproj", 64U*1024*1024);
-    bool stepped = false;
-    for (const auto& take : d.performances) for (const auto& curve : take.curves) stepped |= curve.stepped;
-    const int version = !d.import_receipt.empty() ? 3 : (stepped ? 2 : 1);
-    std::ostringstream out; out << std::setprecision(17) << "CLASSICAL_DAW_PERFORMANCE " << version << '\n'  << std::quoted(binding(score_bytes,d.piano_state)) << '\n';
+    bool stepped = false, scoped=false;
+    for (const auto& take : d.performances) for (const auto& curve : take.curves){stepped |= curve.stepped;scoped |= !curve.part_id.empty();}
+    const int version = !d.routes.empty() || scoped ? 4 : (!d.import_receipt.empty() ? 3 : (stepped ? 2 : 1));
+    std::ostringstream out;out.imbue(std::locale::classic());out<<std::setprecision(17)<<"CLASSICAL_DAW_PERFORMANCE "<<version<<'\n';
+    if(version>=4)writeRoutes(out,d.routes);
+    out<<std::quoted(d.routes.empty()?binding(score_bytes,d.piano_state):routeBinding(score_bytes,d.routes))<<'\n';
     out << d.active << ' ' << d.performances.size() << ' ' << d.gain_db << '\n';
     if(version>=3)out<<std::quoted(d.import_receipt)<<'\n';
     for (const auto& take : d.performances) {
@@ -248,6 +369,7 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
       for(const auto& curve:take.curves) {
         out<<curve.id<<' '<<static_cast<int>(curve.channel)<<' '<<static_cast<int>(curve.controller)<<' '<<curve.points.size();
         if (version >= 2) out << ' ' << curve.stepped;
+        if(version>=4)out<<' '<<std::quoted(curve.part_id);
         out << '\n';
         for(const auto& point:curve.points)out<<point.id<<' '<<point.seconds<<' '<<point.value<<'\n';
       }
@@ -262,6 +384,7 @@ void savePerformanceDocument(const PerformanceDocument& d, const std::string& di
   } catch (...) {
     std::error_code ec;
     for (const auto* name : {"score.dawproj.tmp", "score.dawproj", "piano.aupreset", "performances.dawperformance"}) fs::remove(root/name,ec);
+    for(std::size_t i=0;i<d.routes.size();++i)fs::remove(root/routeStateName(i),ec);
     fs::remove(root,ec); throw;
   }
 }
@@ -270,11 +393,24 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
   PerformanceDocument d; std::string error;
   const auto score_bytes = read(root/"score.dawproj",64U*1024*1024);
   if (!readProjectFile((root/"score.dawproj").string(),&d.score,&error)) throw std::runtime_error(error);
-  const auto state = read(root/"piano.aupreset",16U*1024*1024); d.piano_state.assign(state.begin(),state.end());
-  std::istringstream in(read(root/"performances.dawperformance",170U*1024*1024));
+  std::istringstream in(read(root/"performances.dawperformance",170U*1024*1024));in.imbue(std::locale::classic());
   std::string magic, identity; int version = 0; std::size_t count = 0;
-  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && (version >= 1 && version <= 3),"invalid performance document");
-  require(bool(in >> std::quoted(identity)) && identity == binding(score_bytes,d.piano_state),"performance score/state binding mismatch");
+  require(bool(in >> magic >> version) && magic == "CLASSICAL_DAW_PERFORMANCE" && (version >= 1 && version <= 4),"invalid performance document");
+  if(version>=4){
+    std::size_t routes=0;require(bool(in>>routes) && routes<=64,"invalid route count");
+    std::size_t state_bytes=0;
+    for(std::size_t i=0;i<routes;++i){
+      PerformanceRoute r;int mute=-1,solo=-1;
+      require(bool(in>>std::quoted(r.part_id)>>std::quoted(r.instrument)>>r.gain_db>>r.balance>>mute>>solo>>r.track_delay_us) &&
+        (mute==0 || mute==1) && (solo==0 || solo==1),"invalid performance route");
+      r.mute=mute==1;r.solo=solo==1;
+      const auto state=read(root/routeStateName(i),16U*1024*1024);state_bytes+=state.size();
+      require(state_bytes<=256U*1024*1024,"route states exceed total 256 MiB limit");
+      r.state.assign(state.begin(),state.end());d.routes.push_back(std::move(r));
+    }
+  }
+  if(d.routes.empty()){const auto state=read(root/"piano.aupreset",16U*1024*1024);d.piano_state.assign(state.begin(),state.end());}
+  require(bool(in>>std::quoted(identity)) && identity==(d.routes.empty()?binding(score_bytes,d.piano_state):routeBinding(score_bytes,d.routes)),"performance score/state binding mismatch");
   require(bool(in >> d.active >> count >> d.gain_db) && count >= 1 && count <= 16 && d.active < count,"invalid performance count");
   if(version>=3) {
     d.import_receipt=readReceipt(in);
@@ -282,19 +418,20 @@ PerformanceDocument loadPerformanceDocument(const std::string& directory) {
   for (std::size_t i = 0; i < count; ++i) {
     Performance take; std::size_t notes = 0;
     std::size_t mappings=0,curves=0;
-    require(bool(in>>std::quoted(take.name)>>take.next_note_id>>mappings) && mappings<=kMaxAuditionAttacks,"invalid performance entry");
+    require(bool(in>>std::quoted(take.name)>>take.next_note_id>>mappings) && mappings<=kMaxAuditionAttacks*(version>=4?64U:1U),"invalid performance entry");
     for(std::size_t m=0;m<mappings;++m){PerformedNoteMapping map;std::size_t segments=0;
       require(bool(in>>map.id>>segments) && segments>0 && segments<=4096,"invalid note mapping");
       for(std::size_t j=0;j<segments;++j){std::uint64_t id=0;require(bool(in>>id),"truncated mapping");map.notation_ids.push_back(id);}take.mapping.push_back(std::move(map));
     }
-    require(bool(in>>curves) && curves<=32,"invalid curve count");
+    require(bool(in>>curves) && curves<=(version>=4?2048U:32U),"invalid curve count");
     for(std::size_t c=0;c<curves;++c){ControlCurve curve;int channel=0,cc=0;std::size_t points=0;
       require(bool(in>>curve.id>>channel>>cc>>points) && channel>=0 && channel<16 && cc>=0 && cc<128 && points<=4096,"invalid curve");
       if (version >= 2) { int mode = -1; require(bool(in >> mode) && (mode == 0 || mode == 1), "invalid curve mode"); curve.stepped = mode == 1; }
+      if(version>=4)require(bool(in>>std::quoted(curve.part_id)) && curve.part_id.size()<=1024,"invalid curve part");
       curve.channel=static_cast<std::uint8_t>(channel);curve.controller=static_cast<std::uint8_t>(cc);
       for(std::size_t j=0;j<points;++j){CurvePoint point;require(bool(in>>point.id>>point.seconds>>point.value),"truncated curve");curve.points.push_back(point);}take.curves.push_back(std::move(curve));
     }
-    require(bool(in>>notes) && notes<=kMaxAuditionAttacks,"invalid override count");
+    require(bool(in>>notes) && notes<=kMaxAuditionAttacks*(version>=4?64U:1U),"invalid override count");
     for (std::size_t j = 0; j < notes; ++j) {
       NotePerformance n;
       require(bool(in >> n.note_id >> n.onset_seconds >> n.duration_scale >> n.velocity),"invalid performance override");
@@ -352,6 +489,12 @@ void WorkEditor::apply(const Change& c, bool forward) {
     require(std::isfinite(value)&&value>=-60&&value<=0,"invalid gain");
     const auto previous = document_.gain_db; document_.gain_db=value;
     try { admit(); } catch (...) { document_.gain_db = previous; throw; }
+  } else if(c.kind==Kind::RouteMix) {
+    auto& r=document_.routes.at(c.route_slot);
+    const PerformanceRouteMix prior{r.gain_db,r.balance,r.mute,r.solo,r.track_delay_us};
+    const auto assign=[&](const PerformanceRouteMix& mix){r.gain_db=mix.gain_db;r.balance=mix.balance;r.mute=mix.mute;r.solo=mix.solo;r.track_delay_us=mix.track_delay_us;};
+    assign(forward?c.mix_after:c.mix_before);
+    try{validatePerformanceDocument(document_);admit();}catch(...){assign(prior);throw;}
   } else {
     auto take=document_.performances.at(c.take);
     if(c.kind==Kind::Note)update(take,c.id,forward?c.after:c.before);
@@ -373,7 +516,7 @@ void WorkEditor::apply(const Change& c, bool forward) {
       for(auto& curve:take.curves)if(curve.id==c.id)for(auto& point:curve.points)if(point.id==c.point)found=&point;
       require(found,"unknown curve/point");found->value=forward?c.value_after:c.value_before;
     }
-    (void)compilePerformance(document_.score,take);std::swap(document_.performances[c.take],take);
+    (void)compilePerformanceTracks(document_.score,take);std::swap(document_.performances[c.take],take);
     try { admit(); } catch (...) { std::swap(document_.performances[c.take],take); throw; }
   }
 }
@@ -400,14 +543,15 @@ bool WorkEditor::copyTake(const std::string& name) {
   return commit(c);
 }
 std::size_t WorkEditor::shapeRange(double from_seconds,double to_seconds,Shape field,
-                                  double from_value,double to_value) {
+                                  double from_value,double to_value,const std::string& part_id) {
   require(std::isfinite(from_seconds)&&std::isfinite(to_seconds)&&from_seconds>=0&&to_seconds>=from_seconds,
           "range must be two finite seconds in order");
   require(std::isfinite(from_value)&&std::isfinite(to_value),"range values must be finite");
+  if(!part_id.empty())require(std::any_of(document_.score.parts.begin(),document_.score.parts.end(),[&](const auto& p){return p.id==part_id;}),"unknown shape part");
   const auto& take=document_.performances[document_.active];
-  const auto sequence=compilePerformance(document_.score,take);
+  const auto tracks=compilePerformanceTracks(document_.score,take);
   std::map<std::uint64_t,double> heard;
-  for(const auto& e:sequence.events)
+  for(const auto& track:tracks)if(part_id.empty() || track.part_id==part_id)for(const auto& e:track.sequence.events)
     if((e.status&0xf0)==0x90&&e.data2)heard.emplace(e.note_id,static_cast<double>(e.frame)/48000);
   auto written=std::make_shared<std::vector<NotePerformance>>();
   auto replaced=std::make_shared<std::vector<NotePerformance>>();
@@ -464,6 +608,14 @@ bool WorkEditor::removeCurve(std::uint64_t id) {
 }
 bool WorkEditor::setGain(double value) {
   if(value==document_.gain_db)return false;Change c;c.kind=Kind::Gain;c.take=document_.active;c.value_before=document_.gain_db;c.value_after=value;return commit(c);
+}
+bool WorkEditor::setRouteMix(const std::string& id,const PerformanceRouteMix& mix){
+  const auto at=std::find_if(document_.routes.begin(),document_.routes.end(),[&](const auto& r){return r.part_id==id;});
+  require(at!=document_.routes.end(),"unknown explicit route");
+  Change c;c.kind=Kind::RouteMix;c.take=document_.active;c.route_slot=static_cast<std::size_t>(at-document_.routes.begin());
+  c.mix_before={at->gain_db,at->balance,at->mute,at->solo,at->track_delay_us};c.mix_after=mix;
+  if(c.mix_before.gain_db==mix.gain_db && c.mix_before.balance==mix.balance && c.mix_before.mute==mix.mute && c.mix_before.solo==mix.solo && c.mix_before.track_delay_us==mix.track_delay_us)return false;
+  return commit(c);
 }
 bool WorkEditor::undo(){if(!cursor_)return false;apply(history_[cursor_-1],false);--cursor_;++revision_;return true;}
 bool WorkEditor::redo(){if(cursor_==history_.size())return false;apply(history_[cursor_],true);++cursor_;++revision_;return true;}

@@ -75,7 +75,7 @@ bool ParallelRenderGraph::render(const TrackQuantum* tracks, std::size_t count, 
   if (!tracks || count != lanes_.size()) return invalid();
   for (std::size_t i = 0; i < count; ++i) {
     const auto& t = tracks[i];
-    if (!std::isfinite(t.gain) || t.gain < 0 || t.gain > 4 || t.count > 16384 || (t.count && !t.events)) return invalid();
+    if (!std::isfinite(t.gain) || t.gain < 0 || t.gain > 4 || !std::isfinite(t.balance) || t.balance < -1 || t.balance > 1 || t.count > 16384 || (t.count && !t.events)) return invalid();
     std::size_t prior = 0;
     for (std::size_t j = 0; j < t.count; ++j) {
       const auto& e = t.events[j]; const auto type = e.status & 0xf0;
@@ -108,9 +108,12 @@ bool ParallelRenderGraph::render(const TrackQuantum* tracks, std::size_t count, 
       // samples). No large clear, plugin call or destructor on the audio thread.
       continue;
     }
+    constexpr double half_pi=1.57079632679489661923;
+    const double left=track.gain*(track.balance>=1?0:track.balance>0?std::cos(track.balance*half_pi):1);
+    const double right=track.gain*(track.balance<=-1?0:track.balance<0?std::cos(track.balance*half_pi):1);
     for (std::size_t j = 0; j < frames * 2; ++j) {
       const auto sample = lane.delayed(lane.scratch[j]); // advance even while muted
-      if (track.audible) output[j] += static_cast<float>(sample * track.gain);
+      if (track.audible) output[j] += static_cast<float>(sample * (j%2==0?left:right));
     }
   }
   if (!generationsMatch()) {

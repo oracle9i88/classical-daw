@@ -15,6 +15,7 @@ struct LiveTrackPlan {
   std::vector<std::uint64_t> reject_started_onsets;
   bool audible = true;
   std::int64_t track_delay_us = 0;
+  double balance = 0;
 };
 
 // One producer, one audio consumer, one whole-session publication and ACK.
@@ -31,6 +32,7 @@ class LiveSessionStream {
     double gain = 1;
     std::uint64_t revision = 0;
     bool audible = true;
+    double balance = 0;
   };
   struct Block {
     const TrackBlock* tracks = nullptr;

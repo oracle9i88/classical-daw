@@ -12,6 +12,12 @@ or complete native GUI yet. See [editing/recovery behavior and open release gate
 
 ## What works in Alpha
 
+- Saved multi-part score sessions now migrate into a routed performance
+  document without loading plugins. Part-scoped note/curve/mix editing shares
+  one undo stack. Up to two saved Pianoteq/SWAM Cello routes play through one
+  session mailbox and PDC graph; live undo/redo, byte-identical reopen/recovery
+  and device-free ensemble bounce have local verification. Ensemble seek and
+  frozen/live mixing remain open. See [commands and measured boundaries](docs/multipart-performance-editor.md).
 - New imports retain [repair receipts](docs/import-repair-provenance.md): source
   fingerprint, reader repair counts, and addressed before/after notes for the
   audition repair pass. Receipts survive editing, save/reopen and recovery;
@@ -34,7 +40,8 @@ or complete native GUI yet. See [editing/recovery behavior and open release gate
   curves, and uses one delta-command history for notation/performance/curve/gain
   edits. Real Pianoteq audition runs inside CoreAudio callbacks; saving/reopening
   preserves data exactly, with audio checked under a declared tolerance. This
-  is a one-part CLI workflow, not the complete DAW UI. See
+  is the earlier one-part CLI workflow, now complemented by the routed entry
+  above; neither is the complete DAW UI. See
   [commands, acceptance evidence and boundaries](docs/performance-vertical-slice.md).
 - Live edits now publish a prepared revision at the next audio quantum without
   restarting Pianoteq or the transport. A key-ownership ledger preserves held
@@ -54,7 +61,8 @@ or complete native GUI yet. See [editing/recovery behavior and open release gate
 - SWAM Cello 3 also uses the shared offline AU host, with explicit CC11 expression,
   Cocoa startup handling, concert-pitch factory initialization, saved-state
   pitch-range validation and per-note fixture audio checks. Other installed SWAM instruments and
-  realtime SWAM playback remain pending. See [SWAM Cello setup](docs/swam.md).
+  their realtime adapters remain pending; Cello now has the bounded two-route
+  realtime path above. See [SWAM Cello setup](docs/swam.md).
 - Offline multi-instrument sessions route each score part to an independent
   piano/cello instance, with saved gain, stereo balance and instrument state.
   They export aligned stems and a master mix on the shared tempo map, retaining
@@ -72,7 +80,7 @@ or complete native GUI yet. See [editing/recovery behavior and open release gate
 - Native frozen-track playback through CoreAudio, with play/pause/seek/stop,
   live gain/balance/mute/solo/master controls, bounded callback processing and
   startup readiness checks. Hardware callbacks and controls were verified with
-  speaker-silenced probes. GUI and production multi-instrument realtime hosting remain pending.
+  speaker-silenced probes. GUI and general orchestral realtime hosting remain pending.
   See [playback commands and measured limits](docs/session-playback.md).
 - Optional native `--stream` playback prefetches frozen audio on a disk worker.
   Fixed audio pages use 8 MiB at 64 tracks, independent of duration, while the

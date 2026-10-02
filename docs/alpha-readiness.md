@@ -1,7 +1,9 @@
 # Performance editing: recoverable local Alpha
 
 2026-10-02. This change is on a feature branch. It does not certify a public
-release, multi-AU editing, or general MusicXML fidelity.
+release or general MusicXML fidelity. The subsequent
+[multi-part editor](multipart-performance-editor.md) connects two-AU live editing;
+the legacy piano range behavior described here has not been added to ensembles.
 
 ## Ordered controller steps
 
@@ -55,6 +57,8 @@ The CLI establishes a baseline before loading/editing the source. Each accepted
 revision is saved to an exclusive sibling recovery directory. All three document
 files are completed before publishing `latest` by rename. Two completed
 snapshots are retained; cleanup never recursively deletes unexpected content.
+The new v4 path snapshots one saved state per route rather than the legacy single
+piano file; all files are completed before publishing the same recovery pointer.
 The original document is never overwritten. Concurrent editors use distinct
 recovery folders. A failed save leaves the edit accepted but prints an explicit
 failure and keeps the previous complete pointer.
@@ -97,7 +101,7 @@ approval. Short documents are rejected before rendering.
 
 ## Remaining public-use gates
 
-Production multi-instrument live documents/PDC integration; granular XML/MIDI
+General orchestral/frozen-live integration beyond the subsequent two-route editor; granular XML/MIDI
 reader provenance (the audition repair pass now has [persisted records](import-repair-provenance.md)); large-score autosave/seek turnaround measurements; complete GUI,
 installation packaging and testing on a clean independent machine. These remain
 open. No workflow is dispatched or retried by this work.

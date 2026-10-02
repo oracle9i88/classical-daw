@@ -40,6 +40,7 @@ struct LiveSessionStream::TrackPlan {
   std::size_t frames = 0;
   double gain = 1;
   bool audible = true;
+  double balance = 0;
   std::vector<std::size_t> guarded_onsets;
 };
 
@@ -82,7 +83,7 @@ struct LiveSessionStream::Plan {
 std::unique_ptr<LiveSessionStream::TrackPlan> LiveSessionStream::Lane::prepare(
     MidiSampleSequence sequence, double gain, const std::vector<std::uint64_t>& guards) const {
   require(sequence.sample_rate == 48000 && sequence.frames > sequence.end_frame &&
-      sequence.frames <= 48000U * 60 * 30 && std::isfinite(gain) && gain >= 0 && gain <= 1,
+      sequence.frames <= 48000U * 60 * 30 && std::isfinite(gain) && gain >= 0 && gain <= 4,
       "invalid live plan bounds");
   require(sameEvents(fixed_events_, fixedEvents(sequence)), "live edits may only change notes, CC64/CC11 and gain");
   auto plan = std::make_unique<TrackPlan>();
@@ -204,7 +205,7 @@ LiveSessionStream::TrackBlock LiveSessionStream::Lane::process(const TrackPlan& 
     std::size_t position,std::uint32_t frames) noexcept {
   position_=position;
   TrackBlock result; result.events=block_.data(); result.frame=position; result.frames=frames;
-  result.gain=plan.gain; result.audible=plan.audible;
+  result.gain=plan.gain; result.audible=plan.audible; result.balance=plan.balance;
   std::size_t count=0;
   if(!initialized_controls_) {
     for(std::size_t channel=0;channel<16;++channel) {
@@ -262,7 +263,8 @@ std::unique_ptr<LiveSessionStream::Plan> LiveSessionStream::prepare(
     require(!plan->tracks[slot],"duplicate live track identity");
     require(track.track_delay_us==0,"nonzero musical track_delay_us playback is not implemented");
     auto prepared=lanes_[slot]->prepare(std::move(track.sequence),track.gain,track.reject_started_onsets);
-    prepared->audible=track.audible;
+    require(std::isfinite(track.balance) && track.balance>=-1 && track.balance<=1,"invalid live balance");
+    prepared->audible=track.audible;prepared->balance=track.balance;
     plan->frames=std::max(plan->frames,prepared->frames);
     plan->tracks[slot]=std::move(prepared);
   }

@@ -37,6 +37,7 @@ struct TrackQuantum {
   std::size_t count = 0;
   double gain = 1;
   bool audible = true;
+  double balance = 0;
 };
 struct TrackPdcInfo {
   std::string track_id;

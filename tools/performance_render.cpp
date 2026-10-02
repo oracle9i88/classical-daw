@@ -3,6 +3,8 @@
 // applied, so this renders the compiled sequence rather than re-deriving
 // events from notation. Offline: no output device is opened.
 #include "audio_unit_instrument.hpp"
+#include "ensemble_audition.hpp"
+#include "daw/audio_limits.hpp"
 #include "daw/performance.hpp"
 #include "daw/wav.hpp"
 #include "daw/session.hpp"
@@ -42,6 +44,38 @@ int main(int argc, char** argv) {
       document.active = take;
     }
     const auto& performance = document.performances.at(document.active);
+
+    if(!document.routes.empty()){
+      stage="ensemble_compile";
+      const auto plans=daw::planPerformanceDocument(document);
+      std::size_t frames=0;for(const auto& p:plans)frames=std::max(frames,p.sequence.frames);
+      if(frames>daw::kMaxBufferedAudioFrames)throw std::runtime_error("ensemble bounce exceeds 256 MiB; streaming bounce is not integrated");
+      stage="ensemble_instruments";daw::EnsembleAudition audition(document);audition.start();
+      const auto latency=static_cast<std::size_t>(std::llround(audition.latency()*48000));
+      daw::AudioBuffer audio;audio.sample_rate=48000;audio.channels=2;audio.samples.resize(frames*2);
+      stage="ensemble_render";float block[512]{};
+      while(!audition.done()){
+        const auto from=audition.frame();audition.render(block,256);
+        if(audition.failed())throw std::runtime_error("ensemble graph failed: "+audition.statusText());
+        const auto until=audition.frame();
+        for(std::size_t f=from;f<until;++f)if(f>=latency && f-latency<frames)
+          for(std::size_t c=0;c<2;++c)audio.samples[(f-latency)*2+c]=block[(f-from)*2+c];
+      }
+      const auto stats=audition.trackStatisticsAfterStop();
+      for(const auto& t:stats)if(t.frames!=frames+latency)throw std::runtime_error("quarantined/incomplete track; refusing partial ensemble bounce");
+      stage="write";std::filesystem::create_directories(root);std::string error;
+      if(!daw::writeWavPcm16(audio,(root/"performance.wav").string(),&error))throw std::runtime_error(error);
+      const auto mixed=daw::applyMasterMix(audio,0);
+      std::ofstream report(root/"report.json");report<<std::setprecision(17)
+        <<"{\n  \"format\": \"classical-daw-ensemble-bounce-1\",\n  \"take_index\": "<<document.active
+        <<",\n  \"frames\": "<<frames<<",\n  \"removed_common_latency_frames\": "<<latency
+        <<",\n  \"peak_before_pcm_clip\": "<<audition.peakAfterStop()<<",\n  \"rms\": "<<mixed.rms
+        <<",\n  \"clipped_samples\": "<<audition.clippedAfterStop()<<",\n  \"output_devices_opened\": 0,\n  \"routes\": [";
+      for(std::size_t i=0;i<stats.size();++i){if(i)report<<',';report<<"{\"part\":"<<jsonString(document.routes[i].part_id)<<",\"peak\":"<<stats[i].peak<<",\"note_ons\":"<<stats[i].note_ons<<",\"note_offs\":"<<stats[i].note_offs<<'}';}
+      report<<"]\n}\n";report.close();if(!report)throw std::runtime_error("ensemble report write failed");
+      std::cout<<"Bounced "<<document.routes.size()<<" instruments through the session PDC graph; common latency "<<latency
+        <<" frames removed from file origin, frames="<<frames<<" output_devices_opened=0\n";return 0;
+    }
 
     stage = "compile";
     const auto sequence = daw::compilePerformance(document.score, performance);

@@ -27,16 +27,23 @@ std::string digest(const fs::path& root) {
   need(fs::is_directory(fs::symlink_status(root)),"document directory missing or symlink");
   const auto score=read(root/"score.dawproj",64U*1024*1024);
   const auto performance=read(root/"performances.dawperformance",170U*1024*1024);
-  const auto state=read(root/"piano.aupreset",16U*1024*1024);
+  std::vector<std::string> states;
+  std::istringstream header(performance);std::string magic;int version=0;std::size_t routes=0;
+  need(bool(header>>magic>>version) && magic=="CLASSICAL_DAW_PERFORMANCE" && version>=1 && version<=4,"invalid recovery document version");
+  if(version>=4)need(bool(header>>routes) && routes<=64,"invalid recovery route count");
+  std::size_t total=0;
+  if(!routes)states.push_back(read(root/"piano.aupreset",16U*1024*1024));
+  else for(std::size_t i=0;i<routes;++i){states.push_back(read(root/("route-"+std::to_string(i+1)+".aupreset"),16U*1024*1024));total+=states.back().size();need(total<=256U*1024*1024,"recovery states exceed bound");}
   // Length-delimited FNV-1a detects accidental corruption/stale input. This
   // local recovery journal is not an authenticity check for untrusted files.
   std::uint64_t hash=14695981039346656037ULL;
   const auto byte=[&](unsigned char b){hash^=b;hash*=1099511628211ULL;};
-  for(const auto* bytes:{&score,&performance,&state}) {
-    const auto size=static_cast<std::uint64_t>(bytes->size());
+  const auto add=[&](const std::string& bytes){
+    const auto size=static_cast<std::uint64_t>(bytes.size());
     for(unsigned shift=0;shift<64;shift+=8)byte(static_cast<unsigned char>(size>>shift));
-    for(char b:*bytes)byte(static_cast<unsigned char>(b));
-  }
+    for(char b:bytes)byte(static_cast<unsigned char>(b));
+  };
+  add(score);add(performance);for(const auto& state:states)add(state);
   std::ostringstream out;out<<std::hex<<std::setfill('0')<<std::setw(16)<<hash;return out.str();
 }
 fs::path canonicalSource(const std::string& source) {
@@ -55,6 +62,7 @@ void removeSnapshot(const fs::path& dir) noexcept {
   std::error_code ec;
   if(!fs::is_directory(fs::symlink_status(dir,ec)))return;
   for(const auto* name:{"score.dawproj","piano.aupreset","performances.dawperformance"})fs::remove(dir/name,ec);
+  for(std::size_t i=0;i<64;++i)fs::remove(dir/("route-"+std::to_string(i+1)+".aupreset"),ec);
   fs::remove(dir,ec);
 }
 }

@@ -1,6 +1,8 @@
 #pragma once
 #include "daw/score.hpp"
 #include "daw/midi_sequence.hpp"
+#include "daw/session.hpp"
+
 #include <optional>
 #include <functional>
 #include <memory>
@@ -8,6 +10,7 @@
 #include <vector>
 
 namespace daw {
+struct LiveTrackPlan;
 struct NotePerformance {
   std::uint64_t note_id = 0; // Performed-note ID, NOT a notation element ID.
   double onset_seconds = 0; // Offset from notated onset AFTER tempo conversion.
@@ -26,6 +29,7 @@ struct ControlCurve {
   // Ordered, sample-timed steps retain same-time release/reattack pairs.
   // False is the legacy interpolated 10 ms lane.
   bool stepped = false;
+  std::string part_id; // Required for multi-part scores; empty means the sole legacy part.
 };
 struct Performance {
   std::string name;
@@ -50,7 +54,20 @@ struct CurveAdoptionReport {
   double worst_shift_seconds = 0;
 };
 ControlCurve curveFromScoreMessages(const Score& score, std::uint8_t channel, std::uint8_t controller,
-                                    std::uint64_t curve_id, CurveAdoptionReport* report = nullptr);
+                                    std::uint64_t curve_id, CurveAdoptionReport* report = nullptr,
+                                    const std::string& part_id = "");
+struct PerformanceRoute {
+  std::string part_id, instrument; // stable score part; pianoteq or swam-cello
+  std::vector<std::uint8_t> state;
+  double gain_db = 0, balance = 0;
+  bool mute = false, solo = false;
+  std::int64_t track_delay_us = 0;
+};
+struct PerformanceRouteMix {
+  double gain_db = 0, balance = 0;
+  bool mute = false, solo = false;
+  std::int64_t track_delay_us = 0;
+};
 struct PerformanceDocument {
   Score score;
   std::vector<Performance> performances;
@@ -60,6 +77,9 @@ struct PerformanceDocument {
   // Immutable historical import receipt, not a description of later edits.
   // Empty for legacy documents. Inert text retained through saves and recovery.
   std::string import_receipt;
+  // Empty is the original piano document. Explicit routes own their AU states;
+  // piano_state must then be empty. One route per part; no hidden preset fallback.
+  std::vector<PerformanceRoute> routes;
 };
 // How many attacks one audition can hold. This bounds a per-track voice ledger
 // in the audio thread and nothing the callback does per block: block work is
@@ -71,10 +91,16 @@ inline constexpr std::size_t kMaxAuditionAttacks = 16384;
 // realtime scratch capacity and is deliberately NOT the total-note limit.
 inline constexpr std::size_t kMaxEventsPerRealtimeSlice = 4096;
 
-// First vertical slice: one piano part, fixed 48 kHz.
+// Legacy one-part convenience, fixed 48 kHz. Use the track compiler for ensembles.
 // Performance edits leave Score unchanged. Offsets never quantize written notes. All native
 // channel messages are retained; AU fixed-preset filtering is a host concern.
 MidiSampleSequence compilePerformance(const Score& score, const Performance& performance);
+struct CompiledPerformanceTrack { std::string part_id; MidiSampleSequence sequence; };
+// Independent routes retain each part's channel bytes and one common score end.
+// Performed IDs remain one global namespace per take; ties stay within a part.
+std::vector<CompiledPerformanceTrack> compilePerformanceTracks(const Score& score, const Performance& performance);
+// Pure data preparation; no AU loading. All validation before session publication.
+std::vector<LiveTrackPlan> planPerformanceDocument(const PerformanceDocument& document);
 // Validated override lists; absence means zero offset. Compare stored seconds,
 // including sub-sample edits, rather than rounded scheduled frame numbers.
 std::vector<std::uint64_t> changedPerformanceOnsets(const std::vector<NotePerformance>& before,
@@ -83,7 +109,7 @@ void validatePerformanceDocument(const PerformanceDocument& document);
 void savePerformanceDocument(const PerformanceDocument& document, const std::string& new_directory);
 PerformanceDocument loadPerformanceDocument(const std::string& directory);
 
-// The document's ONE history stores addressed notation/performance/curve/gain
+// The document's ONE history stores addressed notation/performance/curve/mix/gain
 // edits, not score snapshots. It owns no ScoreHistory or SessionMixState stack.
 // Selection itself is not an edit. New edits truncate redo; 128 commands max.
 class WorkEditor {
@@ -104,13 +130,14 @@ class WorkEditor {
   bool putCurve(ControlCurve curve);
   bool removeCurve(std::uint64_t curve_id);
   bool setGain(double db);
+  bool setRouteMix(const std::string& part_id, const PerformanceRouteMix& mix);
   // Shaping a passage is one musical act, so it is one command and one undo.
   // The value ramps linearly with each note's position between the two times,
   // by where the note is heard now rather than where it was written, and only
   // the named field moves: a crescendo does not discard timing already given.
   enum class Shape { OnsetMilliseconds, DurationScale, Velocity };
   std::size_t shapeRange(double from_seconds, double to_seconds, Shape field,
-                         double from_value, double to_value);
+                         double from_value, double to_value, const std::string& part_id = "");
   bool undo();
   bool redo();
   std::uint64_t revision() const noexcept { return revision_; }
@@ -122,7 +149,7 @@ class WorkEditor {
   using CommitAdmission = std::function<void(const PerformanceDocument&, std::uint64_t)>;
   void setCommitAdmission(CommitAdmission admission) { admission_ = std::move(admission); }
  private:
-  enum class Kind { Note, Pitch, Curve, Gain, CurveLane, NoteRange, TakeAdd };
+  enum class Kind { Note, Pitch, Curve, Gain, CurveLane, NoteRange, TakeAdd, RouteMix };
   struct Change {
     Kind kind = Kind::Note; std::size_t take = 0; std::uint64_t id = 0, point = 0;
     std::optional<NotePerformance> before, after;
@@ -135,6 +162,8 @@ class WorkEditor {
     std::shared_ptr<const std::vector<NotePerformance>> notes_before, notes_after;
     // A new reading, held by handle for the same reason.
     std::shared_ptr<const Performance> take_added;
+    std::size_t route_slot = 0;
+    PerformanceRouteMix mix_before{}, mix_after{};
   };
   bool commit(Change change);
   void apply(const Change& change, bool forward);

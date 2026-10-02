@@ -48,7 +48,7 @@ void SessionRenderSource::render(float* out, std::uint32_t frames) noexcept {
       if (track.revision != block.revision || track.frame != block.frame || track.frames != block.frames) {
         state_.store(State::Failed, std::memory_order_release); return;
       }
-      inputs_[i]={track.events,track.count,track.gain,track.audible};
+      inputs_[i]={track.events,track.count,track.gain,track.audible,track.balance};
     }
     if (block.frames && !graph_.render(inputs_.data(), block.count, out, block.frames)) {
       state_.store(State::Failed, std::memory_order_release); return;

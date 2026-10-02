@@ -4,7 +4,10 @@
 
 **2026-10-02 update:** the [session render runtime](session-render-runtime.md) now
 connects the single session mailbox, PDC and two real AU renderers. One silent
-CoreAudio probe passed; multi-part document/editor integration remains open.
+CoreAudio probe passed. The subsequent [multi-part document/editor integration](multipart-performance-editor.md)
+adds a saved-session entry, unified note/curve/mix undo, real two-AU live edits,
+recovery and device-free ensemble bounce. Frozen/live mixing, focus switching
+and twelve-part edit-to-ensemble turnaround remain open.
 
 **Earlier priority update:** real-score [import and editing entry](performance-import.md)
 now precedes further two-AU integration. Existing mailbox/PDC tests are retained;
