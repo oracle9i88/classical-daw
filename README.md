@@ -344,6 +344,10 @@ and [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Web Alpha v2
 
+[Open the public Web Alpha](https://classical-daw.oracle9i88.chatgpt.site).
+The [2026-10-07 publication receipt](docs/web-public-alpha-release.md) identifies
+the deployed source, portable release package, checks and current limitations.
+
 The no-build [Web Alpha](web/README.md) provides multi-part piano-roll editing,
 versioned JSON save/reopen and recovery, tempo/meter maps, MIDI controls, and
 MusicXML/MIDI interchange. Projects support up to 16 parts, 20,000 notes,
