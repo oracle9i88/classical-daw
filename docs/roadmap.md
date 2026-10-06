@@ -4,23 +4,33 @@ The public repository is an Alpha engine, not a commercial-ready DAW. Each
 stage below has a concrete acceptance gate; a feature list or screenshot does
 not count as completion.
 
-## In progress: multi-instrument realtime graph
+## Current integration and remaining orchestral work
 
-Follow the [whole-session/PDC decisions and four gates](multi-instrument-realtime-design.md):
-minimal renderer boundary, then one atomic multi-track plan with synthetic
-nonzero-latency verification, then real Pianoteq/SWAM, then the general registry.
-Musical route offset and algorithmic latency stay separate. Initially render
-serially with at most two live AUs; an over-budget configuration must use fewer
-live instances or explicitly validated frozen tracks. Device presentation is
-labelled estimated/unknown until its clock mapping is established. Returned
-plugin errors are isolated by lane; process crashes/hangs are not isolated yet.
+The [whole-session/PDC design](multi-instrument-realtime-design.md) now has a
+portable render graph, a single atomic multi-track mailbox, synthetic nonzero
+latency tests, real Pianoteq/SWAM evidence, and a
+[saved multi-part document/history entry](multipart-performance-editor.md).
+The saved-session importer, v4 route states, part-scoped controller curves and
+one command history are connected to the two-AU realtime path and device-free
+bounce. The 2026-10-07 follow-up adds 10 ms running mix ramps and fake-renderer
+tests of the production audition adapters. These portable tests do not replace
+real AU/CoreAudio or listening validation.
 
-First slice: [SWAM latency experiment and portable PDC kernel](multi-instrument-progress.md).
-The installed SWAM reported 20 ms across tested settings. The standalone kernel
-and v3 route-delay reservation have tests; real multi-AU output and all four
-complete integration gates remain pending. The subsequent
-[whole-session mailbox subgate](live-session.md) is implemented; multitrack
-document/history and real AU graph integration are still pending.
+The general instrument registry and the full orchestral editing loop remain
+open. At most two AUs render serially in this editor; larger arrangements still
+need the separate explicit offline/frozen path. Frozen/live integration and
+focus switching, ensemble seek/preroll and twelve-part edit-to-hear turnaround
+are not complete. Raw MusicXML/MIDI import still selects one part rather than
+automatically assigning an orchestral instrument set. Musical route offsets
+remain separately stored but nonzero playback is rejected. The installed SWAM's
+measured 20 ms algorithmic latency is compensated; bowed attack time is not.
+
+Returned plugin errors quarantine one lane and are pollable. A latency-generation
+change stops the graph for a stopped rebuild; process crashes/hangs remain
+uncontained. Device presentation is labelled estimated/unknown until its clock
+mapping is established. The earlier evidence in [PDC progress](multi-instrument-progress.md)
+and [whole-session mailbox](live-session.md) remains historical; current integration
+status is recorded above and in the multi-part document page.
 
 ## Completed in this iteration
 

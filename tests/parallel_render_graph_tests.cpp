@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -50,6 +51,92 @@ struct Delayed final : daw::PreparedTrackRenderer {
     return daw::TrackRenderError::None;
   }
 };
+struct Constant final : daw::PreparedTrackRenderer {
+  std::uint64_t fail_at = UINT64_MAX;
+  unsigned calls = 0;
+  daw::RendererLatency latency() const override { return {}; }
+  std::uint64_t latencyGeneration() const noexcept override { return 0; }
+  daw::TrackRenderError render(const daw::TimedMidiEvent*, std::size_t,
+      std::uint64_t frame, float* out, std::uint32_t frames) noexcept override {
+    ++calls;
+    if (frame >= fail_at) return daw::TrackRenderError::ReturnedError;
+    for (unsigned f = 0; f < frames; ++f) { out[2*f] = 1; out[2*f+1] = .5F; }
+    return daw::TrackRenderError::None;
+  }
+};
+void smoothMix(const std::vector<unsigned>& requests) {
+  Constant renderer;
+  daw::ParallelRenderGraph graph({{"constant", &renderer, 0}});
+  daw::TrackQuantum input;
+  std::array<float, 512> audio{};
+  float last_left = 0, last_right = 0;
+  unsigned request = 0;
+  // Independent closed-form ramp oracle. Changing callback segmentation must
+  // neither restart a ramp nor change its duration or its first/last samples.
+  auto segment = [&](unsigned length, double from_l, double from_r,
+                     double to_l, double to_r, bool ramp, bool audible = true) {
+    for (unsigned frame = 0; frame < length;) {
+      const auto n = std::min(length-frame, requests[request++ % requests.size()]);
+      realtime = true;
+      const bool ok = graph.render(&input, 1, audio.data(), n);
+      realtime = false;
+      require(ok, "mix ramp render failed");
+      for (unsigned f = 0; f < n; ++f) {
+        const double t = ramp ? std::min(1., (frame+f+1.)/480.) : 1.;
+        const auto l = audible ? from_l+(to_l-from_l)*t : 0.;
+        const auto r = audible ? (from_r+(to_r-from_r)*t)*.5 : 0.;
+        require(std::abs(audio[2*f]-l) < 2e-6 && std::abs(audio[2*f+1]-r) < 2e-6,
+                "gain/pan ramp differs from sample-time oracle");
+        require(audio[2*f] >= 0 && audio[2*f] <= 4 && audio[2*f+1] >= 0 && audio[2*f+1] <= 2,
+                "mix ramp overshot endpoint range");
+      }
+      last_left = audio[2*(n-1)]; last_right = audio[2*(n-1)+1];
+      frame += n;
+    }
+  };
+  input.gain = .5; input.balance = -1;
+  segment(37, .5, 0, .5, 0, false); // First render must NOT fade in.
+  input.gain = 4; input.balance = 1;
+  segment(173, .5, 0, 0, 4, true);
+  // A new target mid-ramp starts at the last actually rendered coefficients,
+  // not the old target. No hidden frame/quantum rounding or state reset.
+  const double partial_l = .5*(1-173./480), partial_r = 4*173./480;
+  input.gain = .25; input.balance = 0;
+  segment(701, partial_l, partial_r, .25, .25, true);
+  input.balance = -1;
+  segment(480, .25, .25, .25, 0, true);
+  require(last_right == 0, "hard-pan endpoint retains an epsilon tail");
+  input.gain = 0;
+  segment(480, .25, 0, 0, 0, true);
+  require(last_left == 0 && last_right == 0, "zero-gain endpoint not exact");
+  input.gain = 1; input.balance = 0;
+  segment(113, 0, 0, 1, 1, true);
+  input.audible = false; input.gain = 4; input.balance = 1;
+  segment(19, 0, 0, 0, 0, false, false); // Mute never leaks the current ramp.
+  input.audible = true;
+  segment(701, 0, 0, 0, 4, true); // Unmute uses the newest controls and fades in.
+}
+void rampFault() {
+  Constant healthy, broken;
+  daw::ParallelRenderGraph graph({{"healthy", &healthy, 0}, {"broken", &broken, 0}});
+  daw::TrackQuantum inputs[2]; float out[512]{};
+  require(graph.render(inputs, 2, out, 185), "ramp-fault setup failed");
+  inputs[0].gain = .5; inputs[1].gain = 4;
+  require(graph.render(inputs, 2, out, 185), "ramp-fault start failed");
+  broken.fail_at = 370;
+  for (unsigned f = 370; f < 1295; f += 185) {
+    realtime = true;
+    const bool ok = graph.render(inputs, 2, out, 185);
+    realtime = false;
+    require(ok, "ramp failure stopped healthy lane");
+    for (unsigned j = 0; j < 185; ++j) {
+      const double expected = 1-.5*std::min(1., (f+j-185+1.)/480.);
+      require(std::abs(out[2*j]-expected) < 2e-6 && std::abs(out[2*j+1]-expected*.5) < 2e-6,
+              "quarantined ramp leaked or healthy ramp changed");
+    }
+  }
+  require(graph.trackStatus(1).quarantined() && broken.calls == 3, "fault did not bypass ramp immediately");
+}
 void matrixCase(const std::vector<unsigned>& latencies, const std::vector<unsigned>& requests, int only_lane) {
   std::vector<std::unique_ptr<Delayed>> renderers;
   std::vector<daw::RenderTrackBinding> bindings;
@@ -190,9 +277,13 @@ int main() {
       matrixCase(c,{557,1,186,512,185,558,256},only);
     }
     faults(); planChangeAndMute(); validation(); concurrentStatus();
+    for (const auto& pattern : std::vector<std::vector<unsigned>>{{1}, {185}, {256}, {256, 1, 173, 185, 37}})
+      smoothMix(pattern);
+    rampFault();
     require(!allocations && !frees,"host render allocated or freed");
     std::cout<<"PDC: 7 latency layouts, isolated lanes + mix, 8 callback patterns, exact stereo samples, "
                "partial EOF/drain, nonempty-delay control change, fixed L, fault quarantine, latency invalidation, "
+               "sample-invariant 10 ms mix ramps, immediate mute/fault gates, unmute fades, "
                "pollable status and zero callback allocations/frees passed\n";
   } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }

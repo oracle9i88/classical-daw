@@ -215,8 +215,31 @@ void liveAdmission(){
  rejects([&]{e.set({4,.02,.9,90});});need(e.revision()==0 && e.document().performances[0].notes.empty(),"late-track rejection committed editor");
  e.setCommitAdmission([&](const auto& candidate,auto revision){const auto ticket=source.submit(daw::planPerformanceDocument(candidate),revision);source.render(out,256);need(source.waitForDecision(ticket).decision==daw::LiveSessionStream::Decision::Applied,"live mix acceptance");});
  e.setRouteMix("piano",{-12,1,false,true,0});
- const auto expected=static_cast<float>(piano.value*std::pow(10.,(d.gain_db-12)/20));
- need(out[0]==0 && out[1]==expected && out[510]==0 && out[511]==expected && source.appliedRevision()==1 && cello.ons==1 && piano.ons==1,"quantum-boundary gain/balance step, solo atomicity or held-note restart");
+ // Solo excludes cello immediately, while the surviving piano moves from its
+ // old stereo coefficients to the new gain/hard-right target over 480 samples.
+ constexpr double half_pi = 1.57079632679489661923;
+ const auto old_gain = std::pow(10., (d.gain_db + d.routes[1].gain_db) / 20);
+ const auto initial_left = piano.value * old_gain;
+ const auto initial_right = initial_left * std::cos(-d.routes[1].balance * half_pi);
+ const auto target_right = piano.value * std::pow(10., (d.gain_db - 12) / 20);
+ auto checkRamp = [&](std::size_t offset) {
+   for (std::size_t frame = 0; frame < 256; ++frame) {
+     const auto alpha = std::min(1., static_cast<double>(offset + frame + 1) /
+                                       daw::ParallelRenderGraph::mix_ramp_frames);
+     const auto left = initial_left * (1 - alpha);
+     const auto right = initial_right + (target_right - initial_right) * alpha;
+     need(std::abs(out[frame * 2] - left) < 1e-7 &&
+          std::abs(out[frame * 2 + 1] - right) < 1e-7,
+          "atomic solo or sample-wise cross-quantum gain/balance ramp failed");
+   }
+ };
+ checkRamp(0);
+ source.render(out, 256);
+ checkRamp(256);
+ need(out[446] == 0 && out[447] == static_cast<float>(target_right) &&
+      out[510] == 0 && out[511] == static_cast<float>(target_right) &&
+      source.appliedRevision() == 1 && cello.ons == 1 && piano.ons == 1,
+      "480-frame exact endpoint or held-note continuity failed");
 }
 }
 void* operator new(std::size_t n) {

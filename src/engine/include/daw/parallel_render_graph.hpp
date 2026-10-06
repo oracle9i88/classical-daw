@@ -61,6 +61,12 @@ class ParallelRenderGraph {
   static constexpr std::uint32_t quantum_limit = 256;
   static constexpr std::size_t track_limit = 64;
   static constexpr std::uint32_t latency_limit_frames = 96000;
+  // Linear left/right output-coefficient ramps for RUNNING gain/balance edits.
+  // The first quantum uses its exact initial coefficients, so static playback
+  // and offline bounce have no startup fade. Mute/solo closes the output gate
+  // immediately; unmuting fades from zero. Quarantine always bypasses the lane
+  // immediately, including both its ramp and already buffered PDC samples.
+  static constexpr std::uint32_t mix_ramp_frames = 480; // 10 ms at the fixed 48 kHz
   explicit ParallelRenderGraph(std::vector<RenderTrackBinding> bindings, std::uint32_t rate = 48000);
   ~ParallelRenderGraph();
   ParallelRenderGraph(const ParallelRenderGraph&) = delete;

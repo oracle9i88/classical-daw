@@ -1,0 +1,457 @@
+2026-10-07 native review follow-up (Asia/Shanghai)
+Base commit: 25e916385d8af776de2653177d8e04f13f6bea86; this records the working-tree follow-up before its commit.
+Scope: running mix coefficient ramps plus portable production audition adapters.
+The portable checks below open no real AU instance or output device.
+A separate root-run real AU offline bounce is appended at the end.
+No GitHub workflow dispatched/retried.
+No audio listening approval, new callback-budget result, or AU DSP certification.
+
+Production behavior:
+- Initial saved mix is exact, without a startup fade.
+- Running gain/balance targets are adopted atomically with the whole session plan.
+- Left/right output coefficients then ramp across 480 frames (10 ms / 48 kHz),
+  across quantum boundaries; repeated edits restart from current coefficients.
+- Mute/solo exclusion and quarantine gate the lane immediately. Unmute ramps
+  from zero. Muted healthy instruments and PDC delay lines keep advancing.
+- Graph timing/latency ownership, renderer count and plan publication are unchanged.
+- EnsembleAudition/DocumentAudition now alias portable production templates;
+  the macOS renderer factory still owns actual AU creation and state/range policy.
+
+Independent regression oracle:
+The multipart integration test computes old and new stereo coefficients from
+saved gain/pan, checks every sample of the first 256-frame quantum and following
+256-frame quantum, and requires the exact endpoint at frame 480. Cello is
+solo-excluded immediately; existing held attacks are not retriggered.
+Graph/source tests additionally cover variable quantum geometry, repeated edits,
+unmute and buffered/nonzero-PDC behavior. Adapter tests use the real session
+mailbox and graph, not a fake receipt/scheduler. Their fake renderer validates
+host construction/admission/lifetime and meters, not AU internals or CoreAudio.
+
+Development-test correction (console output, before canonical runs below):
+The initial new adapter fixture left note MIDI channels unspecified but placed
+CC11 only on channel 0. The normal score bridge assigned cello channel 2 and
+correctly refused it before renderer creation. First generic assertion output:
+  a plugin opened before later-route validation finished
+After exposing the caught preflight reason:
+  instrument requires CC11 expression before the first note on MIDI channel 2
+The fixture now explicitly uses channel 0 for notes and controller; no production
+expression validation was weakened. This was a test-fixture error, not a plugin
+creation leak. Both prior failures remain recorded here.
+
+Compiler:
+Apple clang version 21.0.0 (clang-2100.3.34.2)
+Target: arm64-apple-darwin25.6.0
+Thread model: posix
+InstalledDir: /Library/Developer/CommandLineTools/usr/bin
+
+Build setup:
+Normal and sanitizer CMAKE_BUILD_TYPE=Debug.
+Sanitizer CMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer.
+
+Canonical results:
+Debug CTest: 54/54 pass, 36.19 seconds.
+ASan/UBSan affected CTest: 4/4 pass, 1.73 seconds.
+Build warning:/error: scan: no matches in either build log.
+CTest includes a saved-state parser test on this Mac; it does not instantiate AU.
+No ThreadSanitizer run is claimed for this follow-up.
+
+COMMAND: cmake -S . -B build
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-config.log
+-- Configuring done (0.2s)
+-- Generating done (0.2s)
+-- Build files have been written to: /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+
+COMMAND: cmake --build build -j 4
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-build.log
+[  1%] Built target daw_coremidi
+[ 15%] Built target daw_engine
+[ 19%] Linking CXX executable daw_performance_recover
+[ 19%] Linking CXX executable daw_performance_provenance
+[ 19%] Linking CXX executable daw_tests
+[ 19%] Linking CXX executable daw_performance_session_import
+[ 19%] Built target daw_tests
+[ 19%] Built target daw_performance_provenance
+[ 19%] Built target daw_performance_session_import
+[ 19%] Built target daw_performance_recover
+[ 19%] Building CXX object CMakeFiles/daw_audition_adapter_tests.dir/tests/audition_adapter_tests.cpp.o
+[ 19%] Linking CXX executable daw_live_performance_tests
+[ 21%] Building CXX object CMakeFiles/daw_multipart_performance_tests.dir/tests/multipart_performance_tests.cpp.o
+[ 21%] Linking CXX executable daw_performance_tests
+[ 22%] Built target daw_live_performance_tests
+[ 22%] Built target daw_performance_tests
+[ 23%] Building CXX object CMakeFiles/daw_live_session_tests.dir/tests/live_session_tests.cpp.o
+[ 24%] Built target daw_session_render_source_tests
+[ 25%] Built target daw_parallel_render_graph_tests
+[ 26%] Linking CXX executable daw_callback_timing_tests
+[ 26%] Built target daw_callback_timing_tests
+[ 27%] Linking CXX executable daw_project_tests
+[ 27%] Built target daw_project_tests
+[ 28%] Linking CXX executable daw_project_recovery_tests
+[ 28%] Built target daw_project_recovery_tests
+[ 28%] Linking CXX executable daw_history_tests
+[ 29%] Built target daw_history_tests
+[ 29%] Linking CXX executable daw_live_session_tests
+[ 30%] Linking CXX executable daw_project_history_tests
+[ 30%] Built target daw_live_session_tests
+[ 30%] Built target daw_project_history_tests
+[ 31%] Linking CXX executable daw_realtime_event_tests
+[ 32%] Linking CXX executable daw_score_render_tests
+[ 33%] Linking CXX executable daw_audition_adapter_tests
+[ 33%] Linking CXX executable daw_multipart_performance_tests
+[ 33%] Built target daw_realtime_event_tests
+[ 33%] Built target daw_score_render_tests
+[ 33%] Linking CXX executable daw_midi_import_tests
+[ 33%] Built target daw_audition_adapter_tests
+[ 33%] Built target daw_multipart_performance_tests
+[ 34%] Linking CXX executable daw_score_tie_tests
+[ 35%] Built target daw_midi_import_tests
+[ 36%] Linking CXX executable daw_score_import_repair_tests
+[ 36%] Linking CXX executable daw_import_fidelity_tests
+[ 36%] Built target daw_score_tie_tests
+[ 36%] Linking CXX executable daw_import_receipt_tests
+[ 36%] Built target daw_score_import_repair_tests
+[ 37%] Built target daw_import_fidelity_tests
+[ 38%] Linking CXX executable daw_performance_readiness_tests
+[ 39%] Built target daw_import_receipt_tests
+[ 39%] Linking CXX executable daw_musicxml_entry_tests
+[ 39%] Linking CXX executable daw_musicxml_dynamics_tests
+[ 39%] Linking CXX executable daw_musicxml_timing_tests
+[ 39%] Built target daw_performance_readiness_tests
+[ 39%] Linking CXX executable daw_midi_channel_events_tests
+[ 40%] Built target daw_musicxml_dynamics_tests
+[ 41%] Built target daw_musicxml_entry_tests
+[ 42%] Built target daw_musicxml_timing_tests
+[ 44%] Linking CXX executable daw_score_midi_events_tests
+[ 44%] Linking CXX executable daw_project_midi_events_tests
+[ 44%] Linking CXX executable daw_midi_render_controls_tests
+[ 45%] Built target daw_midi_channel_events_tests
+[ 45%] Built target daw_score_midi_events_tests
+[ 46%] Linking CXX executable daw_score_tempo_tests
+[ 46%] Built target daw_project_midi_events_tests
+[ 47%] Built target daw_midi_render_controls_tests
+[ 47%] Linking CXX executable daw_midi_meter_tests
+[ 48%] Linking CXX executable daw_project_tempo_tests
+[ 49%] Linking CXX executable daw_score_meter_tests
+[ 49%] Built target daw_score_tempo_tests
+[ 50%] Built target daw_project_tempo_tests
+[ 50%] Built target daw_midi_meter_tests
+[ 51%] Linking CXX executable daw_project_meter_tests
+[ 51%] Built target daw_score_meter_tests
+[ 51%] Linking CXX executable daw_musicxml_fractional_tests
+[ 51%] Linking CXX executable daw_musicxml_divisions_tests
+[ 51%] Linking CXX executable daw_musicxml_tempo_tests
+[ 51%] Built target daw_project_meter_tests
+[ 51%] Linking CXX executable daw_musicxml_meter_tests
+[ 53%] Built target daw_musicxml_fractional_tests
+[ 53%] Built target daw_musicxml_divisions_tests
+[ 54%] Built target daw_musicxml_tempo_tests
+[ 54%] Linking CXX executable daw_midi_inspect
+[ 55%] Linking CXX executable daw_project_measure_tests
+[ 55%] Linking CXX executable daw_midi_sequence_tests
+[ 56%] Built target daw_musicxml_meter_tests
+[ 57%] Linking CXX executable daw_session_tests
+[ 58%] Built target daw_midi_inspect
+[ 59%] Built target daw_midi_sequence_tests
+[ 59%] Built target daw_project_measure_tests
+[ 60%] Linking CXX executable daw_session_routing_tests
+[ 62%] Linking CXX executable daw_session_performance_tests
+[ 62%] Linking CXX executable daw_session_bundle_tests
+[ 62%] Built target daw_session_tests
+[ 63%] Linking CXX executable daw_session_player_tests
+[ 63%] Built target daw_session_performance_tests
+[ 63%] Built target daw_session_routing_tests
+[ 63%] Built target daw_session_bundle_tests
+[ 63%] Linking CXX executable daw_output_health_tests
+[ 65%] Built target daw_session_player_tests
+[ 65%] Linking CXX executable daw_session_mix_tests
+[ 65%] Linking CXX executable daw_session_mix_history_tests
+[ 66%] Linking CXX executable daw_session_recovery_tests
+[ 67%] Built target daw_output_health_tests
+[ 67%] Built target daw_session_mix_tests
+[ 67%] Built target daw_session_mix_history_tests
+[ 67%] Built target daw_session_recovery_tests
+[ 67%] Linking CXX executable daw_frozen_stream_writer_tests
+[ 69%] Linking CXX executable daw_wav_stream_writer_tests
+[ 69%] Linking CXX executable daw_streaming_audio_tests
+[ 69%] Linking CXX executable daw_frozen_track_tests
+[ 69%] Built target daw_wav_stream_writer_tests
+[ 70%] Built target daw_frozen_stream_writer_tests
+[ 70%] Built target daw_streaming_audio_tests
+[ 71%] Built target daw_frozen_track_tests
+[ 73%] Linking CXX executable daw_session_collect
+[ 73%] Linking CXX executable daw_session_recover
+[ 74%] Linking CXX executable daw_session_fixture
+[ 75%] Linking CXX executable daw_performance_import
+[ 75%] Built target daw_session_fixture
+[ 75%] Built target daw_session_recover
+[ 75%] Built target daw_session_collect
+[ 75%] Built target daw_performance_import
+[ 75%] Linking CXX executable daw_performance_fixture
+[ 76%] Linking CXX executable daw_midi_roundtrip
+[ 76%] Linking CXX executable daw_session_edit
+[ 76%] Linking CXX executable daw_midi_render
+[ 77%] Built target daw_midi_render
+[ 78%] Built target daw_midi_roundtrip
+[ 78%] Built target daw_session_edit
+[ 79%] Built target daw_performance_fixture
+[ 80%] Built target daw_coreaudio
+[ 80%] Linking CXX executable daw_output_probe
+[ 82%] Built target daw_au_host
+[ 84%] Linking CXX executable daw_swam_latency_probe
+[ 84%] Linking CXX executable daw_swam_attack_probe
+[ 85%] Linking CXX executable daw_swam_state_tests
+[ 86%] Built target daw_output_probe
+[ 87%] Linking CXX executable daw_piano_render
+[ 87%] Built target daw_swam_state_tests
+[ 87%] Built target daw_swam_latency_probe
+[ 87%] Built target daw_swam_attack_probe
+[ 87%] Built target daw_piano_render
+[ 88%] Linking CXX executable daw_instrument_render
+[ 88%] Linking CXX executable daw_au_chunk_probe
+[ 88%] Linking CXX executable daw_session_render
+[ 89%] Linking CXX executable daw_session_play
+[ 89%] Built target daw_au_chunk_probe
+[ 89%] Built target daw_session_render
+[ 90%] Built target daw_instrument_render
+[ 91%] Linking CXX executable daw_au_realtime_probe
+[ 91%] Building CXX object CMakeFiles/daw_performance_session_probe.dir/tools/performance_session_probe.cpp.o
+[ 91%] Built target daw_session_play
+[ 91%] Building CXX object CMakeFiles/daw_session_au_probe.dir/tools/session_au_probe.cpp.o
+[ 92%] Linking CXX executable daw_performance_range_probe
+[ 92%] Built target daw_au_realtime_probe
+[ 92%] Building CXX object CMakeFiles/daw_performance_play.dir/tools/performance_play.cpp.o
+[ 92%] Built target daw_performance_range_probe
+[ 92%] Building CXX object CMakeFiles/daw_performance_render.dir/tools/performance_render.cpp.o
+[ 93%] Linking CXX executable daw_session_au_probe
+[ 93%] Built target daw_session_au_probe
+[ 94%] Linking CXX executable daw_performance_fixture_probe
+[ 95%] Linking CXX executable daw_performance_session_probe
+[ 96%] Linking CXX executable daw_performance_render
+[ 96%] Built target daw_performance_fixture_probe
+[ 96%] Built target daw_performance_session_probe
+[ 97%] Linking CXX executable daw_performance_probe
+[ 97%] Built target daw_performance_render
+[ 98%] Linking CXX executable daw_performance_live_probe
+[ 98%] Linking CXX executable daw_performance_conflict_probe
+[ 99%] Linking CXX executable daw_performance_play
+[ 99%] Built target daw_performance_probe
+[ 99%] Built target daw_performance_live_probe
+[100%] Built target daw_performance_conflict_probe
+[100%] Built target daw_performance_play
+
+COMMAND: ctest --test-dir build --output-on-failure
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-tests.log
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+      Start  1: daw_performance_session_gain_cli
+ 1/54 Test  #1: daw_performance_session_gain_cli ...   Passed    2.37 sec
+      Start  2: daw_multipart_performance_tests
+ 2/54 Test  #2: daw_multipart_performance_tests ....   Passed    0.60 sec
+      Start  3: daw_audition_adapter_tests
+ 3/54 Test  #3: daw_audition_adapter_tests .........   Passed    0.60 sec
+      Start  4: daw_performance_tests
+ 4/54 Test  #4: daw_performance_tests ..............   Passed    0.65 sec
+      Start  5: daw_live_performance_tests
+ 5/54 Test  #5: daw_live_performance_tests .........   Passed    0.64 sec
+      Start  6: daw_live_session_tests
+ 6/54 Test  #6: daw_live_session_tests .............   Passed    0.64 sec
+      Start  7: daw_session_render_source_tests
+ 7/54 Test  #7: daw_session_render_source_tests ....   Passed    0.03 sec
+      Start  8: daw_parallel_render_graph_tests
+ 8/54 Test  #8: daw_parallel_render_graph_tests ....   Passed    0.08 sec
+      Start  9: daw_callback_timing_tests
+ 9/54 Test  #9: daw_callback_timing_tests ..........   Passed    0.56 sec
+      Start 10: daw_tests
+10/54 Test #10: daw_tests ..........................   Passed    0.60 sec
+      Start 11: daw_project_tests
+11/54 Test #11: daw_project_tests ..................   Passed    0.62 sec
+      Start 12: daw_project_recovery_tests
+12/54 Test #12: daw_project_recovery_tests .........   Passed    0.55 sec
+      Start 13: daw_history_tests
+13/54 Test #13: daw_history_tests ..................   Passed    0.59 sec
+      Start 14: daw_project_history_tests
+14/54 Test #14: daw_project_history_tests ..........   Passed    0.85 sec
+      Start 15: daw_realtime_event_tests
+15/54 Test #15: daw_realtime_event_tests ...........   Passed    0.57 sec
+      Start 16: daw_score_render_tests
+16/54 Test #16: daw_score_render_tests .............   Passed    0.57 sec
+      Start 17: daw_midi_import_tests
+17/54 Test #17: daw_midi_import_tests ..............   Passed    0.57 sec
+      Start 18: daw_score_tie_tests
+18/54 Test #18: daw_score_tie_tests ................   Passed    0.66 sec
+      Start 19: daw_score_import_repair_tests
+19/54 Test #19: daw_score_import_repair_tests ......   Passed    0.67 sec
+      Start 20: daw_import_fidelity_tests
+20/54 Test #20: daw_import_fidelity_tests ..........   Passed    0.61 sec
+      Start 21: daw_import_receipt_tests
+21/54 Test #21: daw_import_receipt_tests ...........   Passed    0.78 sec
+      Start 22: daw_performance_readiness_tests
+22/54 Test #22: daw_performance_readiness_tests ....   Passed    0.62 sec
+      Start 23: daw_musicxml_entry_tests
+23/54 Test #23: daw_musicxml_entry_tests ...........   Passed    0.61 sec
+      Start 24: daw_musicxml_dynamics_tests
+24/54 Test #24: daw_musicxml_dynamics_tests ........   Passed    0.59 sec
+      Start 25: daw_musicxml_timing_tests
+25/54 Test #25: daw_musicxml_timing_tests ..........   Passed    0.57 sec
+      Start 26: daw_midi_channel_events_tests
+26/54 Test #26: daw_midi_channel_events_tests ......   Passed    0.58 sec
+      Start 27: daw_score_midi_events_tests
+27/54 Test #27: daw_score_midi_events_tests ........   Passed    0.62 sec
+      Start 28: daw_project_midi_events_tests
+28/54 Test #28: daw_project_midi_events_tests ......   Passed    1.82 sec
+      Start 29: daw_midi_render_controls_tests
+29/54 Test #29: daw_midi_render_controls_tests .....   Passed    0.65 sec
+      Start 30: daw_score_tempo_tests
+30/54 Test #30: daw_score_tempo_tests ..............   Passed    0.59 sec
+      Start 31: daw_project_tempo_tests
+31/54 Test #31: daw_project_tempo_tests ............   Passed    0.56 sec
+      Start 32: daw_midi_meter_tests
+32/54 Test #32: daw_midi_meter_tests ...............   Passed    1.20 sec
+      Start 33: daw_score_meter_tests
+33/54 Test #33: daw_score_meter_tests ..............   Passed    0.64 sec
+      Start 34: daw_project_meter_tests
+34/54 Test #34: daw_project_meter_tests ............   Passed    0.59 sec
+      Start 35: daw_musicxml_fractional_tests
+35/54 Test #35: daw_musicxml_fractional_tests ......   Passed    0.61 sec
+      Start 36: daw_musicxml_divisions_tests
+36/54 Test #36: daw_musicxml_divisions_tests .......   Passed    0.65 sec
+      Start 37: daw_musicxml_tempo_tests
+37/54 Test #37: daw_musicxml_tempo_tests ...........   Passed    0.59 sec
+      Start 38: daw_musicxml_meter_tests
+38/54 Test #38: daw_musicxml_meter_tests ...........   Passed    0.58 sec
+      Start 39: daw_project_measure_tests
+39/54 Test #39: daw_project_measure_tests ..........   Passed    0.57 sec
+      Start 40: daw_midi_sequence_tests
+40/54 Test #40: daw_midi_sequence_tests ............   Passed    0.58 sec
+      Start 41: daw_session_tests
+41/54 Test #41: daw_session_tests ..................   Passed    0.60 sec
+      Start 42: daw_session_routing_tests
+42/54 Test #42: daw_session_routing_tests ..........   Passed    0.69 sec
+      Start 43: daw_session_performance_tests
+43/54 Test #43: daw_session_performance_tests ......   Passed    0.59 sec
+      Start 44: daw_session_bundle_tests
+44/54 Test #44: daw_session_bundle_tests ...........   Passed    1.16 sec
+      Start 45: daw_session_player_tests
+45/54 Test #45: daw_session_player_tests ...........   Passed    0.57 sec
+      Start 46: daw_output_health_tests
+46/54 Test #46: daw_output_health_tests ............   Passed    0.54 sec
+      Start 47: daw_session_mix_tests
+47/54 Test #47: daw_session_mix_tests ..............   Passed    0.59 sec
+      Start 48: daw_session_mix_history_tests
+48/54 Test #48: daw_session_mix_history_tests ......   Passed    0.61 sec
+      Start 49: daw_session_recovery_tests
+49/54 Test #49: daw_session_recovery_tests .........   Passed    0.59 sec
+      Start 50: daw_streaming_audio_tests
+50/54 Test #50: daw_streaming_audio_tests ..........   Passed    0.93 sec
+      Start 51: daw_frozen_stream_writer_tests
+51/54 Test #51: daw_frozen_stream_writer_tests .....   Passed    0.53 sec
+      Start 52: daw_wav_stream_writer_tests
+52/54 Test #52: daw_wav_stream_writer_tests ........   Passed    0.57 sec
+      Start 53: daw_frozen_track_tests
+53/54 Test #53: daw_frozen_track_tests .............   Passed    0.59 sec
+      Start 54: daw_swam_state_tests
+54/54 Test #54: daw_swam_state_tests ...............   Passed    0.59 sec
+
+100% tests passed out of 54
+
+Total Test time (real) =  36.19 sec
+
+COMMAND: cmake -S . -B build-sanitize
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-sanitize-config.log
+-- Configuring done (0.2s)
+-- Generating done (0.2s)
+-- Build files have been written to: /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+
+COMMAND: cmake --build build-sanitize -j 4 --target daw_audition_adapter_tests daw_multipart_performance_tests daw_parallel_render_graph_tests daw_session_render_source_tests
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-sanitize-build.log
+[ 93%] Built target daw_engine
+[ 93%] Building CXX object CMakeFiles/daw_audition_adapter_tests.dir/tests/audition_adapter_tests.cpp.o
+[100%] Linking CXX executable daw_audition_adapter_tests
+[100%] Built target daw_audition_adapter_tests
+[ 93%] Built target daw_engine
+[100%] Building CXX object CMakeFiles/daw_multipart_performance_tests.dir/tests/multipart_performance_tests.cpp.o
+[100%] Linking CXX executable daw_multipart_performance_tests
+[100%] Built target daw_multipart_performance_tests
+[ 93%] Built target daw_engine
+[100%] Built target daw_parallel_render_graph_tests
+[ 93%] Built target daw_engine
+[100%] Built target daw_session_render_source_tests
+
+COMMAND: ctest --test-dir build-sanitize --output-on-failure -R '^daw_(audition_adapter|multipart_performance|parallel_render_graph|session_render_source)_tests$'
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-20261007-sanitize-tests.log
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+    Start 2: daw_multipart_performance_tests
+1/4 Test #2: daw_multipart_performance_tests ...   Passed    0.69 sec
+    Start 3: daw_audition_adapter_tests
+2/4 Test #3: daw_audition_adapter_tests ........   Passed    0.66 sec
+    Start 7: daw_session_render_source_tests
+3/4 Test #7: daw_session_render_source_tests ...   Passed    0.09 sec
+    Start 8: daw_parallel_render_graph_tests
+4/4 Test #8: daw_parallel_render_graph_tests ...   Passed    0.28 sec
+
+100% tests passed out of 4
+
+Total Test time (real) =   1.73 sec
+
+Source SHA-256 at verification (not a release binary/signature):
+546620101ced19c13067758d6c4ce9ecadb18537aad6b612f350a096fd54dfb7  CMakeLists.txt
+ee4b7defe097ee34828fe25c50d80bdeaeef59a440e3ce08aa571d67ff438c0f  src/engine/include/daw/ensemble_audition.hpp
+234539a65136e187d6aec6599c960d171ff2ee5a716f9802f279103e9c2b42b4  src/engine/include/daw/document_audition.hpp
+d64b03d654622e94ce0210027ca0448c773aa8a07b51ec2bc2a22697c40c475e  src/platform/macos/ensemble_audition.hpp
+b446024c28516655cfbfd8d307c09dc849931dbd64d38eed86c17e16c8dd5a0c  src/platform/macos/document_audition.hpp
+3c0690f01bec29605dca8b20e2520b08c24bed8cba226d2976e2d00d3482c953  src/engine/include/daw/parallel_render_graph.hpp
+568315d846e8b497e5cd6287683fad40783d73512c293e8170dc710f4db97c13  src/engine/parallel_render_graph.cpp
+b4b9709c100d645ac06c83c828d9c31f2a09c73bd628e8c03bbe74d2a847461e  tests/audition_adapter_tests.cpp
+80e26b4490a76d2f8acdeed6547898402f683561930ad8f0e50d6a2bf54de8df  tests/multipart_performance_tests.cpp
+5468f66320bbe195007477e25bacefc150aa59e33804f2cf88485b1721b19179  tests/session_render_source_tests.cpp
+239f475e9748ad1425a2cc9caaf3fdadc72181144d6f42408ab754352370abf8  tests/parallel_render_graph_tests.cpp
+
+Additional root verification, separate from fake-renderer checks above:
+Real installed Pianoteq + SWAM were rendered offline through the refactored
+production adapter; no output device was opened. This is not a new realtime
+callback benchmark or a listening sign-off. Private source/state/audio stay in out/.
+COMMAND: build/daw_performance_render out/multipart-performance-concert-hardware-20261002/edited out/native-followup-bounce-20261007
+EXIT: 0
+RAW LOG: /tmp/daw-native-followup-bounce-20261007.log
+Raw report:
+{
+  "format": "classical-daw-ensemble-bounce-1",
+  "take_index": 0,
+  "frames": 1517594,
+  "removed_common_latency_frames": 960,
+  "peak_before_pcm_clip": 0.14582926034927368,
+  "rms": 0.02430189282809974,
+  "clipped_samples": 0,
+  "output_devices_opened": 0,
+  "routes": [
+    {
+      "part": "piano",
+      "peak": 0.2476537525653839,
+      "note_ons": 72,
+      "note_offs": 72
+    },
+    {
+      "part": "cello",
+      "peak": 0.3188166618347168,
+      "note_ons": 8,
+      "note_offs": 8
+    }
+  ]
+}
+Independent stdlib wave/PCM16 verification (tolerance one LSB):
+{
+  "channels": 2,
+  "sample_rate": 48000,
+  "sample_width": 2,
+  "frames": 1517594,
+  "pcm16_rms": 0.024301151424036774,
+  "pcm16_peak": 0.14581298828125,
+  "wav_sha256": "1c560578a5a2ae6a1e41f7116113ccdf16c343c390f32b07ce2280c7eb18cfe7",
+  "removed_common_latency_frames": 960,
+  "output_devices_opened": 0
+}

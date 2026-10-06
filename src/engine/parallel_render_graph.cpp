@@ -16,6 +16,40 @@ struct ParallelRenderGraph::Lane {
   std::atomic<TrackRenderError> error{TrackRenderError::None};
   // Written once before publishing the latched error; acquire that error first.
   std::uint64_t failure_frame = 0;
+  // Audio-thread-only mix state; these coefficients are applied AFTER PDC.
+  // All lanes adopt the new target in the same quantum, independently of L.
+  bool mix_initialized = false, was_audible = false;
+  double left = 0, right = 0, target_left = 0, target_right = 0;
+  double step_left = 0, step_right = 0;
+  std::uint32_t ramp_left = 0;
+  void mixTarget(double next_left, double next_right, bool audible) noexcept {
+    if (!mix_initialized || !audible) {
+      // Muting is an immediate gate, not a fade that can leak an excluded lane.
+      left = target_left = next_left;
+      right = target_right = next_right;
+      ramp_left = 0;
+      mix_initialized = true;
+    } else if (!was_audible || next_left != target_left || next_right != target_right) {
+      if (!was_audible) left = right = 0;
+      target_left = next_left;
+      target_right = next_right;
+      ramp_left = mix_ramp_frames;
+      step_left = (target_left - left) / mix_ramp_frames;
+      step_right = (target_right - right) / mix_ramp_frames;
+    }
+    was_audible = audible;
+  }
+  void advanceMix() noexcept {
+    if (!ramp_left) return;
+    if (--ramp_left == 0) {
+      // Exact endpoints (especially hard pan / zero gain), no accumulated tail.
+      left = target_left;
+      right = target_right;
+    } else {
+      left += step_left;
+      right += step_right;
+    }
+  }
   float delayed(float sample) noexcept {
     if (delay.empty()) return sample;
     const float old = delay[head]; delay[head] = sample;
@@ -111,9 +145,16 @@ bool ParallelRenderGraph::render(const TrackQuantum* tracks, std::size_t count, 
     constexpr double half_pi=1.57079632679489661923;
     const double left=track.gain*(track.balance>=1?0:track.balance>0?std::cos(track.balance*half_pi):1);
     const double right=track.gain*(track.balance<=-1?0:track.balance<0?std::cos(track.balance*half_pi):1);
-    for (std::size_t j = 0; j < frames * 2; ++j) {
-      const auto sample = lane.delayed(lane.scratch[j]); // advance even while muted
-      if (track.audible) output[j] += static_cast<float>(sample * (j%2==0?left:right));
+    lane.mixTarget(left, right, track.audible);
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+      lane.advanceMix();
+      const auto j = frame * 2;
+      const auto l = lane.delayed(lane.scratch[j]); // advance even while muted
+      const auto r = lane.delayed(lane.scratch[j + 1]);
+      if (track.audible) {
+        output[j] += static_cast<float>(l * lane.left);
+        output[j + 1] += static_cast<float>(r * lane.right);
+      }
     }
   }
   if (!generationsMatch()) {
