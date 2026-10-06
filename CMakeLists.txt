@@ -40,6 +40,12 @@ target_include_directories(daw_engine PUBLIC src/engine/include)
 target_compile_features(daw_engine PUBLIC cxx_std_17)
 add_executable(daw_performance_session_import tools/performance_session_import.cpp)
 target_link_libraries(daw_performance_session_import PRIVATE daw_engine)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME daw_performance_session_gain_cli
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_performance_session_gain.py
+            --build $<TARGET_FILE_DIR:daw_performance_session_import>)
+endif()
 add_executable(daw_performance_provenance tools/performance_provenance.cpp)
 target_link_libraries(daw_performance_provenance PRIVATE daw_engine)
 add_executable(daw_performance_recover tools/performance_recover.cpp)

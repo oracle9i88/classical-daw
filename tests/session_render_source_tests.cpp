@@ -1,5 +1,6 @@
 #include "daw/session_render_source.hpp"
 #include "daw/output_blocks.hpp"
+#include "daw/session_bounce.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -57,6 +58,41 @@ void matrix(unsigned a,unsigned b,unsigned request) {
   require(x.on==1 && y.on==1 && x.off==1 && y.off==1 && x.resets==1 && y.resets==1,"duplicate/missing MIDI release/reset");
   s.render(out,256);require(std::all_of(out,out+512,[](float v){return v==0;}),"finished output not silent");
   rejects([&]{s.submit(plans(),1);});
+}
+void bounceMatrix(unsigned a, unsigned b) {
+  Renderer x(a,0), y(b,1);
+  daw::SessionRenderSource source(plans(), {{"piano",&x,0},{"cello",&y,0}});
+  const auto audio = daw::collectSessionBounce(source, end, std::max(a,b));
+  require(audio.samples.size() == end*2 && audio.sample_rate == 48000 && audio.channels == 2,
+          "bounce format/length changed");
+  for (unsigned f = 0; f < end; ++f) for (unsigned c = 0; c < 2; ++c)
+    require(audio.samples[f*2+c] == .25F*signal(f,c,0)+.75F*signal(f,c,1),
+            "bounce lost/shifted first, asymmetric or final delayed sample");
+  require(x.on==1 && y.on==1 && x.off==1 && y.off==1 && x.resets==1 && y.resets==1,
+          "bounce duplicated/lost note release or reset");
+}
+void bounceFailures() {
+  struct BadSource {
+    unsigned mode;
+    std::uint64_t position = 0;
+    bool ended = false;
+    std::uint64_t frame() const { return position; }
+    bool done() const { return ended; }
+    bool failed() const { return mode == 3 && position != 0; }
+    void render(float* out, std::uint32_t n) {
+      std::fill_n(out, n*2, 0.F);
+      if (mode == 0) { position = n/2; ended = true; } // premature EOF
+      else if (mode == 1) {} // stalled clock
+      else if (mode == 2) position += n+1; // more frames than scratch
+      else position += n; // latched DSP failure or no EOF at expected end
+    }
+  };
+  for (unsigned mode = 0; mode < 5; ++mode) {
+    BadSource source{mode};
+    rejects([&] { daw::collectSessionBounce(source, 557, 960); });
+  }
+  BadSource source{4};
+  rejects([&] { daw::collectSessionBounce(source, daw::kMaxBufferedAudioFrames+1, 0); });
 }
 void edits() {
   Renderer x(173,0),y(960,1);daw::SessionRenderSource s(plans(),{{"piano",&x,0},{"cello",&y,0}});float out[512]{};
@@ -122,6 +158,8 @@ void operator delete[](void* p,std::size_t)noexcept{::operator delete(p);}
 int main(){try{
   for(auto pair:{std::pair<unsigned,unsigned>{0,0},{0,173},{173,512},{173,700},{0,960},{700,960}})
     for(unsigned n:{1U,185U,256U,512U,557U,558U})matrix(pair.first,pair.second,n);
-  edits();faults();endRace();require(!allocations && !frees,"callback allocated/freed");
-  std::cout<<"session runtime: 36 exact-sample PDC/end-drain cases, whole revision/reordered routes, held notes, quarantine, latency stop, zero callback allocations/frees passed\n";
+  for(auto pair:{std::pair<unsigned,unsigned>{0,0},{0,173},{173,512},{173,700},{0,960},{700,960}})
+    bounceMatrix(pair.first,pair.second);
+  bounceFailures();edits();faults();endRace();require(!allocations && !frees,"callback allocated/freed");
+  std::cout<<"session runtime: 36 exact-sample PDC/end-drain cases, 6 aligned bounce cases and 5 source failures, whole revision/reordered routes, held notes, quarantine, latency stop, zero callback allocations/frees passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

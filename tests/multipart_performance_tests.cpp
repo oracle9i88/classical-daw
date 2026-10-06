@@ -3,15 +3,21 @@
 #include "daw/project.hpp"
 #include "daw/performance_recovery.hpp"
 #include "daw/session_render_source.hpp"
+#include "daw/score_midi.hpp"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
+#include <new>
 
 namespace fs=std::filesystem;
 namespace {
+bool count_mix_allocations = false;
+unsigned mix_allocations = 0;
 void need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 template<class F>void rejects(F f){bool caught=false;try{f();}catch(const std::exception&){caught=true;}need(caught,"invalid input accepted");}
 std::string read(const fs::path& p){std::ifstream in(p,std::ios::binary);return{std::istreambuf_iterator<char>(in),{}};}
@@ -72,6 +78,99 @@ void compilation(){
  d.routes[1].solo=true;plans=daw::planPerformanceDocument(d);need(!plans[0].audible && plans[1].audible,"solo ignored");
  d.routes[1].mute=true;plans=daw::planPerformanceDocument(d);need(!plans[0].audible && !plans[1].audible,"mute must win over solo");
 }
+void commonEndCurves() {
+  auto d = fixture();
+  auto& take = d.performances[0];
+  // Notated end is 6 s. Piano's tied attack now releases at 8 s; cello must
+  // be able to shape the shared extension, even when it is compiled first.
+  take.notes.push_back({3, 5.5, 1, -1});
+  for (bool reverse : {false, true}) {
+    if (reverse) std::reverse(d.score.parts.begin(), d.score.parts.end());
+    for (bool stepped : {false, true}) {
+      take.curves = {{20, 0, 11, {{1, 0, 50}, {2, 7, 90}, {3, 8, 70}}, stepped, "cello"},
+                     {21, 0, 64, {{1, 0, 0}, {2, 8, 127}}, stepped, "cello"}};
+      const auto tracks = daw::compilePerformanceTracks(d.score, take);
+      for (const auto& t : tracks) {
+        need(t.sequence.end_frame == 384000 && t.sequence.frames == 624000,
+             "curves changed the shared end or tail");
+        for (const auto& e : t.sequence.events)
+          if (e.terminal_reset) need(e.frame == 384000, "reset before common end");
+      }
+      const auto& events = track(tracks, "cello").sequence.events;
+      // Linear lanes coalesce unchanged integer CC values, so inspect the
+      // held controller state at 7 s, rather than requiring a redundant event.
+      int expression = -1;
+      for (const auto& e : events)
+        if (e.frame <= 336000 && e.status == 0xb0 && e.data1 == 11) expression = e.data2;
+      need(expression == 90, "cello expression in another part's extension was lost");
+      int final_pedal = -1;
+      for (const auto& e : events)
+        if (e.frame == 384000 && e.status == 0xb0 && e.data1 == 64) final_pedal = e.data2;
+      need(final_pedal == 0, "curve endpoint defeated terminal pedal release");
+      take.curves[0].points.back().seconds = 8 + 1.0 / 48000;
+      rejects([&] { daw::compilePerformanceTracks(d.score, take); });
+    }
+  }
+  daw::WorkEditor editor(fixture());
+  editor.set({3, 5.5, 1, -1});
+  editor.putCurve({20, 0, 11, {{1, 0, 50}, {2, 7, 90}}, true, "cello"});
+  const auto revision = editor.revision();
+  rejects([&] { editor.set({3, 0, 1, -1}); });
+  need(editor.revision() == revision && editor.document().performances[0].notes[0].onset_seconds == 5.5,
+       "shrinking past another part's curve did not roll back");
+  need(editor.undo() && editor.undo(), "shared-end curve/note chronological undo failed");
+  need(editor.redo() && editor.redo(), "shared-end curve/note chronological redo failed");
+}
+void legacySourceEnd() {
+  daw::Score s;
+  // Legacy duration=0 does not constrain the note to the nominal barline.
+  s.parts = {{"piano", "Piano", {{1, 0, {note(0, 4800, 'C', 4)}, 0}}, {}}};
+  daw::assignNoteIds(s);
+  auto take = daw::makePerformance(s, "Legacy");
+  auto compiled = daw::compilePerformance(s, take);
+  need(compiled.end_frame == 120000 && compiled.frames == 360000,
+       "note beyond nominal barline was truncated");
+  s.parts[0].midi_events = {{6000, daw::MidiChannelEventType::ControlChange, 0, 64, 0}};
+  compiled = daw::compilePerformance(s, take);
+  need(compiled.end_frame == 150000 && compiled.frames == 390000,
+       "late source controller was truncated");
+  daw::MidiFile midi;
+  std::string error;
+  need(daw::scoreToMidiFile(s, &midi, &error), "legacy MIDI reference failed");
+  // The pre-70f1d67 compiler passed only measure extents as minimum_end_tick.
+  // The MIDI scheduler ALREADY extended that minimum for notes/controllers.
+  const auto reference = daw::makeMidiSampleSequence(midi, 48000, 5, 48000U * 60 * 30, 0);
+  need(reference.end_frame == compiled.end_frame && reference.frames == compiled.frames &&
+       reference.events.size() == compiled.events.size(), "legacy compiler end behavior changed");
+  for (std::size_t i = 0; i < reference.events.size(); ++i) {
+    const auto& a = reference.events[i];
+    const auto& b = compiled.events[i];
+    need(a.frame == b.frame && a.status == b.status && a.data1 == b.data1 &&
+         a.data2 == b.data2 && a.note_id == b.note_id && a.terminal_reset == b.terminal_reset,
+         "legacy note/controller/reset schedule changed");
+  }
+}
+void scalarMixValidation() {
+  auto d = fixture();
+  for (unsigned i = 1; i < 16; ++i) d.performances.push_back(d.performances.front());
+  daw::WorkEditor editor(std::move(d));
+  const std::string part = "piano";
+  count_mix_allocations = true;
+  const bool accepted = editor.setRouteMix(part, {12, 1, true, true, -12345});
+  const bool undone = editor.undo();
+  const bool redone = editor.redo();
+  count_mix_allocations = false;
+  need(accepted && undone && redone && mix_allocations == 0,
+       "scalar mix edits/undo/redo allocated or recompiled unchanged takes");
+  const auto revision = editor.revision();
+  rejects([&] { editor.setRouteMix(part, {12.01, 0, false, false, 0}); });
+  rejects([&] { editor.setRouteMix(part, {0, 1.01, false, false, 0}); });
+  rejects([&] { editor.setRouteMix(part, {std::numeric_limits<double>::infinity(), 0, false, false, 0}); });
+  rejects([&] { editor.setRouteMix(part, {0, std::numeric_limits<double>::quiet_NaN(), false, false, 0}); });
+  need(editor.revision() == revision && editor.document().routes[1].gain_db == 12 &&
+       editor.document().routes[1].balance == 1 && editor.document().routes[1].track_delay_us == -12345,
+       "invalid scalar mix command changed state/history");
+}
 void storageAndHistory(){
  Temp temp;auto d=fixture();d.import_receipt="{\"source\":\"工程\"}\n";
  daw::savePerformanceDocument(d,(temp.root/"base").string());need(read(temp.root/"base"/"performances.dawperformance").rfind("CLASSICAL_DAW_PERFORMANCE 4\n",0)==0,"explicit routes not versioned");
@@ -115,8 +214,19 @@ void liveAdmission(){
  });
  rejects([&]{e.set({4,.02,.9,90});});need(e.revision()==0 && e.document().performances[0].notes.empty(),"late-track rejection committed editor");
  e.setCommitAdmission([&](const auto& candidate,auto revision){const auto ticket=source.submit(daw::planPerformanceDocument(candidate),revision);source.render(out,256);need(source.waitForDecision(ticket).decision==daw::LiveSessionStream::Decision::Applied,"live mix acceptance");});
- e.setRouteMix("piano",{-6,1,false,true,0});
- need(out[0]==0 && out[1]>0 && source.appliedRevision()==1 && cello.ons==1 && piano.ons==1,"balance/solo atomicity or held-note restart");
+ e.setRouteMix("piano",{-12,1,false,true,0});
+ const auto expected=static_cast<float>(piano.value*std::pow(10.,(d.gain_db-12)/20));
+ need(out[0]==0 && out[1]==expected && out[510]==0 && out[511]==expected && source.appliedRevision()==1 && cello.ons==1 && piano.ons==1,"quantum-boundary gain/balance step, solo atomicity or held-note restart");
 }
 }
-int main(){try{compilation();storageAndHistory();liveAdmission();std::cout<<"multi-part performance: global IDs/ties, scoped controllers, common ends, route mix, one history, v4 exact reopen, recovery and atomic admission passed\n";}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+void* operator new(std::size_t n) {
+  if (count_mix_allocations) ++mix_allocations;
+  if (auto* p = std::malloc(n ? n : 1)) return p;
+  throw std::bad_alloc();
+}
+void* operator new[](std::size_t n) { return ::operator new(n); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { ::operator delete(p); }
+void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
+void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
+int main(){try{compilation();commonEndCurves();legacySourceEnd();scalarMixValidation();storageAndHistory();liveAdmission();std::cout<<"multi-part performance: shared-end step/linear curves, legacy source-end parity, allocation-free scalar mix edits, global IDs/ties, one history, v4 reopen/recovery and atomic admission passed\n";}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -8,6 +8,7 @@
 #include "daw/performance.hpp"
 #include "daw/wav.hpp"
 #include "daw/session.hpp"
+#include "daw/session_bounce.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -51,16 +52,9 @@ int main(int argc, char** argv) {
       std::size_t frames=0;for(const auto& p:plans)frames=std::max(frames,p.sequence.frames);
       if(frames>daw::kMaxBufferedAudioFrames)throw std::runtime_error("ensemble bounce exceeds 256 MiB; streaming bounce is not integrated");
       stage="ensemble_instruments";daw::EnsembleAudition audition(document);audition.start();
-      const auto latency=static_cast<std::size_t>(std::llround(audition.latency()*48000));
-      daw::AudioBuffer audio;audio.sample_rate=48000;audio.channels=2;audio.samples.resize(frames*2);
-      stage="ensemble_render";float block[512]{};
-      while(!audition.done()){
-        const auto from=audition.frame();audition.render(block,256);
-        if(audition.failed())throw std::runtime_error("ensemble graph failed: "+audition.statusText());
-        const auto until=audition.frame();
-        for(std::size_t f=from;f<until;++f)if(f>=latency && f-latency<frames)
-          for(std::size_t c=0;c<2;++c)audio.samples[(f-latency)*2+c]=block[(f-from)*2+c];
-      }
+      const auto latency=static_cast<std::uint32_t>(std::llround(audition.latency()*48000));
+      stage="ensemble_render";
+      auto audio=daw::collectSessionBounce(audition,frames,latency);
       const auto stats=audition.trackStatisticsAfterStop();
       for(const auto& t:stats)if(t.frames!=frames+latency)throw std::runtime_error("quarantined/incomplete track; refusing partial ensemble bounce");
       stage="write";std::filesystem::create_directories(root);std::string error;

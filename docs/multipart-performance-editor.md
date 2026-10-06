@@ -1,6 +1,6 @@
 # Saved multi-part performance editor
 
-2026-10-02. Feature branch, local Alpha. This connects authored multi-part
+2026-10-02; review fixes verified 2026-10-06. Feature branch, local Alpha. This connects authored multi-part
 documents to the existing whole-session runtime; it is not a general orchestra
 editor, a signed desktop application or a listening approval.
 
@@ -14,7 +14,7 @@ build/daw_performance_play new-work
 ```
 
 Migration uses a saved native score and an explicit saved AU state for every
-route. It preserves part IDs, controller messages, master/route gains, balance,
+route. It preserves part IDs, controller messages, effective output gains, balance,
 mute/solo and the musical-delay field. No AU or device is opened. Source files
 are read-only; destinations must be new. Preset-only routes fail: save the
 instrument state first. Frozen references fail without `--unfreeze`; that flag
@@ -23,11 +23,25 @@ It does not import frozen audio into the live graph or certify that a cached
 recording equals a fresh rerender. The receipt fingerprints the source score;
 it does not invent a MusicXML repair history for an already-saved native score.
 
+The performance document allows a -60..0 dB master and -60..12 dB routes.
+A positive source-session master is moved into **every** route and the saved
+master becomes 0 dB, preserving each sum `master + route`. The importer prints
+this rebase. If any resulting route exceeds +12 dB, including a muted or
+solo-excluded route, import fails at `stage=gain` before saving anything. Keep
+that source in the offline/frozen player or explicitly adjust its mix first;
+there is no silent attenuation, clipping or raised realtime gain limit.
+
 The compiler supports 1..64 independent parts. Each take has one global
 performed-note allocator and a separate notation allocator. Ties can map
 multiple notation segments to one performed note, but cannot cross parts.
 All parts retain one score end, terminal resets and five-second release tail;
-late performance offsets extend the common end. Routes retain each part's
+late performance offsets extend the common end. Curves on every part are then
+validated against that shared end, so a cello CC11/CC64 point can reach an
+extension caused by a late piano note. Step and linear curves may end at the
+common boundary; synthetic final pedal releases still win at that boundary.
+Curves do not extend the work themselves. Shortening an extension past an
+existing curve point rejects the edit without changing document or history.
+Routes retain each part's
 existing channel bytes, so identical channels in different parts remain isolated
 by separate instruments. A curve's part ID is mandatory in a multi-part score.
 Curve IDs are globally unique within a take; a lane owns (part, channel, CC).
@@ -65,6 +79,11 @@ Route gain accepts -60..12 dB, balance -1..1, and flags 0/1. Master `gain`
 remains -60..0 dB. Notation, performance, curve, route mix and master edits use
 one bounded 128-command delta history. Part filtering is not another history.
 The active take and instrument/topology cannot change during playback.
+Scalar route-mix commands validate only the changed gain/balance metadata in
+the already-validated editor; they no longer recompile all saved takes.
+Live admission still compiles the active whole-session plan, and checkpointing
+still validates the complete document. Smooth large-score fader dragging is
+not established by this optimization.
 
 ## Live path and admission
 
@@ -123,12 +142,19 @@ track fails the bounce instead of exporting a partial ensemble silently.
 The buffered output limit is 256 MiB; streamed performance bounce and stems
 are not integrated. Audio-byte equivalence with realtime or a later SWAM
 instance is not promised. Licensed plugin states and audio stay local.
+The bounce collector is also used with fake sources: it requests the exact
+remaining frames, checks progress/failure/EOF and retains the complete PDC
+drain before removing L. Tests cover asymmetric first/last samples with
+173/512/700/960-frame delays, as well as early EOF, stalled/overshooting clocks,
+latched failure and missing EOF. They test the collector and portable graph,
+not every `EnsembleAudition`/`DocumentAudition` AU lifecycle branch.
 
 ## Reproduction and evidence
 
 ```sh
 ctest --test-dir build --output-on-failure
 python3 scripts/check_multipart_performance_cli.py /path/to/session.dawsession
+python3 scripts/check_performance_session_gain.py --build build
 # Opt-in, Mac + two installed licensed AUs, speakers ALWAYS silenced:
 build/daw_performance_session_probe new-work new-evidence --hardware-silent
 ```
@@ -143,7 +169,7 @@ four commands during one uninterrupted transport and verifies every attack.
 It is a bounded two-route workload, not an arbitrary corpus tester.
 
 [Raw commands, failures and local measurements](research/2026-10-02-multipart-performance-evidence.txt).
-Local CTest passed **52/52**, affected ASan/UBSan **6/6**. The saved eight-bar
+At the 2026-10-02 revision, local CTest passed **52/52**, affected ASan/UBSan **6/6**. The saved eight-bar
 duet ran 72 piano / 8 cello attacks and releases, with live revision 12 after
 four edits, four undos and four redos. Maximum complete-client callback was
 4.1505 ms at 557 client frames: **35.7673%** of that callback's budget, with
@@ -154,6 +180,25 @@ native-48-kHz benchmark. The device-free bounce wrote 1,517,594 stereo frames
 clipped samples. An independent PCM16 check confirmed frame count and RMS.
 The first attempted old saved document failed its SWAM pitch/range admission;
 the original -12-semitone state and failure remain recorded, not silently fixed.
+
+The [2026-10-06 review evidence](research/2026-10-06-multipart-review-evidence.txt)
+retains the two pre-fix failures. Current local CTest passed **53/53**, affected
+ASan/UBSan **7/7**, data-only multi-part/recovery CLI checks passed, and the
+device-free real Pianoteq/SWAM bounce again retained 72/8 attacks and releases,
+removed L=960 and had no reported clipping. Independent PCM16 frame/RMS checks
+passed. No new device callback budget measurement or listening approval was
+made. The gain CLI test joins CTest when a Python 3 interpreter is available;
+Python is not required by the C++ application.
+
+Review also raised possible legacy single-part length changes. Inspection of
+the pre-multi-part compiler and MIDI scheduler shows source note endings and
+late controller events already extended the minimum measure end. A regression
+now compares all legacy frames/MIDI/reset events against that scheduler path,
+including a `duration=0` measure with a note beyond its nominal barline. This
+is preserved behavior, not a newly fixed export-length regression. Gain/pan
+steps are explicitly tested at the quantum boundary; smoothing is still absent.
+The long multi-part compiler, route binding and v4 reader sections were
+clang-formatted without changing the saved layout.
 
 Application frame is recorded; audio-change mixer exit and device presentation
 remain unmeasured. EOF/plan-application clocks are not substituted for those

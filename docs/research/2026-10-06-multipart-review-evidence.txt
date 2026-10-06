@@ -1,0 +1,300 @@
+2026-10-06 / feature/multipart-performance-editor-20261002
+Review fixes on base 70f1d67. Local evidence; NOT CI or listening approval.
+
+Scope / decisions:
+1. CONFIRMED common-end curve bug. Compile all part note timings first, compute
+   common end, then validate/generate each part's curves against it. Notes are
+   compiled once. Curves do not lengthen the work. Final pedal reset still wins.
+   Regression: own end 6s, late piano end 8s, cello CC11 at 7s/8s and CC64 at 8s,
+   step/linear, both part orders, one-sample overflow, rollback/undo/redo when
+   shortening a note would invalidate the other part's existing curve.
+2. CONFIRMED positive session-master mismatch. Source +6dB with route gains
+   -4.5/-6 failed at stage=validate before this fix. Import now shifts any
+   positive master into ALL routes (including muted/solo-excluded), sets master
+   to 0, preserves effective sums and prints the rebase. Any route above +12dB
+   fails at stage=gain before output creation; no attenuation or cap increase.
+   Portable CLI: 5 accepted/2 rejected cases, -60/0/+6/+12 master, exact route
+   ceiling, later muted-route overflow, source/state preservation, no overwrite.
+3. Scalar route-mix edit/undo/redo only validates its changed metadata. A
+   16-take regression asserts no allocations in this command path. Live
+   admission still compiles the active whole-session plan; autosave/full
+   document validation still traverses data. No end-to-end fader-speed claim.
+4. Legacy source-end extension was ALREADY in the prior MIDI scheduler. New
+   regression compares every event/frame/reset to the old minimum-end call,
+   including a duration=0 measure, long note and late source CC. Not a newly
+   fixed length regression.
+5. Device-free ensemble bounce now shares a portable collector tested with
+   fake renderers: exact asymmetric first/last samples, complete PDC drain,
+   delays (0,0)/(0,173)/(173,512)/(173,700)/(0,960)/(700,960), early EOF, stalled
+   or overshooting clock, failure latch and missing EOF. Existing 36 runtime
+   block-geometry cases remain. Immediate gain/pan step at a quantum boundary
+   is also asserted, with held notes not retriggered. No smoothing was added.
+6. clang-format applied to the long multi-part compiler, route binding, v4
+   reader and importer/collector sections. Saved bytes/format are unchanged.
+
+Coverage limits:
+- Fake tests cover the portable graph and collector, not all real AU wrapper
+  initialization/stop/failure paths in EnsembleAudition/DocumentAudition.
+- Real AU verification below is a saved authored eight-bar duet, device-free,
+  realtime-configured DSP/PDC manually driven; NOT plugin offline mode, a new
+  live hardware callback measurement or an acoustic/listening sign-off.
+- Old 2026-10-02 hardware budget evidence stays historical. No new TSan run.
+- Commercial plugin states/WAVs remain ignored and local; no states/media
+  published. No GitHub workflow dispatched/retried, main merge or license change.
+
+Commands from repository root (build-sanitize already carries Debug and
+-fsanitize=address,undefined -fno-omit-frame-pointer):
+cmake -S . -B build
+cmake --build build -j 4
+ctest --test-dir build --output-on-failure
+cmake -S . -B build-sanitize
+cmake --build build-sanitize -j 4 --target daw_multipart_performance_tests daw_performance_tests daw_import_receipt_tests daw_live_session_tests daw_session_render_source_tests daw_parallel_render_graph_tests daw_performance_session_import daw_session_fixture
+ctest --test-dir build-sanitize --output-on-failure -R '^(daw_performance_session_gain_cli|daw_multipart_performance_tests|daw_performance_tests|daw_import_receipt_tests|daw_live_session_tests|daw_session_render_source_tests|daw_parallel_render_graph_tests)$'
+python3 scripts/check_performance_session_gain.py --build build
+python3 scripts/check_multipart_performance_cli.py out/swam-note-audit-20260923/corrected/session.dawsession
+python3 scripts/check_performance_recovery_cli.py
+build/daw_performance_render out/multipart-performance-concert-hardware-20261002/edited out/multipart-review-bounce-20261006
+# Last command used installed licensed local AUs (host registry access), no
+# output device. Data-only CLI checks never play and use fake state bytes.
+# Gain CLI test joins CTest only when a Python3 interpreter is available.
+
+Independent PCM16 verification of out/multipart-review-bounce-20261006/performance.wav:
+- wave module read channels=2, width=2, rate=48000, frames=1517594, matching
+  saved-sequence expected length and report; common removed latency=960.
+- array('h') little-endian samples: peak=max(abs(s))/32768;
+  rms=sqrt(sum(s*s)/sample_count)/32768.
+- RMS difference from float report must be <1/32768. Report must show zero
+  clipped samples/device opens and piano 72/72 + cello 8/8 on/off counts.
+- SHA256 below identifies this LOCAL WAV only. It does not assert repeatable
+  SWAM waveform bytes or replace listening.
+
+Both normal and sanitizer builds exited 0 with zero warning/error matches.
+The two original failures and one failed new-test assertion are retained below.
+That intermediate new assertion wrongly required a redundant linear CC event
+at exactly 7s; linear curves coalesce unchanged integer values. The test was
+corrected to check the held value at 7s. No production change hid that failure.
+
+
+--- Pre-fix common-end regression (exit 1) ---
+invalid curve point
+
+--- Intermediate incorrect new-test assertion (exit 1) ---
+cello expression in another part's extension was lost
+
+--- Corrected shared-end test after fix (exit 0) ---
+multi-part performance: global IDs/ties, scoped controllers including shared-end extensions, common ends, route mix, one history, v4 exact reopen, recovery and atomic admission passed
+
+--- Pre-fix positive-master CLI, temporary source derivative, originals unchanged ---
+FAIL stage=validate reason=invalid document output gain
+exit_code=1
+
+--- Current multi-part test (exit 0) ---
+multi-part performance: shared-end step/linear curves, legacy source-end parity, allocation-free scalar mix edits, global IDs/ties, one history, v4 reopen/recovery and atomic admission passed
+
+--- Positive/overflow gain CLI (exit 0) ---
+{
+  "result": "PASS",
+  "accepted": 5,
+  "rejected_overflow": 2,
+  "effective_gains_preserved": true,
+  "muted_route_checked": true,
+  "source_and_states_unchanged": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+--- Full local CTest 53/53 (exit 0) ---
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build
+      Start  1: daw_performance_session_gain_cli
+ 1/53 Test  #1: daw_performance_session_gain_cli ...   Passed    1.23 sec
+      Start  2: daw_multipart_performance_tests
+ 2/53 Test  #2: daw_multipart_performance_tests ....   Passed    0.45 sec
+      Start  3: daw_performance_tests
+ 3/53 Test  #3: daw_performance_tests ..............   Passed    0.57 sec
+      Start  4: daw_live_performance_tests
+ 4/53 Test  #4: daw_live_performance_tests .........   Passed    0.42 sec
+      Start  5: daw_live_session_tests
+ 5/53 Test  #5: daw_live_session_tests .............   Passed    0.47 sec
+      Start  6: daw_session_render_source_tests
+ 6/53 Test  #6: daw_session_render_source_tests ....   Passed    0.87 sec
+      Start  7: daw_parallel_render_graph_tests
+ 7/53 Test  #7: daw_parallel_render_graph_tests ....   Passed    0.56 sec
+      Start  8: daw_callback_timing_tests
+ 8/53 Test  #8: daw_callback_timing_tests ..........   Passed    0.36 sec
+      Start  9: daw_tests
+ 9/53 Test  #9: daw_tests ..........................   Passed    0.41 sec
+      Start 10: daw_project_tests
+10/53 Test #10: daw_project_tests ..................   Passed    0.37 sec
+      Start 11: daw_project_recovery_tests
+11/53 Test #11: daw_project_recovery_tests .........   Passed    0.36 sec
+      Start 12: daw_history_tests
+12/53 Test #12: daw_history_tests ..................   Passed    0.38 sec
+      Start 13: daw_project_history_tests
+13/53 Test #13: daw_project_history_tests ..........   Passed    0.39 sec
+      Start 14: daw_realtime_event_tests
+14/53 Test #14: daw_realtime_event_tests ...........   Passed    0.36 sec
+      Start 15: daw_score_render_tests
+15/53 Test #15: daw_score_render_tests .............   Passed    0.41 sec
+      Start 16: daw_midi_import_tests
+16/53 Test #16: daw_midi_import_tests ..............   Passed    0.38 sec
+      Start 17: daw_score_tie_tests
+17/53 Test #17: daw_score_tie_tests ................   Passed    0.41 sec
+      Start 18: daw_score_import_repair_tests
+18/53 Test #18: daw_score_import_repair_tests ......   Passed    0.49 sec
+      Start 19: daw_import_fidelity_tests
+19/53 Test #19: daw_import_fidelity_tests ..........   Passed    0.47 sec
+      Start 20: daw_import_receipt_tests
+20/53 Test #20: daw_import_receipt_tests ...........   Passed    0.68 sec
+      Start 21: daw_performance_readiness_tests
+21/53 Test #21: daw_performance_readiness_tests ....   Passed    0.48 sec
+      Start 22: daw_musicxml_entry_tests
+22/53 Test #22: daw_musicxml_entry_tests ...........   Passed    0.44 sec
+      Start 23: daw_musicxml_dynamics_tests
+23/53 Test #23: daw_musicxml_dynamics_tests ........   Passed    0.42 sec
+      Start 24: daw_musicxml_timing_tests
+24/53 Test #24: daw_musicxml_timing_tests ..........   Passed    0.41 sec
+      Start 25: daw_midi_channel_events_tests
+25/53 Test #25: daw_midi_channel_events_tests ......   Passed    0.78 sec
+      Start 26: daw_score_midi_events_tests
+26/53 Test #26: daw_score_midi_events_tests ........   Passed    0.41 sec
+      Start 27: daw_project_midi_events_tests
+27/53 Test #27: daw_project_midi_events_tests ......   Passed    1.67 sec
+      Start 28: daw_midi_render_controls_tests
+28/53 Test #28: daw_midi_render_controls_tests .....   Passed    0.76 sec
+      Start 29: daw_score_tempo_tests
+29/53 Test #29: daw_score_tempo_tests ..............   Passed    0.40 sec
+      Start 30: daw_project_tempo_tests
+30/53 Test #30: daw_project_tempo_tests ............   Passed    1.52 sec
+      Start 31: daw_midi_meter_tests
+31/53 Test #31: daw_midi_meter_tests ...............   Passed    1.30 sec
+      Start 32: daw_score_meter_tests
+32/53 Test #32: daw_score_meter_tests ..............   Passed    0.56 sec
+      Start 33: daw_project_meter_tests
+33/53 Test #33: daw_project_meter_tests ............   Passed    0.50 sec
+      Start 34: daw_musicxml_fractional_tests
+34/53 Test #34: daw_musicxml_fractional_tests ......   Passed    0.63 sec
+      Start 35: daw_musicxml_divisions_tests
+35/53 Test #35: daw_musicxml_divisions_tests .......   Passed    0.71 sec
+      Start 36: daw_musicxml_tempo_tests
+36/53 Test #36: daw_musicxml_tempo_tests ...........   Passed    0.71 sec
+      Start 37: daw_musicxml_meter_tests
+37/53 Test #37: daw_musicxml_meter_tests ...........   Passed    0.41 sec
+      Start 38: daw_project_measure_tests
+38/53 Test #38: daw_project_measure_tests ..........   Passed    0.38 sec
+      Start 39: daw_midi_sequence_tests
+39/53 Test #39: daw_midi_sequence_tests ............   Passed    0.40 sec
+      Start 40: daw_session_tests
+40/53 Test #40: daw_session_tests ..................   Passed    0.65 sec
+      Start 41: daw_session_routing_tests
+41/53 Test #41: daw_session_routing_tests ..........   Passed    1.51 sec
+      Start 42: daw_session_performance_tests
+42/53 Test #42: daw_session_performance_tests ......   Passed    0.46 sec
+      Start 43: daw_session_bundle_tests
+43/53 Test #43: daw_session_bundle_tests ...........   Passed    1.05 sec
+      Start 44: daw_session_player_tests
+44/53 Test #44: daw_session_player_tests ...........   Passed    0.67 sec
+      Start 45: daw_output_health_tests
+45/53 Test #45: daw_output_health_tests ............   Passed    0.67 sec
+      Start 46: daw_session_mix_tests
+46/53 Test #46: daw_session_mix_tests ..............   Passed    0.77 sec
+      Start 47: daw_session_mix_history_tests
+47/53 Test #47: daw_session_mix_history_tests ......   Passed    0.78 sec
+      Start 48: daw_session_recovery_tests
+48/53 Test #48: daw_session_recovery_tests .........   Passed    1.06 sec
+      Start 49: daw_streaming_audio_tests
+49/53 Test #49: daw_streaming_audio_tests ..........   Passed    0.75 sec
+      Start 50: daw_frozen_stream_writer_tests
+50/53 Test #50: daw_frozen_stream_writer_tests .....   Passed    0.56 sec
+      Start 51: daw_wav_stream_writer_tests
+51/53 Test #51: daw_wav_stream_writer_tests ........   Passed    0.37 sec
+      Start 52: daw_frozen_track_tests
+52/53 Test #52: daw_frozen_track_tests .............   Passed    0.59 sec
+      Start 53: daw_swam_state_tests
+53/53 Test #53: daw_swam_state_tests ...............   Passed    0.55 sec
+
+100% tests passed out of 53
+
+Total Test time (real) =  33.39 sec
+
+--- Affected ASan/UBSan 7/7 (exit 0) ---
+Test project /Users/evanguo/Documents/ChatGPT/omr/classical-daw/build-sanitize
+    Start  1: daw_performance_session_gain_cli
+1/7 Test  #1: daw_performance_session_gain_cli ...   Passed    1.48 sec
+    Start  2: daw_multipart_performance_tests
+2/7 Test  #2: daw_multipart_performance_tests ....   Passed    0.64 sec
+    Start  3: daw_performance_tests
+3/7 Test  #3: daw_performance_tests ..............   Passed    0.64 sec
+    Start  5: daw_live_session_tests
+4/7 Test  #5: daw_live_session_tests .............   Passed    0.55 sec
+    Start  6: daw_session_render_source_tests
+5/7 Test  #6: daw_session_render_source_tests ....   Passed    0.54 sec
+    Start  7: daw_parallel_render_graph_tests
+6/7 Test  #7: daw_parallel_render_graph_tests ....   Passed    0.76 sec
+    Start 20: daw_import_receipt_tests
+7/7 Test #20: daw_import_receipt_tests ...........   Passed    0.91 sec
+
+100% tests passed out of 7
+
+Total Test time (real) =   5.53 sec
+
+--- Multi-part CLI (exit 0) ---
+{
+  "result": "PASS",
+  "parts": 2,
+  "dynamic_performed_ids": true,
+  "explicit_unfreeze": true,
+  "interleaved_undo_redo": true,
+  "rejected_edits_unchanged": true,
+  "exact_reopen_and_recovery": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+--- Legacy recovery CLI (exit 0) ---
+{
+  "result": "PASS",
+  "killed_after_autosave": true,
+  "exact_recovered_bytes": true,
+  "stopped_range_commands": true,
+  "plugins_opened": 0,
+  "output_devices_opened": 0
+}
+
+--- Real Pianoteq/SWAM device-free bounce (exit 0) ---
+Bounced 2 instruments through the session PDC graph; common latency 960 frames removed from file origin, frames=1517594 output_devices_opened=0
+
+--- Real bounce float report ---
+{
+  "format": "classical-daw-ensemble-bounce-1",
+  "take_index": 0,
+  "frames": 1517594,
+  "removed_common_latency_frames": 960,
+  "peak_before_pcm_clip": 0.1458294689655304,
+  "rms": 0.024301886234787962,
+  "clipped_samples": 0,
+  "output_devices_opened": 0,
+  "routes": [{"part":"piano","peak":0.24765282869338989,"note_ons":72,"note_offs":72},{"part":"cello","peak":0.3188166618347168,"note_ons":8,"note_offs":8}]
+}
+
+--- Independent WAV check (exit 0) ---
+{
+  "result": "PASS",
+  "channels": 2,
+  "sample_width": 2,
+  "sample_rate": 48000,
+  "frames": 1517594,
+  "seconds": 31.616541666666667,
+  "pcm16_peak": 0.14581298828125,
+  "pcm16_rms": 0.024301140939090117,
+  "float_report_rms": 0.02430188623478796,
+  "rms_quantization_tolerance": 3.0517578125e-05,
+  "removed_common_latency_frames": 960,
+  "reported_attacks_and_releases": [
+    72,
+    8
+  ],
+  "sha256": "c6fadf5ee44453580d9b5d5b6ec0a9504c6ef248175c20fac26a83b3803ae5b6",
+  "output_devices_opened": 0,
+  "listening_approval": false,
+  "audio_byte_equivalence_with_prior_render_not_claimed": true
+}
