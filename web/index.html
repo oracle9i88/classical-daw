@@ -1,139 +1,62 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#172033">
-    <title>Classical DAW · Web Prototype</title>
-    <link rel="stylesheet" href="styles.css">
-  </head>
-  <body>
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">♪</div>
-        <div>
-          <h1>Classical DAW</h1>
-          <p>古典创作工作站 · Web Prototype</p>
-        </div>
-      </div>
-      <div class="toolbar" aria-label="Transport controls">
-        <label class="tempo-control">速度
-          <input id="tempo" type="number" min="30" max="240" value="96" aria-label="BPM">
-          <span>BPM</span>
-        </label>
-        <label class="meter-control">拍号
-          <select id="meter-numerator" aria-label="拍号分子">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4" selected>4</option>
-            <option value="6">6</option>
-          </select>
-          <span>/</span>
-          <select id="meter-denominator" aria-label="拍号分母">
-            <option value="4" selected>4</option>
-            <option value="8">8</option>
-          </select>
-          <span id="meter-label" aria-live="polite">4/4</span>
-        </label>
-        <label class="measure-control">小节
-          <select id="measure-count" aria-label="显示小节数">
-            <option value="4" selected>4</option>
-            <option value="8">8</option>
-            <option value="16">16</option>
-          </select>
-        </label>
-        <button id="play" class="button button-primary" type="button">▶ 播放</button>
-        <button id="stop" class="button" type="button" disabled>■ 停止</button>
-        <button id="undo" class="button" type="button" disabled title="撤销（⌘/Ctrl+Z）">↶ 撤销</button>
-        <button id="redo" class="button" type="button" disabled title="重做（⌘/Ctrl+Shift+Z）">↷ 重做</button>
-        <button id="clear" class="button button-quiet" type="button">清空</button>
-        <button id="save-project" class="button button-project" type="button">保存工程</button>
-        <button id="open-project" class="button button-project" type="button">打开工程</button>
-        <input id="project-file" type="file" accept=".classical-daw.json,.json,application/json" hidden>
-        <button id="import" class="button" type="button">导入 MusicXML</button>
-        <button id="export" class="button button-export" type="button">导出 MusicXML</button>
-        <input id="musicxml-file" type="file" accept=".musicxml,.xml,application/vnd.recordare.musicxml+xml,text/xml" hidden>
-        <button id="import-midi" class="button" type="button">导入 MIDI</button>
-        <button id="export-midi" class="button button-export" type="button">导出 MIDI</button>
-        <button id="export-wav" class="button button-export" type="button">导出 WAV</button>
-        <input id="midi-file" type="file" accept=".mid,.midi,audio/midi,audio/x-midi,application/x-midi" hidden>
-      </div>
-    </header>
-
-    <div id="recovery-banner" class="recovery-banner" role="alert" hidden>
-      <span id="recovery-message">检测到浏览器本地恢复副本。</span>
-      <button id="restore-recovery" class="button button-project" type="button">恢复副本</button>
-      <button id="discard-recovery" class="button button-quiet" type="button">丢弃副本</button>
-    </div>
-
-    <main class="workspace">
-      <aside class="inspector panel" aria-label="Note inspector">
-        <div class="panel-heading">
-          <div>
-            <span class="eyebrow">NOTE INSPECTOR</span>
-            <h2>音符编辑</h2>
-          </div>
-          <button id="add-note" class="icon-button" type="button" title="添加一个音符">＋</button>
-        </div>
-        <p id="selection-hint" class="hint">点击网格添加音符，或选择音符后编辑参数。</p>
-        <form id="note-form" class="note-form" hidden>
-          <label>音高
-            <select id="note-pitch" aria-label="音高"></select>
-          </label>
-          <label>起始拍
-            <input id="note-start" type="number" min="0" max="63.75" step="0.25">
-          </label>
-          <label>时值（拍）
-            <select id="note-duration" aria-label="时值">
-              <option value="0.25">十六分音符 · ¼</option>
-              <option value="0.5">八分音符 · ½</option>
-              <option value="1" selected>四分音符 · 1</option>
-              <option value="2">二分音符 · 2</option>
-              <option value="4">全音符 · 4</option>
-            </select>
-          </label>
-          <label>力度
-            <input id="note-velocity" type="range" min="1" max="127" value="90">
-            <output id="velocity-value" for="note-velocity">90</output>
-          </label>
-          <label>歌词（可选）
-            <input id="note-lyric" type="text" maxlength="256" placeholder="输入这一拍的歌词" autocomplete="off">
-          </label>
-          <button id="delete-note" class="button button-danger" type="button">删除所选音符</button>
-        </form>
-        <div class="legend">
-          <span class="legend-dot"></span>
-          <span id="meter-hint">网格以四分音符为一拍，当前显示 4 小节。</span>
-        </div>
-        <div class="license-note">AGPL-3.0-or-later · 本页为无后端静态原型</div>
-      </aside>
-
-      <section class="editor panel" aria-label="Piano roll editor">
-        <div class="editor-heading">
-          <div>
-            <span class="eyebrow">PIANO ROLL</span>
-            <h2>钢琴卷帘</h2>
-          </div>
-          <div id="note-count" class="counter">0 个音符</div>
-        </div>
-        <div class="roll-shell">
-          <div class="pitch-column" id="pitch-labels" aria-hidden="true"></div>
-          <div class="roll-scroll">
-            <div id="beat-labels" class="beat-labels" aria-hidden="true"></div>
-            <div id="roll" class="roll" tabindex="0" aria-label="钢琴卷帘音符网格"></div>
-          </div>
-        </div>
-        <div class="editor-footer">
-          <span id="transport-status" role="status">准备就绪</span>
-          <span>快捷键：空格播放 / Delete 删除 / ⌘/Ctrl+Z 撤销</span>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>Classical DAW Web Prototype</span>
-      <span>仅使用浏览器原生 Web Audio API，无外部依赖</span>
-    </footer>
-    <script src="app.js"></script>
-  </body>
-</html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#173d36"><meta name="description" content="免费的开源古典音乐草稿工作站：本地导入乐谱、多声部编辑、合成试听和导出。">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; connect-src 'none'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Classical DAW · 古典音乐工作台</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="masthead">
+  <a class="brand" href="./" aria-label="Classical DAW 首页"><span class="brand-icon" aria-hidden="true">♮</span><span>Classical DAW<small>古典音乐工作台 <b>WEB ALPHA</b></small></span></a>
+  <div class="file-actions"><button id="new-project">新建</button><button id="load-demo">载入练习</button><button id="open-file">打开 / 导入</button><button id="save-project" class="primary">保存工程</button>
+    <details class="exports"><summary>导出 ↓</summary><div><button id="export-midi">全部声部 · MIDI</button><button id="export-xml">全部声部 · MusicXML</button><button id="export-wav">选定片段 · WAV</button></div></details>
+    <input id="file-input" type="file" accept=".json,.musicxml,.xml,.mid,.midi" hidden>
+  </div>
+</header>
+<div class="notice">文件只在本机浏览器中处理。试听使用合成音色；Pianoteq / SWAM 在 Mac 版本中使用。<a href="#help">使用说明与边界</a></div>
+<section id="recovery" class="recovery" hidden><div><strong>找到未处理的本地副本</strong><p>本次编辑不会覆盖这些副本。请选择恢复或下载备份。</p></div><div id="recovery-list"></div></section>
+<section class="transport" aria-label="播放与工程">
+  <label class="title-field"><span>作品</span><input id="project-title" maxlength="160" value=""></label>
+  <button id="play" class="primary transport-button">▶ 试听片段</button><button id="stop" disabled>■ 停止 / 取消</button>
+  <label>起点（拍）<input id="range-start" type="number" min="0" step="0.25" value="0"></label>
+  <label>终点（拍）<input id="range-end" type="number" min="0.001" step="0.25" value="32"></label>
+  <button id="range-view" class="quiet">当前视窗</button><button id="range-all" class="quiet">全曲</button>
+  <label>主增益 <input id="master-gain" type="number" min="-60" max="0" step="1" value="-6"> dB</label>
+</section>
+<div class="status-strip"><span id="status" role="status" aria-live="polite">载入工作区…</span><span id="autosave-status">本地恢复副本待写入</span><progress id="render-progress" max="1" value="0" hidden></progress></div>
+<main class="workspace">
+  <aside class="tracks panel">
+    <div class="panel-heading"><h2>声部</h2><button id="add-track" title="添加声部">＋</button></div>
+    <div id="track-list" role="list" aria-label="声部列表"></div>
+    <form id="track-form" class="fields"><label>声部名<input id="track-name" maxlength="128"></label><label>试听音色<select id="track-instrument"><option value="piano">合成钢琴</option><option value="strings">合成弦乐</option><option value="sine">纯音</option></select></label><div class="field-pair"><label>增益 dB<input id="track-gain" type="number" min="-60" max="12" step="1"></label><label>声像<input id="track-pan" type="number" min="-1" max="1" step="0.1"></label></div><small>−1 左 · 0 中 · +1 右</small><button id="delete-track" type="button" class="danger quiet">移除声部（可撤销）</button></form>
+    <div class="history"><button id="undo" disabled>↶ 撤销</button><button id="redo" disabled>↷ 重做</button></div>
+    <label class="length-field">工程总拍数<input id="length-beats" type="number" min="1" max="4096" step="1"></label>
+    <small id="project-summary"></small>
+  </aside>
+  <section class="score panel">
+    <div class="editor-heading"><div><span class="eyebrow">PIANO ROLL</span><h2 id="active-track-name">钢琴卷帘</h2></div><span id="note-count"></span></div>
+    <div class="view-tools"><button id="view-prev" aria-label="向前一个视窗">←</button><label>从第 <input id="view-start" type="number" min="0" step="1" value="0"> 拍</label><button id="view-next" aria-label="向后一个视窗">→</button><label>视窗<select id="view-span"><option value="8">8 拍</option><option value="16" selected>16 拍</option><option value="32">32 拍</option><option value="64">64 拍</option></select></label><label>吸附<select id="snap"><option value="0.25">¼ 拍</option><option value="0.5">½ 拍</option><option value="1">1 拍</option><option value="0.3333333333333333">⅓ 拍</option><option value="0">不吸附</option></select></label><button id="fit-pitch" class="quiet">定位音域</button></div>
+    <div id="roll-scroll" class="roll-scroll"><div id="roll" class="roll" tabindex="0" role="group" aria-label="钢琴卷帘；双击空白添加音符，选择音符后方向键移动"><div id="grid" class="grid"></div><div id="ruler" class="ruler" aria-hidden="true"></div><div id="pitches" class="pitches" aria-hidden="true"></div><div id="note-layer"></div><div id="playhead" hidden></div></div></div>
+    <div class="editor-foot"><span>双击新增 · 拖动移位 · 方向键微调 · Delete 删除</span><button id="add-note" class="quiet">＋ 添加音符</button></div>
+  </section>
+  <aside class="inspector panel">
+    <div class="panel-heading"><h2>音符</h2><span id="note-label">尚未选中</span></div>
+    <p id="empty-selection" class="muted">选择一个音符，编辑它的音高、时间和力度。导入不会按视窗裁剪。</p>
+    <form id="note-form" class="fields" hidden>
+      <label>音高<select id="note-pitch"></select></label>
+      <div class="field-pair"><label>起点（拍）<input id="note-start" type="number" min="0" step="0.001"></label><label>时值（拍）<input id="note-duration" type="number" min="0.0010416667" step="0.001"></label></div>
+      <div class="field-pair"><label>力度<input id="note-velocity" type="number" min="1" max="127" step="1"></label><label>MIDI 通道<input id="note-channel" type="number" min="1" max="16" step="1"></label></div>
+      <label>歌词<input id="note-lyric" maxlength="256" placeholder="可选"></label><div class="field-pair"><button id="copy-note" type="button">复制</button><button id="delete-note" type="button" class="danger">删除</button></div>
+    </form>
+    <details class="control-details" open><summary>踏板与表情</summary><p class="muted">阶梯控制点，按当前声部与 MIDI 通道隔离。</p><form id="control-form" class="fields"><label>控制器<select id="cc-kind"><option value="64">CC64 延音踏板</option><option value="11">CC11 表情</option><option value="7">CC7 音量</option><option value="10">CC10 声像</option></select></label><div class="field-pair"><label>位置（拍）<input id="cc-beat" type="number" min="0" step="0.25" value="0"></label><label>值 0–127<input id="cc-value" type="number" min="0" max="127" value="127"></label></div><label>通道<input id="cc-channel" type="number" min="1" max="16" value="1"></label><button type="submit">加入控制点</button></form><div id="control-list" class="event-list"></div></details>
+  </aside>
+</main>
+<section class="lower-grid">
+  <details class="panel map-panel"><summary>速度与拍号图 <span id="map-summary"></span></summary><div class="map-body"><form id="tempo-form"><label>第几拍<input id="tempo-beat" type="number" min="0" step="0.25" value="0"></label><label>BPM<input id="tempo-bpm" type="number" min="20" max="400" value="88"></label><button>设置速度点</button></form><div id="tempo-list" class="event-list"></div><form id="meter-form"><label>第几拍<input id="meter-beat" type="number" min="0" step="0.25" value="0"></label><label>分子<input id="meter-num" type="number" min="1" max="32" value="4"></label><label>分母<select id="meter-den"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option></select></label><button>设置拍号点</button></form><div id="meter-list" class="event-list"></div></div></details>
+  <details id="import-report" class="panel"><summary>导入处理记录 <span id="report-count"></span></summary><ul id="report-list"></ul></details>
+</section>
+<footer id="help" class="help"><div><h2>从草稿到可继续制作的作品</h2><p>打开 MusicXML、MIDI 或网页 JSON 工程；分别编辑声部，再保存工程或导出。最多 16 声部、20,000 音符、4,096 拍，完整音域 MIDI 0–127。播放和导出使用同一合成缓冲；每次音频片段最多 120 秒，超限会提示，不会自动裁曲。</p><p>这是开源 Alpha。合成音色用于结构与和声试听；网页尚无本机 AU、精细谱面排版、AI 自动作曲或低延迟键盘录音。编辑会停止当前试听。MIDI / MusicXML 互换存在边界，请查看导入记录并保留原谱。</p></div><div><h2>你的文件留在你这里</h2><p>无需账号，无上传接口、统计或外部音源下载。本地恢复副本属于当前浏览器，清理网站数据会删除；请定期“保存工程”下载独立文件。</p><p><a id="source-link" href="https://github.com/oracle9i88/classical-daw/tree/feature/web-public-alpha-20261007">对应源代码</a> · <a href="https://github.com/oracle9i88/classical-daw/blob/feature/web-public-alpha-20261007/LICENSE">AGPL-3.0-or-later</a> · <a href="https://github.com/oracle9i88/classical-daw/issues">反馈问题</a></p><small>Web Alpha v2 · 2026-10-07 · 原创练习素材</small></div></footer>
+<script type="module" src="app.js"></script>
+</body></html>

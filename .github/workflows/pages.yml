@@ -1,8 +1,7 @@
-name: Deploy web prototype to GitHub Pages
+name: Deploy web alpha to GitHub Pages (manual)
 
 on:
-  push:
-    branches: [main]
+  # Cost control: publishing is a deliberate manual action, never a push retry.
   workflow_dispatch:
 
 permissions:

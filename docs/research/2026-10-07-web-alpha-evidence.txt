@@ -1,0 +1,256 @@
+2026-10-07 Web Alpha v2 evidence (Asia/Shanghai)
+Base: 25e916385d8af776de2653177d8e04f13f6bea86.
+These results describe the uncommitted working-tree follow-up identified by the
+source manifest below, not base commit behavior. Release/deployment data will be
+recorded separately after publication. No workflow was dispatched or retried.
+
+Scope and boundaries
+- Pure static, local-file Web Alpha: up to 16 parts, 20,000 notes, 50,000 CC
+  events, 4,096 quarter-note beats, and an 8 MiB canonical UTF-8 project file.
+  These are combined limits; satisfying note count alone is insufficient.
+- Explicit selected audio range: <=120 seconds, <=80,000,000 voice frames,
+  <=128 simultaneously sounding voices. Excess is rejected, never silently cut.
+- Node v26.0.0; installed Google Chrome 154.0.8037.98, headless.
+- Browser UI, downloads, DOMParser and module Worker are real. AudioContext is
+  a NO-DEVICE scheduling/copy mock; the Worker runs the actual PCM renderer.
+  No output device, AU plugin, latency budget, listening approval or perceived
+  instrument quality is certified by these results. Node DSP numeric tests are
+  also not a listening verdict. No Safari/Firefox coverage is claimed.
+
+Reproduction from repository root (uses existing installations; no downloads)
+  node --test web/tests/core.test.mjs web/tests/formats.test.mjs web/tests/audio.test.mjs
+  PLAYWRIGHT_MODULE_PATH='/Users/evanguo/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright' \
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+  WEB_BROWSER_OUTPUT='out/web-alpha-20261007' node scripts/check_web_browser.mjs
+The browser script starts/stops its own localhost server. It tests both / and
+/classical-daw/; no separate server, network publication or workflow is needed.
+
+Canonical results
+- Node core/formats/audio: 38/38, exit 0; final raw log reproduced below.
+- Browser: 13/13, exit 0. Six groups run at each URL prefix, plus one desktop /
+  mobile viewport group. This is 13 total, not 13 for each prefix.
+- Independent MusicXML DOMParser fixtures: 11/11 at each URL prefix, included
+  within the browser suite. Staff-specific transpose rejection is among them.
+- Browser artifacts remain local: out/web-alpha-20261007/browser-report.json,
+  desktop.png and mobile.png. They contain no imported user score material.
+- Earlier /tmp/daw-web-unit-20261007.log was 35/35 before final regressions;
+  it is not the canonical 38-test run. An independent subsequent cold-review
+  Node run also passed 38/38 in /tmp/web-alpha-cold-review-tests.log.
+
+Failures retained, and what changed
+1. UTF-8 save/reopen closure (independent Node reproduction of pre-fix code):
+   createProject(); replace its first track notes with 20,000 distinct IDs,
+   midi=60,start=0,duration=1,velocity=90,channel=0,lyric='汉'.repeat(256);
+   set nextId=20001, then validateProject -> projectJson -> parseProject.
+   BEFORE: valid_notes=20000 serialized_bytes=19049484
+           reopen=FAIL 工程文件超过 8 MiB
+   AFTER: validation rejects the candidate before Editor installs it:
+           工程保存后将超过 8 MiB；本次操作未应用，请减少音符、控制点或歌词
+   The accepted-state invariant now includes canonical UTF-8 serialization size.
+   Test: 'the accepted editor state always fits its own UTF-8 save/reopen limit'.
+
+2. Same-frame repedalling (independent Node reproduction):
+   4-beat project at 120 BPM, sine C4 start0/duration1/velocity90, default project
+   and track gain; sampleRate8000. Baseline CC64 @beat0=127. Comparison adds
+   CC64 @beat2=0 then @beat2=127. Compare left samples; measure RMS after frame 10000.
+   BEFORE: differentSamples=0; postPedalChangeRms=0.019639960665065972;
+           voiceFramesHeld=16000; voiceFramesChange=16000.
+   The release edge had disappeared because all same-frame CC were compacted.
+   AFTER: differentSamples=7999; postRms=0; voiceFrames=8640.
+   CC64 now retains release edges and the 640-frame sine release tail. Keys
+   still down and notes released at the same tick follow the explicit ordering.
+   Test: 'same-frame repedalling releases old held notes but not keys still held or new NoteOffs'.
+
+3. MIDI wire / DSP simultaneous-event ordering:
+   C4 start0/duration1, CC64 down atbeat1. BEFORE, exported bytes contained
+   80 3c 00 00 b0 40 7f (NoteOff then same-tick pedal-down), while the DSP kept
+   sounding (RMS over 1.0–1.5 seconds=0.019649326382178197 at 8 kHz).
+   AFTER, stable same-tick CC source order precedes NoteOff, then NoteOn;
+   exported bytes contain b0 40 7f 00 80 3c 00. The importer visibly reports
+   this normalization when source same-tick pedal/NoteOff order could differ.
+   Independent wire-order and importer-warning tests protect the contract.
+
+4. Staff-specific MusicXML transpose:
+   Cold review found transpose@number='2' would affect staff1 as well. V2 now
+   explicitly rejects staff-specific transpose instead of silently changing pitch.
+   The browser fixture has two staves, C on staff 1 and D on staff 2, with a -2
+   chromatic transpose restricted to staff 2; rejection matches /按谱表.*移调/.
+   This path was initially a code-reading finding, then covered in the real
+   browser DOMParser 11-fixture suite. General unnumbered transpose remains supported.
+
+5. Browser held-space failure:
+   Original run: 11/13; held-space repeat toggled playback off on BOTH URL
+   prefixes. Other browser checks passed. Raw failed output is retained below.
+   The keyboard handler now ignores repeat for transport/edit shortcut actions;
+   arrow-key stepping remains deliberate. Final run: 13/13.
+
+Raw evidence follows. Timing values are single local runs, not performance SLAs.
+
+--- NODE FINAL ---
+RAW LOG: /tmp/daw-web-unit-20261007-final.log
+SHA256: 49311aded5cf0307618071276bb8236e8f49f862a4e5b32463ad03a2608e090d
+✔ tempo changes determine quantized frames and note placement (4.728375ms)
+✔ stereo pan endpoints and mute precedence preserve track separation (3.583875ms)
+✔ controller channel isolation, CC7/11 level and CC10 pan are audible (3.177084ms)
+✔ pedal extends a gate and a same-key reattack releases the old voice (7.345791ms)
+✔ a selected window chases original phase, envelope, pedal and controllers byte-for-byte (4.752ms)
+✔ same-frame repedalling releases old held notes but not keys still held or new NoteOffs (1.541375ms)
+✔ fixed voices do not transpose notes above Nyquist and output has finite tails (1.610167ms)
+✔ hard clipping is reported and no normalization changes the waveform (8.641375ms)
+✔ PCM16 WAV has independent standard header and signed quantization (0.386375ms)
+✔ duration, work, polyphony and invalid frame limits fail explicitly (0.53075ms)
+✔ rendering is deterministic, reports bounded progress and ignores unsupported CC (4.043375ms)
+✔ worker publishes progress, transferable audio results and clear errors (17.551542ms)
+✔ v2 exact canonical save/reopen: multi-part identities, low pitches and controls (1.6355ms)
+✔ legacy v1 migration keeps notes, meter, tempo, lyrics and allocation (0.147958ms)
+✔ tempo conversion and inverse span tempo points; meter changes create partial bars (0.689167ms)
+✔ one history orders note, mixer and curve changes; invalid edit is transactional (1.725166ms)
+✔ history is bounded and no-op changes do not consume revisions (0.802375ms)
+✔ unresolved recovery survives new edits, separate tabs and storage failures (0.791208ms)
+✔ bad recovery is offered for raw backup, not silently discarded (0.069084ms)
+✔ bad, malicious or excessive project data is refused before installation (1.670833ms)
+✔ the accepted editor state always fits its own UTF-8 save/reopen limit (62.485125ms)
+✔ MIDI preserves all parts, full pitch range, channels, long duration, maps, lyrics and CC (2.623958ms)
+✔ export uses distinct MIDI ports instead of colliding independent part channels (0.214291ms)
+✔ MIDI array views respect byte offsets (0.231458ms)
+✔ MIDI PPQ conversion rounds once to 960 with an explicit warning, no quarter-grid quantization (0.125708ms)
+✔ same-key overlaps pair LIFO and survive export including same-onset durations (0.163041ms)
+✔ unrepresentable crossing same-key MIDI overlaps reject instead of changing durations (0.763292ms)
+✔ same-tick tempo follows source event order with a warning (0.11375ms)
+✔ same-tick controller order is stable (0.120625ms)
+✔ MIDI wire order is stable CC, then NoteOff, then NoteOn at a shared tick (0.161667ms)
+✔ import reports same-channel same-tick CC64/NoteOff normalization in either source order (0.158208ms)
+✔ missing MIDI maps use standard 120 BPM and 4/4 without adding notes (0.0715ms)
+✔ MIDI uses 120 before the first nonzero-tick tempo change (0.057417ms)
+✔ unsupported program, pitch bend and SysEx are visibly reported (0.050666ms)
+✔ MIDI malformed note pairs and unsafe binary structures fail atomically (0.365667ms)
+✔ all 16 parts plus conductor round trip without clipping (0.511084ms)
+✔ twenty thousand notes export without argument-spread or size crashes (41.777958ms)
+✔ XML import does not pretend Node has a DOM implementation (0.423208ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 134.387625
+
+--- BROWSER BEFORE KEYBOARD FIX ---
+RAW LOG: /tmp/daw-web-browser-20261007-before-keyboard-fix.log
+SHA256: a4c5a3e541a72dc75574f36e050b50469f8efc7d218ec1385499ec0eb02bc8c5
+PASS / JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS / malformed import keeps document and delayed inspector edits undo/redo
+PASS / real worker playback scheduling / WAV / stop cancellation
+FAIL / keyboard produces one edit and ignores held-space auto-repeat
+AssertionError [ERR_ASSERTION]: held-space repeat toggled playback off
+
+false !== true
+
+    at file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:204:14
+    at async check (file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:43:9)
+    at async file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:194:5
+PASS / unresolved recovery survives new edits
+  MusicXML browser tests 10/10
+PASS / independent MusicXML browser regression page
+PASS /classical-daw/ JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS /classical-daw/ malformed import keeps document and delayed inspector edits undo/redo
+PASS /classical-daw/ real worker playback scheduling / WAV / stop cancellation
+FAIL /classical-daw/ keyboard produces one edit and ignores held-space auto-repeat
+AssertionError [ERR_ASSERTION]: held-space repeat toggled playback off
+
+false !== true
+
+    at file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:204:14
+    at async check (file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:43:9)
+    at async file:///Users/evanguo/Documents/ChatGPT/omr/classical-daw/scripts/check_web_browser.mjs:194:5
+PASS /classical-daw/ unresolved recovery survives new edits
+  MusicXML browser tests 10/10
+PASS /classical-daw/ independent MusicXML browser regression page
+PASS desktop/mobile layout screenshots and viewport fit
+{
+  "browser": "installed Chromium, headless",
+  "audio": "AudioContext scheduling mock; real module Worker renderer",
+  "passed": 11,
+  "failed": 2,
+  "screenshotDirectory": "/Users/evanguo/Documents/ChatGPT/omr/classical-daw/out/web-alpha-20261007"
+}
+
+--- BROWSER FINAL ---
+RAW LOG: /tmp/daw-web-browser-20261007-final.log
+SHA256: e2ed038aaaef87e82cae7af9d53fc5288edad7297dc99a0f95507d329de607e0
+PASS / JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS / malformed import keeps document and delayed inspector edits undo/redo
+PASS / real worker playback scheduling / WAV / stop cancellation
+PASS / keyboard produces one edit and ignores held-space auto-repeat
+PASS / unresolved recovery survives new edits
+  MusicXML browser tests 11/11
+PASS / independent MusicXML browser regression page
+PASS /classical-daw/ JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS /classical-daw/ malformed import keeps document and delayed inspector edits undo/redo
+PASS /classical-daw/ real worker playback scheduling / WAV / stop cancellation
+PASS /classical-daw/ keyboard produces one edit and ignores held-space auto-repeat
+PASS /classical-daw/ unresolved recovery survives new edits
+  MusicXML browser tests 11/11
+PASS /classical-daw/ independent MusicXML browser regression page
+PASS desktop/mobile layout screenshots and viewport fit
+{
+  "browser": "installed Chromium, headless",
+  "browserVersion": "154.0.8037.98",
+  "audio": "AudioContext scheduling mock; real module Worker renderer",
+  "passed": 13,
+  "failed": 0,
+  "screenshotDirectory": "/Users/evanguo/Documents/ChatGPT/omr/classical-daw/out/web-alpha-20261007"
+}
+
+--- SOURCE MANIFEST (SHA256) ---
+Manifest SHA256 (UTF-8 lines below, including final newline): 19b22d3e1b72ba98c4da903fe92e58b681879f2baac582848ce27b7326a3b795
+ce309de3af95559c27bbad0fbdec8697ca363342c955a4a97849c533a602abd4  web/core.mjs
+11609ab56d55bbeb62246a501f240409f1dd64ac605b9456ff0a9b080a75d16e  web/editor-state.mjs
+9e2f312c8839cc63ffa63f9460ac7abebeed413291f1314a437b2c65417fd27f  web/app.js
+7ce8d95e444fbb9a6114ed01a715ba190ec2868014d1526def459b501b65724c  web/audio-engine.mjs
+fe26a7e051e8387cdd523484ea85e202744cd625b68ed0de08795c274b1392fe  web/formats.mjs
+9b3834777f6db89b4f870511a53c1c317e1f53407af5852dac99b1e60d5af6e6  web/render-worker.mjs
+4a89cae42d2a2a235f67a1cbc113f26220fd5da9ac5a4b2bee52f397dcbdd0d8  web/index.html
+dcd513d32928e1c6f256272e82a6f11fb68c5e0866fcfaf53c4091fa3feeede8  web/styles.css
+d04c5aceb21ae55d298c72c1192bcdb31236c606ccf55a443f081c962aaa0941  web/icon.svg
+290c85642005a1906dcf00cf4cf9e443d289f74f388c55b4a2f5e6b79d0d7d0b  scripts/check_web_browser.mjs
+048296a78c16a825aec96b759b8ac3306711f9ecaef1457ec4d3d2bea62a1346  web/tests/core.test.mjs
+5a227771eae87380a3d411803dcffcbde74d9b5758dd1ab3511d7e5007e309ac  web/tests/formats.test.mjs
+c683f041c466fc9286f2d7cc46689884077cf3d01b8f70f8ca21489c6248ef16  web/tests/audio.test.mjs
+97a5c00543faf76e517480350fac1f451ed43acee05851ca7ba20482d65ea5fe  web/tests/fixtures/formats-browser.html
+8b4833c9572ae22cbe2cacef700447cdaf152978b3c2c19c70fec8f8b829960a  web/tests/fixtures/formats-browser.mjs
+
+Final additional native browser Web Audio check (no source/runtime changes):
+The earlier 13-case log remains valid for its mock scheduling scope.
+The added 14th case uses native AudioContext, resume/createBuffer/source.start
+and observes running state plus currentTime progress. Chrome --mute-audio is
+retained: no listening sign-off or physical speaker verification is claimed.
+Updated SHA-256 11dc1ddad3e6dc97b199f672a852ad596de6248608dbb7cd3afcac24a438f394  scripts/check_web_browser.mjs
+Same command/environment as above. Final raw log: /tmp/daw-web-browser-20261007-native-audio.log
+EXIT: 0
+PASS / JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS / malformed import keeps document and delayed inspector edits undo/redo
+PASS / real worker playback scheduling / WAV / stop cancellation
+PASS / keyboard produces one edit and ignores held-space auto-repeat
+PASS / unresolved recovery survives new edits
+  MusicXML browser tests 11/11
+PASS / independent MusicXML browser regression page
+PASS /classical-daw/ JSON/MIDI/MusicXML full multi-part UI import + round-trip downloads
+PASS /classical-daw/ malformed import keeps document and delayed inspector edits undo/redo
+PASS /classical-daw/ real worker playback scheduling / WAV / stop cancellation
+PASS /classical-daw/ keyboard produces one edit and ignores held-space auto-repeat
+PASS /classical-daw/ unresolved recovery survives new edits
+  MusicXML browser tests 11/11
+PASS /classical-daw/ independent MusicXML browser regression page
+  Native AudioContext running @ 44100 Hz, clock 0.156734693877551 -> 0.4121541950113379; stopped without page errors; --mute-audio
+PASS native WebAudio resume/buffer/source playback and advancing clock (headless muted)
+PASS desktop/mobile layout screenshots and viewport fit
+{
+  "browser": "installed Chromium, headless",
+  "browserVersion": "154.0.8037.98",
+  "audio": "Most cases use AudioContext scheduling mock; one native WebAudio smoke test uses --mute-audio; real module Worker renderer throughout; no listening sign-off",
+  "passed": 14,
+  "failed": 0,
+  "screenshotDirectory": "/Users/evanguo/Documents/ChatGPT/omr/classical-daw/out/web-alpha-20261007"
+}

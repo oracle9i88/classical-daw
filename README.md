@@ -342,9 +342,23 @@ The current study notes and acceptance gates are in
 [`docs/research/2026-09-22-daw-architecture.md`](docs/research/2026-09-22-daw-architecture.md)
 and [`docs/roadmap.md`](docs/roadmap.md).
 
-The no-build web prototype lives in [`web/`](web/) with its own deployment
-instructions. It supports 4/8/16-bar piano-roll editing, MIDI Type 0/1 import
-and Type 1 export, multi-voice/tied MusicXML interchange, JSON recovery, and
-PCM16 WAV export. Run
-`python3 -m http.server 8080 --directory web` from the repository root for a
-local preview.
+## Web Alpha v2
+
+The no-build [Web Alpha](web/README.md) provides multi-part piano-roll editing,
+versioned JSON save/reopen and recovery, tempo/meter maps, MIDI controls, and
+MusicXML/MIDI interchange. Projects support up to 16 parts, 20,000 notes,
+4,096 quarter-note beats and MIDI pitches 0–127, subject to an 8 MiB canonical
+saved-project limit. Unsupported imports fail or report their interpretation;
+the viewport does not crop the saved score.
+
+Playback and 48 kHz stereo PCM16 WAV export use the same browser Worker
+synthesizer. Each audio selection is limited to 120 seconds, 128 simultaneous
+voices and a bounded rendering-work budget. This browser edition does not run
+the C++/AU engine, Pianoteq, SWAM, AI composition models or a production mixer.
+See the [web documentation](web/README.md) for interchange boundaries, same-tick
+CC/note ordering, local checks and portable static hosting.
+
+Run `python3 -m http.server 8080 --directory web` from the repository root and
+open <http://localhost:8080/>. Publishing the static directory does not require
+GitHub Actions; do not repeatedly trigger/retry workflows under the project's
+cost constraint. A public URL must be recorded after an actual deployment.
